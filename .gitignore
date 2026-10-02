@@ -1,0 +1,28 @@
+# Agent instructions (local only)
+AGENTS.md
+
+# Secrets and local configuration
+.env
+*.env.local
+kubeconfig*
+*.kubeconfig
+*.pem
+*.key
+
+# Raw terminal logs (may contain IPs, tokens, passwords)
+logs/
+
+# Temporary files
+tmp/
+*.tmp
+*.log
+
+# Python / analysis
+__pycache__/
+.venv/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
