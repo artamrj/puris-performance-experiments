@@ -137,15 +137,7 @@ D="$HOME/.local/opt/puris-loadlab/bin"; mkdir -p "$D" && tar -xzf helm-v4.3.0-da
 ```
 - Beide Prüfsummen: `OK`.
 
-Umschalten im Terminal: Funktion `puris` in `~/.zshrc` angefügt. Sie stellt die festen Versionen im **aktuellen** Terminal vor die Homebrew-Versionen und setzt den Zugang zum Cluster:
-```zsh
-# PURIS-Experiment: feste kubectl/helm-Versionen und Cluster-Zugang (nur im aktuellen Terminal)
-puris() {
-  export PATH="$HOME/.local/opt/puris-loadlab/bin:$PATH"
-  export KUBECONFIG="$HOME/.kube/puris-loadlab.yaml"
-  echo "PURIS-Umgebung aktiv: kubectl $(kubectl version --client | awk 'NR==1{print $3}'), helm $(helm version --template '{{.Version}}')"
-}
-```
+Umschalten im Terminal: Funktion `puris` in `~/.zshrc` angefügt. Sie stellt die festen Versionen im **aktuellen** Terminal vor die Homebrew-Versionen und setzt den Zugang zum Cluster. Die aktuelle Fassung (öffnet zusätzlich den Tunnel) steht unter „Mac-Zugang“.
 
 **Prüfung `[Mac]`:**
 ```bash
@@ -162,6 +154,78 @@ Ergebnis:
 **Hinweise:**
 - Die Homebrew-Versionen (`kubectl` v1.32.1, `helm` v4.2.2) bleiben installiert, da das Homebrew-Paket `minikube` von `kubectl` abhängt.
 - Die kubeconfig `~/.kube/puris-loadlab.yaml` war zum Zeitpunkt der Prüfung noch nicht auf dem Mac vorhanden.
+
+---
+
+## Mac-Zugang – SSH-Alias `puris-vm` über Tailscale
+
+**Datum:** 2026-10-06
+**Ziel:** Eine Adresse für die VM, die zu Hause und unterwegs gleich funktioniert, mit eingebautem Tunnel zur k3s-API.
+
+**Eintrag `[Mac]`** in `~/.ssh/config` (echte Werte nur lokal, hier als Platzhalter):
+```
+Host puris-vm
+    HostName <vollständiger Tailscale-Name der VM, <name>.<tailnet>.ts.net>
+    User <Benutzer auf der VM>
+    LocalForward 6443 127.0.0.1:6443
+```
+- `HostName`: Tailscale-Name (MagicDNS) statt IP-Adresse; bleibt gültig, auch wenn sich die Adresse ändert.
+- `LocalForward`: Tunnel vom Mac (`127.0.0.1:6443`) zur k3s-API auf der VM. Er besteht, solange eine Sitzung `ssh puris-vm` offen ist; nur Tunnel: `ssh -N puris-vm`.
+
+**Prüfung `[Mac]`:**
+```bash
+ssh -G puris-vm | grep -E "^(hostname|user|localforward|port) "
+ssh puris-vm hostname
+```
+Ergebnis:
+- `ssh -G` zeigt `port 22` und `localforward 6443 [127.0.0.1]:6443`
+- `ssh puris-vm hostname` → `puris-loadlab`
+- Beim ersten Verbinden über den Tailscale-Namen fragte SSH nach dem Host-Schlüssel (ED25519). Laut SSH war derselbe Schlüssel bereits unter dem Kurznamen der VM in `known_hosts` bekannt – es ist also derselbe Rechner. Bestätigt mit `yes`.
+
+**Kubeconfig auf den Mac kopieren `[Mac]`:**
+```bash
+scp puris-vm:/etc/rancher/k3s/k3s.yaml ~/.kube/puris-loadlab.yaml && chmod 600 ~/.kube/puris-loadlab.yaml && grep server ~/.kube/puris-loadlab.yaml
+```
+Ergebnis:
+- Datei übertragen (2953 Bytes); Rechte `-rw-------` (nur der eigene Benutzer)
+- `server: https://127.0.0.1:6443` – die Adresse des Tunnels; die Datei muss daher nicht angepasst werden
+- Eine vorhandene `~/.kube/config` bleibt unberührt.
+
+**Funktionen `puris` und `puris-stop` `[Mac]`** in `~/.zshrc` (aktuelle Fassung; ersetzt die erste Fassung aus „Mac-Werkzeuge“). `puris` öffnet den Tunnel bei Bedarf im Hintergrund, sodass ein Terminal genügt:
+```zsh
+# PURIS-Experiment: feste kubectl/helm-Versionen, Cluster-Zugang und Tunnel (nur im aktuellen Terminal)
+puris() {
+  local bin="$HOME/.local/opt/puris-loadlab/bin"
+  [[ ":$PATH:" == *":$bin:"* ]] || export PATH="$bin:$PATH"
+  export KUBECONFIG="$HOME/.kube/puris-loadlab.yaml"
+  if nc -z 127.0.0.1 6443 2>/dev/null; then
+    echo "Tunnel zu puris-vm: bereits offen"
+  else
+    ssh -fN -o ExitOnForwardFailure=yes puris-vm && echo "Tunnel zu puris-vm: geöffnet (Hintergrund)"
+  fi
+  echo "PURIS-Umgebung aktiv: kubectl $(kubectl version --client | awk 'NR==1{print $3}'), helm $(helm version --template '{{.Version}}')"
+}
+# Tunnel zu puris-vm schließen
+puris-stop() {
+  pkill -f "ssh -fN -o ExitOnForwardFailure=yes puris-vm" && echo "Tunnel zu puris-vm: geschlossen" || echo "Tunnel zu puris-vm: war nicht offen"
+}
+```
+
+**Prüfung des Zugriffs `[Mac]`** (neues Terminal):
+```bash
+puris
+kubectl get nodes && helm list -A
+```
+Ergebnis:
+- Tunnel läuft im Hintergrund (`ssh -fN … puris-vm`), Port 6443 auf dem Mac erreichbar
+- Knoten `puris-loadlab`: `Ready`, Rolle `control-plane`, Version `v1.37.1+k3s1`
+- `helm list -A`: Release `gateway-api-crd` (Chart `gateway-api-crd-1.6.103`, App-Version v1.6.1) – wie auf der VM
+
+**Rückbau `[Mac]`:** `puris-stop`; Eintrag `Host puris-vm` aus `~/.ssh/config` entfernen; `rm ~/.kube/puris-loadlab.yaml`; Funktionen `puris` und `puris-stop` aus `~/.zshrc` entfernen.
+
+**Hinweise:**
+- Die Tailscale-App muss auf dem Mac eingeschaltet sein.
+- Die kubeconfig enthält Zugangsschlüssel mit vollen Admin-Rechten für den Cluster: nie ins Repository, nie anzeigen oder weitergeben.
 
 ---
 

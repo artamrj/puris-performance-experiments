@@ -80,6 +80,11 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Tractus-X Umbrella-Chart (Tag `umbrella-26.03.00`) auf seine Bestandteile geprüft.
 - Ergebnisse in `KONZEPT.md` (Abschnitte 3, 6, 12, 13) und `ANLEITUNG.md` übernommen.
 - Auf dem Mac `kubectl` v1.37.1 und `helm` v4.3.0 als feste Binärdateien in `~/.local/opt/puris-loadlab/bin` installiert (Prüfsummen `OK`); Umschalten im Terminal mit der Funktion `puris` (siehe `AUFBAU.md`, „Mac-Werkzeuge“).
+- SSH-Alias `puris-vm` auf dem Mac eingerichtet (Tailscale-Name der VM, Tunnel zur k3s-API); `ssh puris-vm hostname` lieferte `puris-loadlab` (siehe `AUFBAU.md`, „Mac-Zugang“).
+- Kubeconfig der VM als `~/.kube/puris-loadlab.yaml` auf den Mac kopiert (Rechte `600`); Serveradresse `https://127.0.0.1:6443`, passend zum Tunnel.
+- Funktion `puris` erweitert (öffnet den Tunnel bei Bedarf im Hintergrund) und `puris-stop` ergänzt. Zugriff vom Mac geprüft: Knoten `puris-loadlab` `Ready` (v1.37.1+k3s1), `helm list -A` zeigt `gateway-api-crd`.
+
+**Problem:** Erster Zugriffsversuch vom Mac mit `kubectl get nodes` scheiterte mit `dial tcp 127.0.0.1:6443: connect: connection refused`. Ursache: Der Tunnel (`ssh -N puris-vm`) lief im selben Terminal und wurde mit Ctrl+C beendet, bevor `kubectl` aufgerufen wurde. Gelöst, indem `puris` den Tunnel nun selbst im Hintergrund öffnet (`ssh -fN`), sodass ein Terminal genügt.
 
 **Entscheidungen:**
 - Datenraum mit dem Tractus-X Umbrella-Chart 26.03.00 (entschieden am 2026-10-05); Baustein `c1-datenraum`.
@@ -96,6 +101,8 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
   Begründung: YAML-Änderungen lassen sich ohne Commit, Push und Pull auf der VM ausprobieren; über den Tunnel bleibt k3s unverändert; Messläufe hängen nicht von der Verbindung zum Mac ab.
 - Die festen Mac-Versionen liegen in einem eigenen Ordner und werden nur im jeweiligen Terminal mit `puris` aktiviert; die Homebrew-Versionen bleiben unverändert.
   Begründung: Homebrew steht im `PATH` vorn, und das Homebrew-Paket `minikube` hängt von dessen `kubectl` ab. `puris` setzt zugleich `KUBECONFIG`, sodass Befehle in diesem Terminal nur den Versuchscluster betreffen.
+- Die VM wird vom Mac immer über Tailscale erreicht (Alias `puris-vm`), auch im Heimnetz; die LAN-Adresse wird nicht mehr verwendet.
+  Begründung: eine Adresse und dieselben Befehle an jedem Ort; Tailscale nutzt im Heimnetz nach Möglichkeit eine direkte Verbindung.
 
 **Beobachtungen** (aus dem Quellcode, noch nicht am Cluster überprüft):
 - Auslöser der Bestandsabfrage: `GET /catena/stockView/update-reported-material-stocks?ownMaterialNumber=<Base64>` mit Header `X-API-KEY`; derselbe Aufruf wie die Aktualisieren-Schaltfläche der Oberfläche.
