@@ -1,0 +1,145 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    b1-monitoring
+# Chart:       kube-prometheus-stack 91.9.0
+#              oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack
+# Komponenten: Prometheus v3.15.0, Prometheus Operator v0.94.1, Grafana 13.2.3,
+#              kube-state-metrics 2.20.0, node-exporter 1.12.1
+#              (Versionen = Standard dieser Chart-Version)
+# Zweck:       Messinfrastruktur – CPU, RAM und CPU-Drosselung aller Pods,
+#              Zustand des Knotens; Empfang der k6-Metriken (Remote Write).
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM sind Startwerte; nach dem ersten Probelauf mit dem
+#              gemessenen Verbrauch abgleichen und Änderungen begründen.
+#
+# Installation [Mac] (im Terminal vorher `puris`):
+#   helm upgrade --install monitoring \
+#     oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack \
+#     --version 91.9.0 -n monitoring --create-namespace \
+#     -f setup/b1-monitoring/values.yaml
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══ Chartweite Einstellungen ═════════════════════════════════════════════════
+
+# Alarme werden nicht benötigt (Standard: an).
+alertmanager:
+  enabled: false
+
+# In k3s laufen Controller-Manager, Scheduler, Proxy und etcd/Datenspeicher im
+# Prozess `k3s`, nicht als eigene Pods. Die Ziele wären dauerhaft „down“
+# (Standard: an). Die zugehörigen Standardregeln entfallen damit ebenfalls.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+
+# ═══ Prometheus ═══════════════════════════════════════════════════════════════
+prometheus:
+  prometheusSpec:
+    # 15 s statt 30 s (Standard): 40 Messpunkte je 10-minütiger Laststufe.
+    scrapeInterval: 15s
+    # Regeln (nur Hilfsreihen für Grafana) im Standardtakt; spart CPU.
+    evaluationInterval: 30s
+
+    # Messdaten über die gesamte Messphase aufbewahren (Standard: 10d).
+    # retentionSize < Volume-Größe, damit das Volume nie vollläuft.
+    retention: 30d
+    retentionSize: 18GB
+
+    # k6 schreibt seine Metriken direkt in Prometheus (Standard: aus).
+    enableRemoteWriteReceiver: true
+
+    # Auch ServiceMonitors/PodMonitors/Regeln anderer Releases (z. B. f1-k6)
+    # einsammeln, nicht nur die dieses Releases (Standard: true).
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+
+    # Dauerhaftes Volume statt temporärem Speicher (Standard: emptyDir):
+    # Messdaten überstehen einen Neustart von Prometheus bis zum Export.
+    # `local-path` = Standard-StorageClass von k3s (Daten auf der VM-Platte).
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+    # Startwert: großzügig, damit Prometheus selbst nie gedrosselt wird und
+    # keine Messpunkte verliert (Abfragen beim Export erzeugen Lastspitzen).
+    resources:
+      requests: { cpu: 1000m, memory: 2Gi }
+      limits:   { cpu: 1000m, memory: 2Gi }
+
+
+# ═══ Prometheus Operator ══════════════════════════════════════════════════════
+prometheusOperator:
+  # Verwaltet Prometheus; im Betrieb fast im Leerlauf.
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 100m, memory: 128Mi }
+
+  # Hilfscontainer `config-reloader` im Prometheus-Pod (Sidecar und
+  # Init-Container): lädt die Konfiguration bei Änderungen neu.
+  prometheusConfigReloader:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 50m, memory: 64Mi }
+
+  # Einmalige Jobs beim Installieren (Zertifikat für den Admission-Webhook).
+  admissionWebhooks:
+    patch:
+      resources:
+        requests: { cpu: 50m, memory: 64Mi }
+        limits:   { cpu: 50m, memory: 64Mi }
+
+
+# ═══ kube-state-metrics ═══════════════════════════════════════════════════════
+# Zustände der Kubernetes-Objekte (Pods, Neustarts, gesetzte CPU/RAM-Werte).
+kube-state-metrics:
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 100m, memory: 128Mi }
+
+
+# ═══ node-exporter ════════════════════════════════════════════════════════════
+# Kennzahlen der ganzen VM – erfasst auch den Prozess `k3s` außerhalb der Pods.
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 100m, memory: 64Mi }
+    limits:   { cpu: 100m, memory: 64Mi }
+
+
+# ═══ Grafana ══════════════════════════════════════════════════════════════════
+# Live-Ansicht beim Aufbau und bei Probeläufen. Abbildungen der Arbeit entstehen
+# nicht hier, sondern in analysis/.
+grafana:
+  # Zugangsdaten aus einem vorher angelegten Secret (nie in dieser Datei):
+  #   kubectl create secret generic grafana-admin -n monitoring \
+  #     --from-literal=admin-user=admin --from-literal=admin-password='<PASSWORT>'
+  admin:
+    existingSecret: grafana-admin
+
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 200m, memory: 512Mi }
+
+  # Zwei Hilfscontainer (Dashboards und Datenquellen aus ConfigMaps laden).
+  sidecar:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 50m, memory: 128Mi }
+
+  # Test-Pod nur für `helm test`; wird nicht benötigt (Standard: an).
+  testFramework:
+    enabled: false

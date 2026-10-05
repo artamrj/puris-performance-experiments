@@ -42,6 +42,7 @@ Der Aufbau **wächst schrittweise**: Es wird nicht alles im Voraus geplant, sond
 ├── LABORBUCH.md           ← Forschungstagebuch
 ├── KONZEPT.md             ← dieses Dokument
 ├── ANLEITUNG.md           ← was untersucht wird (einfache Sprache)
+├── CHECKLISTE.md          ← Fortschritt je Etappe und Baustein (nur Haken, keine Befehle)
 ├── README.md              ← Schnellstart
 ├── runs/                  ← ein Ordner pro Messlauf (ab erstem Probelauf)
 ├── setup/                 ← Bausteine des Aufbaus (siehe Abschnitt 3)
@@ -298,6 +299,8 @@ Bevor die Hauptmessungen beginnen, wird der Aufbau mit einem **Git-Tag** eingefr
 | **Git-Commits** | *Wann* wurde was geändert? Das Git-Log ist der Changelog. | läuft nebenbei |
 | **Laufordner** | *Was* wurde gemessen und *womit genau*? | je Messlauf |
 
+**Fortschritt:** [`CHECKLISTE.md`](CHECKLISTE.md) zeigt, was erledigt und was offen ist. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und das Laborbuch ergänzt werden; die Checkliste enthält keine Befehle und keine Begründungen.
+
 **Nur Tatsachen:** In `AUFBAU.md` und im Laborbuch steht nur, was tatsächlich ausgeführt, beobachtet oder entschieden wurde – keine geplanten oder vermuteten Schritte.
 
 **Kein vollständiges Befehlsprotokoll:** In `AUFBAU.md` stehen nur die Befehle, die den Aufbau verändert und funktioniert haben. Ausprobieren und Fehlversuche kommen kurz ins Laborbuch. Rohe Terminal-Mitschnitte dürfen lokal in `logs/` liegen, werden aber nicht veröffentlicht.
@@ -521,6 +524,8 @@ Ablauf:
 
 ### Noch offen
 
+- `b2-logs` umfasst Loki und Grafana Alloy – zwei getrennte Helm-Charts. Vor dem Aufbau entscheiden, ob daraus zwei Bausteine werden oder eine begründete Ausnahme von „ein Baustein = ein Helm-Release“ gilt; Abschnitt 3 entsprechend anpassen.
+- Puffer für den Prozess `k3s` und das Betriebssystem (`Allocatable` = `Capacity`, siehe `AUFBAU.md`, Ressourcenübersicht) festlegen, bevor die Ressourcen der Phasen c–f verteilt werden.
 - Parallele Aufträge für dasselbe Material löschen und schreiben dieselben Bestandszeilen: Treten dabei Fehler oder Doppelungen auf? Im Probelauf prüfen.
 - Genaues Verfahren für die Dauer einer Transaktion (Log-Zeitstempel oder Transferprozesse der EDCs) – im Probelauf festlegen.
 - Wachsen die EDC-Tabellen über die Läufe? Zeilen vor und nach einem Probelauf zählen.

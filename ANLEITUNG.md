@@ -95,7 +95,9 @@ Zusätzlich in den PURIS-Logs zählen, wie oft `Invalidating Contract data` vork
 1. **Zuerst:** Schritte A–E auf k3s, bis **eine** Abfrage von Hand funktioniert (schwierigster Teil).
 2. **Danach:** k6-Skript schreiben (Schritt F) und eine kurze **Vorstudie**: Ab welcher Rate wird es eng? Wie lange dauert die Aufwärmphase?
 3. **Dann:** die echten Messungen (≈ 5 Stunden pro Konfiguration).
-4. **Parallel:** Kapitel 2 ist fertig, Kapitel 4 halb fertig. Kapitel 5 und 6 erst mit echten Messdaten schreiben.
+4. **Parallel:** Kapitel 1–3 liegen als Rohfassung vor, Kapitel 4 teilweise (Stand 2026-10-06). Kapitel 5 und 6 erst mit echten Messdaten schreiben.
+
+Fortschritt: [`CHECKLISTE.md`](CHECKLISTE.md).
 
 ---
 
