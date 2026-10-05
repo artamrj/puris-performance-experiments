@@ -87,12 +87,17 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - k9s auf der VM entfernt (`sudo apt remove -y k9s`, 132 MB freigegeben).
 - Aktuellen Stand und übliche Praxis recherchiert (Primärquellen: PURIS-Repository Tag `6.2.0`, Tractus-X-Umbrella Tag `umbrella-26.03.00`, Helm-Repository `tractusx-dev`, aktuelle Releases von kube-prometheus-stack, Loki, Alloy, k6-Operator, Helmfile). PURIS 6.2.0 / Chart 7.2.0 ist weiterhin die neueste Version. Ergebnisse und Quellen in `KONZEPT.md`, Abschnitte 3, 12 und 13.
 - `setup/b1-monitoring/values.yaml` für kube-prometheus-stack 91.9.0 erstellt (Abschnitte: chartweit, Prometheus, Operator, kube-state-metrics, node-exporter, Grafana). Lokal mit `helm template` (Kubernetes 1.37.1) geprüft: 99 Objekte, kein Alertmanager; alle Container einschließlich Init-Container, Sidecars und Installations-Jobs mit requests = limits. Summe der laufenden Container: 1650m CPU, 3200Mi RAM.
+- `b1` Monitoring installiert (kube-prometheus-stack 91.9.0, Release `monitoring`, Revision 2) aus Commit `2ae8388`: 5 Pods bereit und `Guaranteed`, Volume 20Gi gebunden, 11/11 Prometheus-Ziele `up`, CPU-, RAM- und Drosselungsmetriken vorhanden, Remote-Write-Empfänger aktiv; Grafana-Anmeldung erfolgreich, Datenquelle Prometheus `OK`, Dashboard zeigt Werte (siehe `AUFBAU.md`, „b1“). `b1` damit abgeschlossen.
 - Automatische apt-Updates abgeschaltet: `apt-daily.timer` und `apt-daily-upgrade.timer` sind `disabled` und `inactive` (Ergänzung zu `a1` in `AUFBAU.md`). Damit ist die Beobachtung vom 2026-10-05 zu `unattended-upgrades` umgesetzt.
 - `CHECKLISTE.md` angelegt (Fortschritt je Etappe und Baustein mit Zielterminen, Stand 2026-10-06) und in `KONZEPT.md` (Abschnitte 2 und 7) verankert. Zwei neue offene Punkte in `KONZEPT.md`, Abschnitt 13: `b2-logs` besteht aus zwei Helm-Charts (Loki, Alloy); Puffer für k3s und Betriebssystem ist noch festzulegen.
 
 **Problem:** Erster Zugriffsversuch vom Mac mit `kubectl get nodes` scheiterte mit `dial tcp 127.0.0.1:6443: connect: connection refused`. Ursache: Der Tunnel (`ssh -N puris-vm`) lief im selben Terminal und wurde mit Ctrl+C beendet, bevor `kubectl` aufgerufen wurde. Gelöst, indem `puris` den Tunnel nun selbst im Hintergrund öffnet (`ssh -fN`), sodass ein Terminal genügt.
 
 **Problem:** Die Knotenprüfung vom Mac scheiterte mit `connect: host is down` an einer Heimnetz-Adresse (Port 6443). Ursache: `puris` war in diesem Terminal nicht ausgeführt; `kubectl` (Homebrew v1.32.1) nutzte daher die Standard-kubeconfig `~/.kube/config`, die auf diese Heimnetz-Adresse zeigt. Mit `puris` (kubectl v1.37.1, `~/.kube/puris-loadlab.yaml`) lief die Prüfung über den Tunnel.
+
+**Problem:** Beim Installieren von `b1` meldete Helm `open setup/b1-monitoring/values.yaml: no such file or directory`. Ursache: Das Terminal stand im Ordner `5-thesis`, der Pfad war relativ. Gelöst mit dem vollständigen Pfad zur `values.yaml`. Helm hatte vor dem Fehler nichts installiert.
+
+**Problem (Abweichung):** Revision 1 und 2 von `b1` wurden über die Eingabezeile des Chat-Werkzeugs statt im Terminal mit `puris` ausgeführt. Dort lief Helm v4.2.2 (Homebrew) über die Standard-kubeconfig `~/.kube/config` und die Heimnetz-Adresse der VM statt über Tailscale und den Tunnel. Ziel war derselbe Cluster (`puris-loadlab`). Prüfung: Alle 99 installierten Objekte (`helm get manifest` und `helm get hooks`) sind mit der Ausgabe von `helm template` aus der festgelegten Version v4.3.0 identisch; eine Neuinstallation war daher nicht nötig. Künftig `kubectl` und `helm` nur im Terminal nach `puris`.
 
 **Entscheidungen:**
 - Datenraum mit dem Tractus-X Umbrella-Chart 26.03.00 (entschieden am 2026-10-05); Baustein `c1-datenraum`.
@@ -140,4 +145,6 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - `Allocatable` ist gleich `Capacity` (CPU 8, RAM 31807336Ki ≈ 30,3 GiB): k3s hält nichts für Betriebssystem und eigene Prozesse zurück. Der Prozess `k3s` (API-Server, Datenspeicher, kubelet, containerd) läuft außerhalb von Pods; für ihn ist bei der Ressourcenverteilung ein Puffer einzuplanen.
 - Die k3s-eigenen Pods belegen zusammen 200m CPU und 140Mi RAM (requests); sie sind `Burstable` bzw. `BestEffort` und werden nicht verändert.
 
-**Nächstes:** `b1` Monitoring.
+- Nach `b1` sind 1850m CPU (23 %) und 3340Mi RAM (10 %) des Knotens per requests vergeben. Kurz nach dem Start nutzte der Namespace `monitoring` ca. 0,25 CPU-Kerne; Prometheus 291 MiB, Grafana-Pod 355 MiB Arbeitsspeicher.
+
+**Nächstes:** `b2-logs` – vorher klären: Loki und Alloy sind zwei getrennte Helm-Charts (ein oder zwei Releases).

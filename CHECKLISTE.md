@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` vorbereitet (noch nicht installiert). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; als Nächstes `b2-logs`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -73,8 +73,8 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] `AUFBAU.md` mit Versions- und Ressourcenübersicht
 - [x] `LABORBUCH.md` mit datierten Einträgen (seit 2026-10-02)
 - [x] `CHECKLISTE.md` (diese Datei, 2026-10-06)
-- [ ] Offene Änderungen committen: `AUFBAU.md`, `KONZEPT.md`, `LABORBUCH.md`, `ANLEITUNG.md`, `CHECKLISTE.md`, `setup/b1-monitoring/values.yaml`
-- [ ] Lokale Commits pushen (Stand 2026-10-06: 4 Commits vor `origin/main`)
+- [x] Offene Änderungen committen: `AUFBAU.md`, `KONZEPT.md`, `LABORBUCH.md`, `ANLEITUNG.md`, `CHECKLISTE.md`, `setup/b1-monitoring/values.yaml` – Commit `2ae8388`, 2026-10-06
+- [x] Lokale Commits pushen – `77e0323..2ae8388` nach `origin/main`, 2026-10-06
 - [ ] Danach im Thesis-Repository den Submodul-Verweis `6-experiment` aktualisieren
 - [ ] `README.md` (Schnellstart) anlegen – in `KONZEPT.md`, Abschnitt 2, vorgesehen; spätestens in Etappe 2 (Abschnitt 10)
 - [ ] Laufend: Bei jeder Änderung an Struktur, Befehl oder Ablauf `KONZEPT.md` (und `README.md`) im selben Zug anpassen
@@ -108,14 +108,14 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 ### `b1-monitoring` (kube-prometheus-stack 91.9.0)
 
 - [x] `setup/b1-monitoring/values.yaml` erstellt, mit `helm template` (Kubernetes 1.37.1) geprüft: 99 Objekte, kein Alertmanager, alle Container requests = limits – 2026-10-06
-- [ ] Secret für die Grafana-Zugangsdaten angelegt (Passwort nur lokal)
-- [ ] Installiert; Pods `Running` und `Guaranteed`; Volume von Prometheus gebunden (`local-path`, 20Gi)
-- [ ] Ziele in Prometheus `up`: kubelet/cAdvisor, node-exporter, kube-state-metrics
-- [ ] Abfragen liefern Werte je Pod: `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`, `container_cpu_cfs_throttled_periods_total`
-- [ ] Remote-Write-Empfänger aktiv (für k6)
-- [ ] Grafana erreichbar (nur zum Ansehen, nie im Lastweg)
-- [ ] Versionsübersicht ergänzt (Chart, Prometheus, Operator, Grafana, kube-state-metrics, node-exporter)
-- [ ] Definition „Baustein fertig“ erfüllt
+- [x] Secret für die Grafana-Zugangsdaten angelegt (Passwort nur lokal) – `grafana-admin`, 2026-10-06
+- [x] Installiert; Pods `Running` und `Guaranteed`; Volume von Prometheus gebunden (`local-path`, 20Gi) – Revision 2, 2026-10-06
+- [x] Ziele in Prometheus `up`: kubelet/cAdvisor, node-exporter, kube-state-metrics – 11/11, 2026-10-06
+- [x] Abfragen liefern Werte je Pod: `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`, `container_cpu_cfs_throttled_periods_total` – 2026-10-06
+- [x] Remote-Write-Empfänger aktiv (für k6) – Flag `true`, 2026-10-06
+- [x] Grafana erreichbar (nur zum Ansehen, nie im Lastweg) – Anmeldung und Datenquelle `OK`, 2026-10-06
+- [x] Versionsübersicht ergänzt (Chart, Prometheus, Operator, Grafana, kube-state-metrics, node-exporter) – 2026-10-06
+- [x] Definition „Baustein fertig“ erfüllt – 2026-10-06 (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ### `b2-logs` (Loki + Grafana Alloy)
 

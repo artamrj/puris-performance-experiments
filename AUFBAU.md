@@ -16,6 +16,13 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | Helm | v4.3.0 | VM | a3 |
 | kubectl | v1.37.1 | Mac | Mac-Werkzeuge |
 | Helm | v4.3.0 | Mac | Mac-Werkzeuge |
+| kube-prometheus-stack (Helm-Chart) | 91.9.0 | Cluster | b1 |
+| Prometheus | v3.15.0 | Cluster | b1 |
+| Prometheus Operator / config-reloader | v0.94.1 | Cluster | b1 |
+| Grafana | 13.2.3 | Cluster | b1 |
+| k8s-sidecar (Grafana) | 2.11.2 | Cluster | b1 |
+| kube-state-metrics | v2.20.0 | Cluster | b1 |
+| node-exporter | v1.12.1 | Cluster | b1 |
 
 ---
 
@@ -29,16 +36,26 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | a2 (k3s) | `metrics-server` | – (Vorgabe k3s) | 100m | – | 70Mi | – | Burstable |
 | a2 (k3s) | `local-path-provisioner` | – (Vorgabe k3s) | – | – | – | – | BestEffort |
 | a2 (k3s) | `helm-install-gateway-api-crd` (einmaliger Job, abgeschlossen) | – (Vorgabe k3s) | 100m | 32 | 10M | 32G | Burstable |
+| b1 | Prometheus: `prometheus` | `b1-monitoring/values.yaml` › Prometheus | 1000m | 1000m | 2Gi | 2Gi | Guaranteed |
+| b1 | Prometheus: `config-reloader` (Sidecar, auch Init-Container) | › Prometheus Operator (`prometheusConfigReloader`) | 50m | 50m | 64Mi | 64Mi | Guaranteed |
+| b1 | Prometheus Operator | › Prometheus Operator | 100m | 100m | 128Mi | 128Mi | Guaranteed |
+| b1 | kube-state-metrics | › kube-state-metrics | 100m | 100m | 128Mi | 128Mi | Guaranteed |
+| b1 | node-exporter | › node-exporter | 100m | 100m | 64Mi | 64Mi | Guaranteed |
+| b1 | Grafana: `grafana` | › Grafana | 200m | 200m | 512Mi | 512Mi | Guaranteed |
+| b1 | Grafana: `grafana-sc-dashboard`, `grafana-sc-datasources` (je) | › Grafana (`sidecar`) | 50m | 50m | 128Mi | 128Mi | Guaranteed |
+| b1 | Admission-Jobs `create`, `patch` (einmalig, beim Installieren) | › Prometheus Operator (`admissionWebhooks.patch`) | 50m | 50m | 64Mi | 64Mi | – |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Der abgeschlossene Job zählt nicht zur Summe. Noch kein Dienst mit eigener YAML-Datei installiert.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 1650m CPU, 3200Mi RAM.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `b1`):
 
 | | CPU | RAM |
 |---|---|---|
 | Zuteilbar (`Allocatable`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
-| Summe aller requests | 200m (2 %) | 140Mi (0 %) |
-| Rest | 7800m | ≈ 30,2 GiB |
+| Summe aller requests | 1850m (23 %) | 3340Mi (10 %) |
+| Rest | 6150m | ≈ 27,1 GiB |
+
+*Vor `b1`: requests 200m CPU, 140Mi RAM (nur k3s-eigene Pods).*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -253,6 +270,61 @@ Ergebnis:
 **Hinweise:**
 - Die Tailscale-App muss auf dem Mac eingeschaltet sein.
 - Die kubeconfig enthält Zugangsschlüssel mit vollen Admin-Rechten für den Cluster: nie ins Repository, nie anzeigen oder weitergeben.
+
+---
+
+## b1 – Monitoring (kube-prometheus-stack)
+
+**Datum:** 2026-10-06
+**Ziel:** Messinfrastruktur: CPU, RAM und CPU-Drosselung aller Pods, Zustand der VM; Empfang der k6-Metriken.
+
+**YAML-Datei:** [`setup/b1-monitoring/values.yaml`](setup/b1-monitoring/values.yaml) (Abschnitte: chartweit, Prometheus, Prometheus Operator, kube-state-metrics, node-exporter, Grafana), Commit `2ae8388`.
+
+**Befehle `[Mac]`** (im Terminal vorher `puris`):
+```bash
+kubectl create namespace monitoring
+kubectl create secret generic grafana-admin -n monitoring --from-literal=admin-user=admin --from-literal=admin-password='<PASSWORT>'
+helm upgrade --install monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack --version 91.9.0 -n monitoring -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b1-monitoring/values.yaml"
+```
+- Das Passwort für Grafana liegt nur im Secret `grafana-admin` (Schlüssel `admin-user`, `admin-password`); empfohlen ist die verdeckte Eingabe (`read -s`), damit es nicht in der Shell-Historie steht.
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → 99 Objekte, kein Alertmanager, alle Container requests = limits.
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl get pods -n monitoring -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[*].ready,QOS:.status.qosClass,RESTARTS:.status.containerStatuses[*].restartCount'
+kubectl get pvc -n monitoring
+kubectl get --raw "/api/v1/namespaces/monitoring/services/http:monitoring-kube-prometheus-prometheus:9090/proxy/api/v1/targets?state=active"
+```
+Ergebnis:
+- Helm: Release `monitoring`, Revision 2, `deployed`
+- 5 Pods bereit, alle `Guaranteed`, 0 Neustarts (Grafana, Operator, kube-state-metrics, node-exporter, Prometheus)
+- Volume von Prometheus: `Bound`, 20Gi, StorageClass `local-path`
+- Prometheus-Ziele: 11 von 11 `up` (apiserver, coredns, kubelet 3/3, kube-state-metrics, node-exporter, Grafana, Operator, Prometheus 2/2)
+- Abfragen liefern Werte: `container_cpu_usage_seconds_total` (11 Reihen), `container_cpu_cfs_throttled_periods_total` (13 Reihen), `container_memory_working_set_bytes` je Pod, `node_memory_MemTotal_bytes`
+- Remote-Write-Empfänger aktiv (`--web.enable-remote-write-receiver`, Flag = `true`)
+- Kurz nach dem Start: Namespace `monitoring` ca. 0,25 CPU-Kerne; Arbeitsspeicher Prometheus 291 MiB, Grafana-Pod 355 MiB, Operator 22 MiB, kube-state-metrics 22 MiB, node-exporter 8 MiB
+- Ein Vergleich aller 99 installierten Objekte (`helm get manifest` + `helm get hooks`) mit `helm template` aus Helm v4.3.0 ergab keine Abweichung (siehe Hinweise).
+- Grafana: Anmeldung mit dem Konto aus dem Secret erfolgreich; Datenquelle Prometheus meldet `Successfully queried the Prometheus API` (`/api/datasources/uid/prometheus/health`, Status `OK`); Dashboard „Kubernetes / Compute Resources / Namespace (Pods)“ zeigt für `monitoring` CPU 8,68 % (bezogen auf requests und auf limits – gleich, da requests = limits) und RAM 29,3 % der requests.
+
+**Grafana ansehen `[Mac]`** (nur zum Ansehen, danach mit Ctrl+C beenden):
+```bash
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+```
+Dann im Browser `http://localhost:3000` öffnen, Benutzer `admin`, Passwort aus dem Secret.
+
+**Ressourcen:** siehe Ressourcenübersicht (b1).
+
+**Rückbau `[Mac]`:**
+```bash
+helm uninstall monitoring -n monitoring
+kubectl delete pvc -n monitoring --all
+kubectl delete namespace monitoring
+```
+Die CRDs `*.monitoring.coreos.com` danach prüfen (`kubectl get crd | grep monitoring.coreos.com`) und bei Bedarf löschen.
+
+**Hinweise:**
+- Revision 1 und 2 wurden nicht im Terminal mit `puris`, sondern über die Eingabezeile des Chat-Werkzeugs ausgeführt: dort lief Helm **v4.2.2** (Homebrew) über die Standard-kubeconfig `~/.kube/config` und die Heimnetz-Adresse der VM statt über den Tunnel. Ziel war derselbe Cluster (`puris-loadlab`). Die installierten Objekte sind mit der Ausgabe von Helm v4.3.0 identisch; eine Neuinstallation war daher nicht nötig. Künftig nur im Terminal nach `puris`.
+- Grafana nur zum Ansehen öffnen, während Messungen geschlossen halten.
 
 ---
 
