@@ -131,7 +131,7 @@ Für beide Etappen gilt: **Kein automatisches Skalieren (HPA)** – Replikate un
 7. **Kopf jeder Datei:** Dienst, Baustein, Chart mit Version und Zweck als Kommentar (siehe Beispiel unten).
 8. **Gibt es kein Helm-Chart** (z. B. eine k6-`TestRun`-Ressource), liegt ein Kubernetes-Manifest als YAML-Datei im Baustein-Ordner und wird mit `kubectl apply -f` angewendet. Auch dafür gelten Regeln 1 und 7 sowie die Ressourcenregeln.
 9. **Geheimnisse nie in YAML-Dateien.** Passwörter stehen in einem Kubernetes-Secret, das aus lokalen Werten erzeugt wird (in `AUFBAU.md` nur mit Platzhalter); die YAML-Datei verweist nur auf dessen Namen (z. B. `existingSecret`).
-10. **Weg auf die VM:** YAML-Datei im Repository anlegen → committen und pushen → auf der VM `git pull` → installieren. So entspricht der installierte Stand immer einem Git-Stand.
+10. **Installiert wird vom Mac** aus dem lokalen Repository (Abschnitt 5, „Wo Befehle laufen“). Beim Ausprobieren darf aus nicht committeten Dateien installiert werden. **Fertig** ist ein Baustein erst, wenn er aus committeten Dateien installiert wurde (`git status` für `setup/<baustein>/` sauber); der Commit wird in `AUFBAU.md` vermerkt.
 
 ### CPU und Arbeitsspeicher (Ressourcen) – gilt ab Etappe 1
 
@@ -215,6 +215,20 @@ Wo möglich, werden Container-Images zusätzlich über ihren Digest (`@sha256:�
 - In `AUFBAU.md` bzw. `.env.example` stehen nur **Platzhalter**.
 - In Git landen nie: Passwörter, Tokens, kubeconfig, IP-Adressen, Hostnamen, personenbezogene Daten.
 
+### Wo Befehle laufen (Mac und VM)
+
+| Ort | Was | Wie |
+|---|---|---|
+| **Mac** (Arbeitsrechner) | alles, was über die Kubernetes-API geht: `helm`, `kubectl`, k9s | aus dem lokalen Repository; Verbindung zur k3s-API über einen SSH-Tunnel |
+| **VM** | alles am Betriebssystem: `apt`, `systemctl`, Installation von k3s; **Start der Messläufe** | per SSH; Messläufe in `tmux` aus einem sauberen Git-Stand (`git pull`) |
+
+- **Zugang:** Die kubeconfig der VM (`/etc/rancher/k3s/k3s.yaml`) liegt auf dem Mac als eigene Datei `~/.kube/puris-loadlab.yaml` (Rechte `600`, nie im Repository, Inhalt nie anzeigen oder weitergeben). Eine vorhandene `~/.kube/config` bleibt unberührt.
+- **SSH-Tunnel:** `ssh -N -L 6443:127.0.0.1:6443 <vm>`. Dadurch bleibt die Serveradresse in der kubeconfig `https://127.0.0.1:6443`, und an k3s ändert sich nichts (kein zusätzlicher Zertifikatsname nötig).
+- **Feste Werkzeugversionen auf dem Mac:** `kubectl` höchstens eine Minor-Version vom Cluster entfernt, `helm` in derselben Version wie auf der VM. Als feste Binärdateien installiert, nicht über Homebrew (aktualisiert sich selbst). Die Versionen stehen in der Versionsübersicht von `AUFBAU.md` mit Ort „Mac“. Der Befehl `puris` (Funktion in `~/.zshrc`) schaltet das aktuelle Terminal auf diese Versionen und die kubeconfig des Versuchsclusters um.
+- **In `AUFBAU.md`** ist jeder Befehl mit seinem Ort gekennzeichnet: `[Mac]` oder `[VM]`.
+- **Messläufe werden auf der VM gestartet:** Ein schlafender Mac oder eine abgebrochene SSH-Verbindung darf keinen Lauf unterbrechen, und der Commit-Hash in `meta.json` stammt aus dem Repository auf der VM. Der Mac ist nie Teil des gemessenen Weges (kein `kubectl port-forward` für Last).
+- **Etappe 2:** Bausteine der Phase a laufen nur auf der VM; ab Phase b laufen die Skripte auf jedem Rechner mit Zugang zum Cluster. `./lab run` nur auf der VM.
+
 ---
 
 ## 6. Messläufe
@@ -228,6 +242,7 @@ Ein Messlauf ist das **vollständige Lastprofil** in einem Durchgang: Reset → 
 3. Vor jedem Lauf wird der Ausgangszustand hergestellt (Reset), danach folgt eine **Aufwärmphase**, die nicht ausgewertet wird.
 4. Während einer Messreihe wird **nichts am Aufbau geändert**.
 5. Rohdaten werden **nie verändert oder gelöscht** – auch nicht von fehlgeschlagenen Läufen.
+6. Messläufe werden **auf der VM** gestartet (in `tmux`), nicht vom Mac (Abschnitt 5, „Wo Befehle laufen“).
 
 ### Was gemessen wird
 
@@ -343,7 +358,7 @@ Diese Arbeit **zeigt Wiederholbarkeit** und **ermöglicht Reproduzierbarkeit**.
 
 ### Nachbau auf einem anderen Rechner
 
-Voraussetzungen (nicht skriptbar, daher beschrieben): VM mit 8 vCPU, 32 GB RAM, 100 GB Speicher, Ubuntu Server 26.04.1 LTS, automatische Snap-Aktualisierungen angehalten, SSH-Zugang.
+Voraussetzungen (nicht skriptbar, daher beschrieben): VM mit 8 vCPU, 32 GB RAM, 100 GB Speicher, Ubuntu Server 26.04.1 LTS, automatische Snap-Aktualisierungen angehalten, SSH-Zugang. Optional ein Arbeitsrechner mit `kubectl` und `helm` in den Versionen der Versionsübersicht und SSH-Tunnel zur k3s-API (Abschnitt 5); alle Befehle ab Phase b laufen auch direkt auf der VM.
 
 Nach Etappe 2:
 
@@ -437,6 +452,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
 | Täglicher Batch-Abgleich von PURIS abgeschaltet | Er würde zu einer festen Uhrzeit alle Partnerdaten abfragen und Messungen stören. |
 | Reset auf einen festen Datenbank-Stand S0 mit ausgehandelten Verträgen (vorläufig, wird in Etappe 1 geprüft) | Im Betrieb werden Verträge einmal ausgehandelt und dann wiederverwendet; gemessen wird der Dauerbetrieb, nicht die einmalige Aushandlung. |
+| `helm`/`kubectl` vom Mac über SSH-Tunnel; Systembefehle und Messläufe auf der VM | YAML-Änderungen lassen sich ohne Commit, Push und Pull ausprobieren; k3s bleibt unverändert; Messläufe hängen nicht vom Mac ab. |
 
 ---
 

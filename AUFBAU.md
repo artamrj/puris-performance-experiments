@@ -2,18 +2,20 @@
 
 Schritt-für-Schritt-Dokumentation des manuellen Aufbaus (Etappe 1, siehe [`KONZEPT.md`](KONZEPT.md)). Hier stehen nur Befehle, die **tatsächlich ausgeführt wurden und funktioniert haben**, in der ausgeführten Reihenfolge. Probleme und Entscheidungen stehen im [`LABORBUCH.md`](LABORBUCH.md).
 
-Alle Befehle werden auf der VM ausgeführt, sofern nicht anders angegeben.
+Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]`** (per SSH auf der VM) oder **`[Mac]`** (Arbeitsrechner, Zugriff auf die k3s-API über SSH-Tunnel). Regeln: [`KONZEPT.md`](KONZEPT.md), Abschnitt 5, „Wo Befehle laufen“. Die Bausteine a1–a3 wurden vollständig auf der VM ausgeführt.
 
 ---
 
 ## Versionsübersicht
 
-| Komponente | Version | Baustein |
-|---|---|---|
-| Ubuntu Server | 26.04.1 LTS | – |
-| Linux-Kernel | 7.0.0-38-generic | a1 |
-| k3s (Kubernetes) | v1.37.1+k3s1 | a2 |
-| Helm | v4.3.0 | a3 |
+| Komponente | Version | Ort | Baustein |
+|---|---|---|---|
+| Ubuntu Server | 26.04.1 LTS | VM | – |
+| Linux-Kernel | 7.0.0-38-generic | VM | a1 |
+| k3s (Kubernetes) | v1.37.1+k3s1 | VM | a2 |
+| Helm | v4.3.0 | VM | a3 |
+| kubectl | v1.37.1 | Mac | Mac-Werkzeuge |
+| Helm | v4.3.0 | Mac | Mac-Werkzeuge |
 
 ---
 
@@ -119,6 +121,47 @@ Ergebnis:
 **Rückbau:** `sudo rm /usr/local/bin/helm` und die `KUBECONFIG`-Zeile aus `~/.bashrc` entfernen
 
 **Hinweise:** Ohne `KUBECONFIG` meldet Helm `kubernetes cluster unreachable` (`localhost:8080`), da es die Zugangsdaten von k3s nicht findet.
+
+---
+
+## Mac-Werkzeuge – kubectl und Helm in festen Versionen
+
+**Datum:** 2026-10-06
+**Ziel:** `kubectl` und `helm` auf dem Mac in denselben Versionen wie Cluster und VM bereitstellen, getrennt von vorhandenen Homebrew-Versionen.
+
+**Befehle `[Mac]`** (Download in einem temporären Ordner):
+```bash
+curl -fsSLO https://dl.k8s.io/release/v1.37.1/bin/darwin/arm64/kubectl && curl -fsSLO https://dl.k8s.io/release/v1.37.1/bin/darwin/arm64/kubectl.sha256 && echo "$(cat kubectl.sha256)  kubectl" | shasum -a 256 -c
+curl -fsSLO https://get.helm.sh/helm-v4.3.0-darwin-arm64.tar.gz && curl -fsSLO https://get.helm.sh/helm-v4.3.0-darwin-arm64.tar.gz.sha256sum && shasum -a 256 -c helm-v4.3.0-darwin-arm64.tar.gz.sha256sum
+D="$HOME/.local/opt/puris-loadlab/bin"; mkdir -p "$D" && tar -xzf helm-v4.3.0-darwin-arm64.tar.gz && install -m 0755 kubectl "$D/kubectl" && install -m 0755 darwin-arm64/helm "$D/helm"
+```
+- Beide Prüfsummen: `OK`.
+
+Umschalten im Terminal: Funktion `puris` in `~/.zshrc` angefügt. Sie stellt die festen Versionen im **aktuellen** Terminal vor die Homebrew-Versionen und setzt den Zugang zum Cluster:
+```zsh
+# PURIS-Experiment: feste kubectl/helm-Versionen und Cluster-Zugang (nur im aktuellen Terminal)
+puris() {
+  export PATH="$HOME/.local/opt/puris-loadlab/bin:$PATH"
+  export KUBECONFIG="$HOME/.kube/puris-loadlab.yaml"
+  echo "PURIS-Umgebung aktiv: kubectl $(kubectl version --client | awk 'NR==1{print $3}'), helm $(helm version --template '{{.Version}}')"
+}
+```
+
+**Prüfung `[Mac]`:**
+```bash
+puris; which kubectl helm; kubectl version --client; helm version
+```
+Ergebnis:
+- `PURIS-Umgebung aktiv: kubectl v1.37.1, helm v4.3.0`
+- `which` zeigt beide Programme in `~/.local/opt/puris-loadlab/bin`
+- `helm version`: `Version:"v4.3.0"`, `GitCommit:"bec5b06ed841fe5269972d864d5177944fd5970f"` – derselbe Build-Stand wie auf der VM
+- In einem neuen Terminal ohne `puris` bleiben die Homebrew-Versionen aktiv (`kubectl` v1.32.1)
+
+**Rückbau `[Mac]`:** `rm -rf ~/.local/opt/puris-loadlab` und die Funktion `puris` aus `~/.zshrc` entfernen.
+
+**Hinweise:**
+- Die Homebrew-Versionen (`kubectl` v1.32.1, `helm` v4.2.2) bleiben installiert, da das Homebrew-Paket `minikube` von `kubectl` abhängt.
+- Die kubeconfig `~/.kube/puris-loadlab.yaml` war zum Zeitpunkt der Prüfung noch nicht auf dem Mac vorhanden.
 
 ---
 
