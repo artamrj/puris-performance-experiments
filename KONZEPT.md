@@ -44,15 +44,17 @@ Der Aufbau **wächst schrittweise**: Es wird nicht alles im Voraus geplant, sond
 ├── ANLEITUNG.md           ← was untersucht wird (einfache Sprache)
 ├── README.md              ← Schnellstart
 ├── runs/                  ← ein Ordner pro Messlauf (ab erstem Probelauf)
+├── setup/                 ← Bausteine des Aufbaus (siehe Abschnitt 3)
+│   ├── b1-monitoring/     ← Beispiel: ein Helm-Release mit mehreren Diensten
+│   │   ├── values.yaml       ← nur Gemeinsames des Charts (z. B. welche Dienste an/aus)
+│   │   ├── prometheus.yaml   ← je Dienst eine eigene Datei: Einstellungen + CPU/RAM
+│   │   └── grafana.yaml
+│   └── …                  ← Etappe 2: zusätzlich up.sh  down.sh  check.sh
 │
 │   ab Etappe 2:
 ├── lab                    ← der eine Einstiegspunkt für alles
 ├── versions.env           ← alle Versionen an einer Stelle
 ├── .env.example           ← Vorlage für Zugangsdaten (echte .env bleibt lokal)
-├── setup/                 ← Bausteine des Aufbaus als Skripte (siehe Abschnitt 3)
-│   ├── a1-system/         up.sh  down.sh  check.sh
-│   ├── a2-k3s/
-│   └── …
 ├── lib/                   ← gemeinsame Hilfsfunktionen der Skripte
 ├── experiments/
 │   ├── k6/                ← Lastskripte
@@ -66,7 +68,7 @@ Dateien und Ordner werden erst angelegt, wenn sie gebraucht werden.
 
 ## 3. Bausteine des Aufbaus
 
-Der Aufbau ist in **Bausteine** gegliedert. In Etappe 1 ist jeder Baustein ein Abschnitt in `AUFBAU.md`, in Etappe 2 wird daraus ein Ordner in `setup/`. Die Kennung bleibt dabei gleich (z. B. Abschnitt `a2 – k3s` → Ordner `setup/a2-k3s/`).
+Der Aufbau ist in **Bausteine** gegliedert. In Etappe 1 ist jeder Baustein ein Abschnitt in `AUFBAU.md`; benötigte Konfigurationsdateien (z. B. Helm-Werte) liegen bereits im Ordner `setup/<baustein>/`. In Etappe 2 kommen dort die Skripte hinzu. Die Kennung bleibt dabei gleich (z. B. Abschnitt `a2 – k3s` → Ordner `setup/a2-k3s/`).
 
 ### Benennung: Phase + Schritt
 
@@ -98,6 +100,8 @@ Die genaue Aufteilung ergibt sich beim Aufbau. Neue Bausteine werden **hinten** 
 4. Wenn bekannt: ein **Rückbau**-Befehl (wird in Etappe 2 zu `down.sh`).
 5. **Keine Geheimnisse:** Passwörter und Tokens nur als Platzhalter (`<PASSWORT>`), mit Hinweis, wo der echte Wert liegt.
 6. Fehlversuche gehören nicht in `AUFBAU.md`, sondern kurz ins Laborbuch.
+7. **Alles im Cluster per Helm und YAML-Datei**, je Dienst eine eigene Datei (siehe unten, „Konfiguration als YAML-Dateien“).
+8. **CPU und RAM für jeden Container festgelegt** und in der **Ressourcenübersicht** von `AUFBAU.md` eingetragen (siehe unten, „CPU und Arbeitsspeicher“).
 
 ### Regeln für jeden Baustein in `setup/` (Etappe 2)
 
@@ -106,9 +110,67 @@ Die genaue Aufteilung ergibt sich beim Aufbau. Neue Bausteine werden **hinten** 
 3. **Versionen nur aus `versions.env`**, nie `latest`.
 4. **Keine Handarbeit:** Alles Nötige steht im Skript.
 5. **Abhängigkeiten nur nach vorn:** Ein Baustein setzt nur frühere Bausteine voraus.
-6. **Konfiguration als Datei:** Helm-Werte in `values.yaml` im Baustein-Ordner.
+6. **Konfiguration als Datei:** Die Skripte verwenden dieselben YAML-Dateien wie Etappe 1 (siehe unten); keine Werte direkt im Skript.
 
 Für beide Etappen gilt: **Kein automatisches Skalieren (HPA)** – Replikate und Ressourcen werden nur gezielt und dokumentiert verändert.
+
+### Konfiguration als YAML-Dateien (Helm) – gilt ab Etappe 1
+
+**Grundsatz:** Alles, was im Cluster läuft, wird mit **Helm** installiert und über **YAML-Dateien im Repository** konfiguriert. Die Konfiguration eines Dienstes steht vollständig in seiner Datei – nirgendwo sonst.
+
+1. **Ein Dienst = eine eigene YAML-Datei**, benannt nach dem Dienst (`prometheus.yaml`, `grafana.yaml`, `edc-supplier.yaml`, `puris-backend.yaml`, `postgresql.yaml` …). Sie liegt im Ordner des Bausteins `setup/<baustein>/`.
+2. **`values.yaml`** (optional) enthält nur Einstellungen, die das ganze Chart betreffen, z. B. welche Dienste ein- oder ausgeschaltet sind. Kein Dienst wird dort konfiguriert.
+3. **Jeder Schlüssel steht in genau einer Datei.** Helm führt mehrere `-f`-Dateien zusammen; käme ein Schlüssel doppelt vor, gewänne still die spätere Datei.
+4. **Installation immer gleich**, mit fester Chart-Version und allen Dateien des Bausteins (`values.yaml` zuerst):
+   ```bash
+   helm upgrade --install <release> <repo>/<chart> --version <X.Y.Z> -n <namespace> --create-namespace \
+     -f setup/<baustein>/values.yaml -f setup/<baustein>/<dienst-1>.yaml -f setup/<baustein>/<dienst-2>.yaml
+   ```
+5. **Kein `--set`**, kein `kubectl edit`/`patch`, keine Änderungen über Oberflächen. Jede Änderung geschieht in der YAML-Datei und wird mit demselben `helm upgrade --install` angewendet.
+6. **Nur bewusste Abweichungen** von den Standardwerten des Charts eintragen, jeweils mit kurzem Kommentar *warum*. Standardwerte: `helm show values <repo>/<chart> --version <X.Y.Z>`.
+7. **Kopf jeder Datei:** Dienst, Baustein, Chart mit Version und Zweck als Kommentar (siehe Beispiel unten).
+8. **Gibt es kein Helm-Chart** (z. B. eine k6-`TestRun`-Ressource), liegt ein Kubernetes-Manifest als YAML-Datei im Baustein-Ordner und wird mit `kubectl apply -f` angewendet. Auch dafür gelten Regeln 1 und 7 sowie die Ressourcenregeln.
+9. **Geheimnisse nie in YAML-Dateien.** Passwörter stehen in einem Kubernetes-Secret, das aus lokalen Werten erzeugt wird (in `AUFBAU.md` nur mit Platzhalter); die YAML-Datei verweist nur auf dessen Namen (z. B. `existingSecret`).
+10. **Weg auf die VM:** YAML-Datei im Repository anlegen → committen und pushen → auf der VM `git pull` → installieren. So entspricht der installierte Stand immer einem Git-Stand.
+
+### CPU und Arbeitsspeicher (Ressourcen) – gilt ab Etappe 1
+
+Die Ressourcengrenzen bestimmen, **wo Sättigung auftritt**. Sie sind deshalb Teil des Experiments und werden genauso sorgfältig festgelegt und dokumentiert wie Versionen.
+
+1. **Jeder Container** (auch Sidecars und Init-Container, soweit das Chart es erlaubt) hat in seiner YAML-Datei `resources.requests` **und** `resources.limits` für `cpu` **und** `memory`. Kein Container ohne Werte.
+2. **requests = limits** (Kubernetes-QoS-Klasse `Guaranteed`): Der Knoten wird nicht überbucht, und jeder Dienst hat in jedem Lauf dieselben Ressourcen.
+3. **Einheiten:** CPU in Millicores (`500m` = ½ Kern), Arbeitsspeicher in `Mi`/`Gi`.
+4. **Jeder Wert hat einen Kommentar** mit Begründung (z. B. Chart-Standard, beobachteter Verbrauch, Empfehlung des Herstellers).
+5. **Java-Dienste** (z. B. PURIS, EDC): Der Heap der JVM muss in das Speicherlimit passen, sonst wird der Container beendet (`OOMKilled`). Die Heap-Einstellung steht in derselben YAML-Datei.
+6. **Budget prüfen:** Die Summe aller `requests` muss unter den zuteilbaren Ressourcen des Knotens (`Allocatable`) bleiben; ein Rest bleibt für k3s und das Betriebssystem frei.
+7. **Ressourcenübersicht:** `AUFBAU.md` enthält direkt nach der Versionsübersicht eine Tabelle aller Container mit ihren Werten, der Datei, in der sie stehen, und der Summe im Vergleich zum Knoten. Sie wird **im selben Schritt** wie die YAML-Datei aktualisiert. Die k3s-eigenen Pods (werden nicht verändert) stehen ebenfalls darin.
+8. **Prüfung nach jedem Baustein**, Ergebnis in `AUFBAU.md`:
+   ```bash
+   kubectl get pods -n <namespace> -o custom-columns='POD:.metadata.name,QOS:.status.qosClass,CPU_REQ:.spec.containers[*].resources.requests.cpu,CPU_LIM:.spec.containers[*].resources.limits.cpu,MEM_REQ:.spec.containers[*].resources.requests.memory,MEM_LIM:.spec.containers[*].resources.limits.memory'
+   kubectl describe node | grep -A 9 "Allocated resources:"
+   ```
+   Erwartet: alle Pods `Guaranteed`, nirgends `<none>`.
+9. **CPU-Drosselung beobachten:** Ein CPU-Limit kann einen Dienst drosseln, bevor der Knoten ausgelastet ist. Die Drosselung (`container_cpu_cfs_throttled_periods_total`) wird deshalb mitgemessen und bei der Engpassanalyse berücksichtigt.
+10. **Skalierungskonfigurationen (Etappe 3)** ändern die Basisdateien nicht, sondern kommen als **zusätzliche YAML-Datei** mit `-f` dazu; sie werden in der Ressourcenübersicht und im Laborbuch vermerkt.
+11. Lässt ein Chart für einen Container keine Werte zu, wird das in der Ressourcenübersicht („nicht einstellbar“) und im Laborbuch vermerkt.
+
+### Beispiel einer Dienst-Datei
+
+```yaml
+# Dienst:   Prometheus
+# Baustein: b1-monitoring
+# Chart:    <repo>/<chart> <X.Y.Z>
+# Zweck:    Speichert CPU- und Speichermetriken aller Pods für die Auswertung.
+
+prometheus:
+  prometheusSpec:
+    retention: 15d                # Begründung …
+    resources:                    # requests = limits → QoS Guaranteed
+      requests: { cpu: 500m, memory: 2Gi }   # Begründung …
+      limits:   { cpu: 500m, memory: 2Gi }
+```
+
+*(Werte und Schlüssel nur als Beispiel; die echten Schlüssel stehen in `helm show values` des jeweiligen Charts.)*
 
 ---
 
@@ -211,6 +273,8 @@ Bevor die Hauptmessungen beginnen, wird der Aufbau mit einem **Git-Tag** eingefr
 **Datum:** JJJJ-MM-TT
 **Ziel:** Was dieser Schritt bewirkt.
 
+**YAML-Dateien:** (bei Helm-Bausteinen: Liste der Dateien in `setup/<baustein>/`)
+
 **Befehle:**
 ```bash
 (genau die ausgeführten Befehle, mit Versionen)
@@ -218,10 +282,11 @@ Bevor die Hauptmessungen beginnen, wird der Aufbau mit einem **Git-Tag** eingefr
 
 **Prüfung:**
 ```bash
-(Prüfbefehl)
+(Prüfbefehl; bei Helm-Bausteinen zusätzlich die Ressourcenprüfung aus Abschnitt 3)
 ```
 Ergebnis: (beobachtete Ausgabe in Kurzform)
 
+**Ressourcen:** (CPU/RAM je Container → in die Ressourcenübersicht übernommen)
 **Rückbau:** (Befehl, falls bekannt)
 **Hinweise:** (Besonderheiten; Verweis auf Laborbuch-Eintrag)
 ````
@@ -301,6 +366,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 |---|---|
 | Versionsübersicht (`AUFBAU.md` bzw. `versions.env`), Hardware | 4.3 Experimentierumgebung, Deployment und Testdaten (Versionstabelle) |
 | Bausteine a–f (`AUFBAU.md` bzw. `setup/`) | 4.3 (Abbildung des Aufbaus) |
+| Ressourcenübersicht (`AUFBAU.md`), YAML-Dateien in `setup/` | 4.3 (Ressourcentabelle), 4.5 (Skalierungskonfigurationen) |
 | Baustein `e1-testdaten` | 4.3 Testdaten |
 | k6-Skript, Messpläne | 4.4 Lastmodell, 4.5 Versuchsplanung |
 | Prometheus-Abfragen | 4.6 Messgrößen und Monitoring |
@@ -346,13 +412,16 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Reset vor jedem Lauf | Wiederverwendete Verträge in der PURIS-Datenbank würden Läufe voneinander abhängig machen. |
 | Nur funktionierende Befehle in `AUFBAU.md` | Ein vollständiges Befehlsprotokoll wäre unlesbar und riskant (Geheimnisse); Fehlversuche stehen kurz im Laborbuch. |
 | Kein HPA | Automatisches Skalieren würde die Wirkung der Laststufen verdecken. |
+| Alles im Cluster per Helm und YAML-Dateien, kein `--set` | Die Konfiguration liegt vollständig und versioniert im Repository; Etappe 2 und der Nachbau verwenden dieselben Dateien. |
+| Eine YAML-Datei pro Dienst | Einstellungen und Ressourcen eines Dienstes stehen an genau einer Stelle; jede Änderung ist im Git-Log einem Dienst zuzuordnen. |
+| CPU und RAM für jeden Container festgelegt (requests = limits) und in `AUFBAU.md` dokumentiert | Die Ressourcengrenzen bestimmen, wo Sättigung auftritt. Ohne feste Werte wären Läufe nicht vergleichbar; QoS `Guaranteed` verhindert ein Überbuchen des Knotens. |
 
 ---
 
 ## 13. Offene Punkte
 
 - Welcher PURIS-REST-Endpunkt löst eine Bestandsabfrage beim Partner aus? Antwortet er erst nach Abschluss aller Schritte (synchron) oder sofort (asynchron)? (bestimmt das k6-Skript)
-- Aufteilung von Phase c: Umbrella-Chart (nur benötigte Komponenten) oder einzelne Charts.
+- Aufteilung von Phase c: Umbrella-Chart (nur benötigte Komponenten) oder einzelne Charts. In beiden Fällen bekommt jeder Dienst eine eigene YAML-Datei (Abschnitt 3); beim Umbrella-Chart werden sie mit mehreren `-f` zu einem Release zusammengeführt.
 - k6 im Cluster (k6-Operator) oder als Programm auf der VM? In beiden Fällen teilt sich der Lastgenerator Ressourcen mit dem System unter Test – das ist als Einschränkung zu messen und zu dokumentieren.
 - Was der Reset zwischen Messläufen genau zurücksetzt (Datenbank leeren, Pods neu starten, Verträge im EDC).
 - Pod-Logs vor der Veröffentlichung auf Tokens oder Zugangsdaten prüfen.

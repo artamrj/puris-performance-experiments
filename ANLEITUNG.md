@@ -44,18 +44,19 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 
 | Schritt | Was | Womit |
 |---|---|---|
-| **A. Monitoring** | Prometheus + Grafana installieren | `kube-prometheus-stack`, siehe [`monitoring/`](monitoring/) |
+| **A. Monitoring** | Prometheus + Grafana installieren | `kube-prometheus-stack`, Baustein `b1-monitoring` |
 | **B. Datenraum-Basis** | EDCs, Identitätsdienste usw. | Helm-Chart **Tractus-X Umbrella** (26.03.00) |
-| **C. PURIS 2×** | eine Instanz als **Customer**, eine als **Supplier** | Helm-Chart **`puris` 7.2.0** (= PURIS **6.2.0**), bringt PostgreSQL mit; siehe [`puris/`](puris/) |
+| **C. PURIS 2×** | eine Instanz als **Customer**, eine als **Supplier** | Helm-Chart **`puris` 7.2.0** (= PURIS **6.2.0**), bringt PostgreSQL mit; Bausteine `d1-puris-customer`, `d2-puris-supplier` |
 | **D. Einrichten** | In beiden PURIS: Partner, Material und Beziehung anlegen; beim Supplier einen Bestand eintragen | PURIS-Oberfläche oder REST-API |
 | **E. Funktionstest** | **Eine** Abfrage von Hand: Kommt der Bestand beim Customer an? | PURIS-Oberfläche |
-| **F. Lasttest** | k6-Skript, das die Abfrage automatisch und immer öfter auslöst | k6-Operator, siehe [`k6/`](k6/) |
+| **F. Lasttest** | k6-Skript, das die Abfrage automatisch und immer öfter auslöst | k6-Operator, Baustein `f1-k6` |
 
 **Hinweise:**
 
 - Das **Umbrella-Chart enthält kein PURIS**. PURIS wird zusätzlich mit dem eigenen Chart installiert und mit den EDCs aus dem Umbrella verbunden.
 - Das Umbrella-Chart startet viele Dienste. Nur einschalten, was benötigt wird (EDC Provider/Consumer, Identität, Digital Twin Registry). Portal, BPDM usw. ausgeschaltet lassen, damit der Speicher des k3s-Servers reicht.
-- Alle Versionen (k3s, Umbrella, PURIS-Chart, Ressourcenlimits) für die Arbeit dokumentieren (Kapitel 4.3).
+- Alles wird mit **Helm** installiert; **jeder Dienst hat eine eigene YAML-Datei** in `setup/<baustein>/` mit festen **CPU- und RAM-Werten** (Regeln in [`KONZEPT.md`](KONZEPT.md), Abschnitt 3).
+- Alle Versionen (k3s, Umbrella, PURIS-Chart) und alle CPU/RAM-Werte stehen in `AUFBAU.md` (Versions- und Ressourcenübersicht) und gehen in Kapitel 4.3 der Arbeit ein.
 
 **Offene Frage für Schritt F:** Welcher PURIS-REST-Endpunkt löst eine Bestandsabfrage beim Partner aus? Davon hängt ab, ob eine k6-Iteration genau einer Transaktion entspricht.
 

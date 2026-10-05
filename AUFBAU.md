@@ -17,6 +17,25 @@ Alle Befehle werden auf der VM ausgeführt, sofern nicht anders angegeben.
 
 ---
 
+## Ressourcenübersicht
+
+CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in der jeweiligen YAML-Datei in `setup/<baustein>/` (dort mit Begründung); diese Tabelle wird **im selben Schritt** aktualisiert. Regeln: [`KONZEPT.md`](KONZEPT.md), Abschnitt 3, „CPU und Arbeitsspeicher“.
+
+| Baustein | Dienst (Container) | YAML-Datei | CPU request | CPU limit | RAM request | RAM limit | QoS |
+|---|---|---|---|---|---|---|---|
+
+*Noch kein Dienst mit eigener YAML-Datei installiert. Die zuteilbaren Ressourcen des Knotens (`Allocatable`) und die Werte der k3s-eigenen Pods werden nach ihrer Prüfung ergänzt.*
+
+**Summe gegenüber dem Knoten:**
+
+| | CPU | RAM |
+|---|---|---|
+| Zuteilbar (`Allocatable`) | – | – |
+| Summe aller requests | – | – |
+| Rest | – | – |
+
+---
+
 ## a1 – System vorbereiten
 
 **Datum:** 2026-10-05
