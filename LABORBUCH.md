@@ -83,8 +83,15 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - SSH-Alias `puris-vm` auf dem Mac eingerichtet (Tailscale-Name der VM, Tunnel zur k3s-API); `ssh puris-vm hostname` lieferte `puris-loadlab` (siehe `AUFBAU.md`, „Mac-Zugang“).
 - Kubeconfig der VM als `~/.kube/puris-loadlab.yaml` auf den Mac kopiert (Rechte `600`); Serveradresse `https://127.0.0.1:6443`, passend zum Tunnel.
 - Funktion `puris` erweitert (öffnet den Tunnel bei Bedarf im Hintergrund) und `puris-stop` ergänzt. Zugriff vom Mac geprüft: Knoten `puris-loadlab` `Ready` (v1.37.1+k3s1), `helm list -A` zeigt `gateway-api-crd`.
+- Zuteilbare Ressourcen des Knotens und Werte der k3s-eigenen Pods vom Mac aus erfasst und in die Ressourcenübersicht von `AUFBAU.md` eingetragen.
+- k9s auf der VM entfernt (`sudo apt remove -y k9s`, 132 MB freigegeben).
+- Aktuellen Stand und übliche Praxis recherchiert (Primärquellen: PURIS-Repository Tag `6.2.0`, Tractus-X-Umbrella Tag `umbrella-26.03.00`, Helm-Repository `tractusx-dev`, aktuelle Releases von kube-prometheus-stack, Loki, Alloy, k6-Operator, Helmfile). PURIS 6.2.0 / Chart 7.2.0 ist weiterhin die neueste Version. Ergebnisse und Quellen in `KONZEPT.md`, Abschnitte 3, 12 und 13.
+- `setup/b1-monitoring/values.yaml` für kube-prometheus-stack 91.9.0 erstellt (Abschnitte: chartweit, Prometheus, Operator, kube-state-metrics, node-exporter, Grafana). Lokal mit `helm template` (Kubernetes 1.37.1) geprüft: 99 Objekte, kein Alertmanager; alle Container einschließlich Init-Container, Sidecars und Installations-Jobs mit requests = limits. Summe der laufenden Container: 1650m CPU, 3200Mi RAM.
+- Automatische apt-Updates abgeschaltet: `apt-daily.timer` und `apt-daily-upgrade.timer` sind `disabled` und `inactive` (Ergänzung zu `a1` in `AUFBAU.md`). Damit ist die Beobachtung vom 2026-10-05 zu `unattended-upgrades` umgesetzt.
 
 **Problem:** Erster Zugriffsversuch vom Mac mit `kubectl get nodes` scheiterte mit `dial tcp 127.0.0.1:6443: connect: connection refused`. Ursache: Der Tunnel (`ssh -N puris-vm`) lief im selben Terminal und wurde mit Ctrl+C beendet, bevor `kubectl` aufgerufen wurde. Gelöst, indem `puris` den Tunnel nun selbst im Hintergrund öffnet (`ssh -fN`), sodass ein Terminal genügt.
+
+**Problem:** Die Knotenprüfung vom Mac scheiterte mit `connect: host is down` an einer Heimnetz-Adresse (Port 6443). Ursache: `puris` war in diesem Terminal nicht ausgeführt; `kubectl` (Homebrew v1.32.1) nutzte daher die Standard-kubeconfig `~/.kube/config`, die auf diese Heimnetz-Adresse zeigt. Mit `puris` (kubectl v1.37.1, `~/.kube/puris-loadlab.yaml`) lief die Prüfung über den Tunnel.
 
 **Entscheidungen:**
 - Datenraum mit dem Tractus-X Umbrella-Chart 26.03.00 (entschieden am 2026-10-05); Baustein `c1-datenraum`.
@@ -103,6 +110,18 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
   Begründung: Homebrew steht im `PATH` vorn, und das Homebrew-Paket `minikube` hängt von dessen `kubectl` ab. `puris` setzt zugleich `KUBECONFIG`, sodass Befehle in diesem Terminal nur den Versuchscluster betreffen.
 - Die VM wird vom Mac immer über Tailscale erreicht (Alias `puris-vm`), auch im Heimnetz; die LAN-Adresse wird nicht mehr verwendet.
   Begründung: eine Adresse und dieselben Befehle an jedem Ort; Tailscale nutzt im Heimnetz nach Möglichkeit eine direkte Verbindung.
+- k9s auf der VM entfernt; k9s wird nur noch auf dem Mac verwendet (Homebrew, 0.51.0).
+  Begründung: Auf dem Mac vorhanden; die VM soll möglichst nur enthalten, was für das Experiment nötig ist.
+- **Datenraum neu aufgeteilt** (ersetzt die Entscheidung „Umbrella-Chart 26.03.00, ein Release“ weiter oben): je Firma ein eigener EDC (`dataspace-connector-bundle`) und ein eigener DTR (`digital-twin-bundle`) als eigene Releases, zentral nur die Identität (`identity-and-trust-bundle`, Wallet-Stub); Bausteine `c1-identitaet`, `c2-customer-edc`, `c3-customer-dtr`, `c4-supplier-edc`, `c5-supplier-dtr`.
+  Begründung: Laut Deployment View von PURIS 6.2.0 werden EDC und DTR je Partner bereitgestellt; Tractus-X bietet dafür die „Hausanschluss“-Bundles als eigenständig installierbare Charts (dieselben Bausteine wie im Umbrella-Chart 26.03.00). Komponenten einer Firma lassen sich für Skalierungskonfigurationen einzeln ändern.
+- Identität über den Wallet-Stub (DCP ≥ 1.0), nicht über den IdentityHub.
+  Begründung: Die Referenzumgebung von PURIS 6.2.0 nutzt den Wallet-Stub; der IdentityHub (Tractus-X-Standard seit 25.12) ist für PURIS nicht dokumentiert. Er wird in der Arbeit als Einschränkung bzw. Ausblick genannt.
+- Regel präzisiert: **ein Baustein = ein Helm-Release = eine `values.yaml`**, darin je Komponente ein Abschnitt mit CPU/RAM (statt einer Datei je Dienst, Entscheidung vom 2026-10-05). Weitere Dateien nur als Überlagerung für Skalierungskonfigurationen.
+  Begründung: übliche Praxis bei Helm; gemeint war mit „Dienst“ eine Anwendung wie Prometheus, Grafana oder k6, nicht jeder Teilcontainer eines Charts.
+- Logs über Loki und Grafana Alloy (neuer Baustein `b2-logs`).
+  Begründung: Kubernetes rotiert Container-Logs standardmäßig ab 10 Mi, `kubectl logs` liefert nur die neueste Datei – bei hoher Last gingen die Logzeilen verloren, aus denen Durchsatz und Fehler bestimmt werden. Promtail ist seit 2026-03-02 ohne Unterstützung; Nachfolger ist Alloy.
+- In Etappe 2 beschreibt Helmfile alle Releases; kein GitOps-Controller im Cluster.
+  Begründung: deklarativ mit festen Versionen, ohne zusätzlichen Controller, der Ressourcen verbraucht oder während Messungen eingreift.
 
 **Beobachtungen** (aus dem Quellcode, noch nicht am Cluster überprüft):
 - Auslöser der Bestandsabfrage: `GET /catena/stockView/update-reported-material-stocks?ownMaterialNumber=<Base64>` mit Header `X-API-KEY`; derselbe Aufruf wie die Aktualisieren-Schaltfläche der Oberfläche.
@@ -114,4 +133,8 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Im Umbrella-Chart hat jeder Teilnehmer einen EDC (`tractusx-connector` 0.12.0) mit eigener PostgreSQL und Vault im Dev-Modus; Vault wird beim Start über `postStart` neu befüllt. PURIS ist nicht Teil des Umbrella-Charts.
 - Auf dem Mac waren `kubectl` v1.32.1 und `helm` v4.2.2 (Homebrew) vorhanden. `kubectl` liegt damit mehr als eine Minor-Version vom Cluster (v1.37.1) entfernt, `helm` weicht von der VM (v4.3.0) ab. Für den Zugriff vom Mac sind daher passende, feste Versionen nötig (`KONZEPT.md`, Abschnitt 5).
 
-**Nächstes:** Zuteilbare Ressourcen des Knotens prüfen (Ressourcenübersicht), automatische Updates abschalten, dann `b1` Monitoring.
+**Beobachtungen am Cluster:**
+- `Allocatable` ist gleich `Capacity` (CPU 8, RAM 31807336Ki ≈ 30,3 GiB): k3s hält nichts für Betriebssystem und eigene Prozesse zurück. Der Prozess `k3s` (API-Server, Datenspeicher, kubelet, containerd) läuft außerhalb von Pods; für ihn ist bei der Ressourcenverteilung ein Puffer einzuplanen.
+- Die k3s-eigenen Pods belegen zusammen 200m CPU und 140Mi RAM (requests); sie sind `Burstable` bzw. `BestEffort` und werden nicht verändert.
+
+**Nächstes:** `b1` Monitoring.

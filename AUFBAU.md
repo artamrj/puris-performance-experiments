@@ -21,20 +21,32 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 
 ## Ressourcenübersicht
 
-CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in der jeweiligen YAML-Datei in `setup/<baustein>/` (dort mit Begründung); diese Tabelle wird **im selben Schritt** aktualisiert. Regeln: [`KONZEPT.md`](KONZEPT.md), Abschnitt 3, „CPU und Arbeitsspeicher“.
+CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<baustein>/values.yaml` im Abschnitt der jeweiligen Komponente (dort mit Begründung); diese Tabelle wird **im selben Schritt** aktualisiert. Regeln: [`KONZEPT.md`](KONZEPT.md), Abschnitt 3, „CPU und Arbeitsspeicher“.
 
-| Baustein | Dienst (Container) | YAML-Datei | CPU request | CPU limit | RAM request | RAM limit | QoS |
+| Baustein | Komponente (Container) | Datei / Abschnitt | CPU request | CPU limit | RAM request | RAM limit | QoS |
 |---|---|---|---|---|---|---|---|
+| a2 (k3s) | `coredns` | – (Vorgabe k3s) | 100m | – | 70Mi | 170Mi | Burstable |
+| a2 (k3s) | `metrics-server` | – (Vorgabe k3s) | 100m | – | 70Mi | – | Burstable |
+| a2 (k3s) | `local-path-provisioner` | – (Vorgabe k3s) | – | – | – | – | BestEffort |
+| a2 (k3s) | `helm-install-gateway-api-crd` (einmaliger Job, abgeschlossen) | – (Vorgabe k3s) | 100m | 32 | 10M | 32G | Burstable |
 
-*Noch kein Dienst mit eigener YAML-Datei installiert. Die zuteilbaren Ressourcen des Knotens (`Allocatable`) und die Werte der k3s-eigenen Pods werden nach ihrer Prüfung ergänzt.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Der abgeschlossene Job zählt nicht zur Summe. Noch kein Dienst mit eigener YAML-Datei installiert.*
 
-**Summe gegenüber dem Knoten:**
+**Summe gegenüber dem Knoten** (Stand 2026-10-06):
 
 | | CPU | RAM |
 |---|---|---|
-| Zuteilbar (`Allocatable`) | – | – |
-| Summe aller requests | – | – |
-| Rest | – | – |
+| Zuteilbar (`Allocatable`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
+| Summe aller requests | 200m (2 %) | 140Mi (0 %) |
+| Rest | 7800m | ≈ 30,2 GiB |
+
+**Prüfung `[Mac]`** (2026-10-06):
+```bash
+kubectl describe node | grep -A 6 -E "^(Capacity|Allocatable):"; kubectl describe node | grep -A 9 "Allocated resources:"; kubectl get pods -A -o custom-columns='NAMESPACE:.metadata.namespace,POD:.metadata.name,QOS:.status.qosClass,CPU_REQ:.spec.containers[*].resources.requests.cpu,CPU_LIM:.spec.containers[*].resources.limits.cpu,MEM_REQ:.spec.containers[*].resources.requests.memory,MEM_LIM:.spec.containers[*].resources.limits.memory'
+```
+Ergebnis: `Capacity` und `Allocatable` sind gleich (CPU 8, RAM 31807336Ki, Pods 110). Zugeteilt: requests CPU 200m, RAM 140Mi; limits CPU 0, RAM 170Mi.
+
+**Hinweis:** `Allocatable` = `Capacity`: k3s hält standardmäßig nichts für das Betriebssystem und für sich selbst zurück. API-Server, Datenspeicher, kubelet und containerd laufen im Prozess `k3s` außerhalb von Pods und erscheinen nicht in dieser Tabelle. Ein Puffer für sie muss bei der Verteilung der Ressourcen selbst eingeplant werden.
 
 ---
 
@@ -62,6 +74,21 @@ Ergebnis:
 **Rückbau:** `sudo snap refresh --unhold`
 
 **Hinweise:** Die letzte automatische Snap-Aktualisierung lief am 2026-10-05 um 06:13 UTC, also vor dem Anhalten.
+
+**Ergänzung 2026-10-06 – automatische apt-Updates abschalten `[VM]`:**
+Ubuntu lädt und installiert Updates über zwei systemd-Timer (`apt-daily.timer`: Paketlisten laden, `apt-daily-upgrade.timer`: Updates installieren, u. a. über `unattended-upgrades`). Beide werden abgeschaltet, damit keine Hintergrund-Updates Messungen stören oder Versionen während einer Messreihe ändern.
+```bash
+sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+```
+**Prüfung:**
+```bash
+systemctl is-enabled apt-daily.timer apt-daily-upgrade.timer; systemctl is-active apt-daily.timer apt-daily-upgrade.timer
+```
+Ergebnis: beide Timer `disabled` und `inactive` (Verknüpfungen in `/etc/systemd/system/timers.target.wants/` entfernt).
+
+**Rückbau:** `sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer`
+
+**Hinweis:** Updates werden nur noch von Hand eingespielt – einmal vor dem Einfrieren des Aufbaus (`setup-v1`), danach nicht mehr bis zum Ende der Messungen.
 
 ---
 
@@ -243,3 +270,9 @@ curl -sfL -o k9s.deb https://github.com/derailed/k9s/releases/download/v0.51.0/k
 Ergebnis: Paket `k9s` in Version 0.51.0 installiert.
 
 **Rückbau:** `sudo apt remove k9s`
+
+**Entfernt am 2026-10-06 `[VM]`:**
+```bash
+sudo apt remove -y k9s
+```
+Ergebnis: `Removing k9s (0.51.0)`, 132 MB freigegeben. k9s wird seitdem nur noch auf dem Mac verwendet (Homebrew, Version 0.51.0; im Terminal nach `puris`).

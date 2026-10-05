@@ -45,15 +45,14 @@ Der Aufbau **wächst schrittweise**: Es wird nicht alles im Voraus geplant, sond
 ├── README.md              ← Schnellstart
 ├── runs/                  ← ein Ordner pro Messlauf (ab erstem Probelauf)
 ├── setup/                 ← Bausteine des Aufbaus (siehe Abschnitt 3)
-│   ├── b1-monitoring/     ← Beispiel: ein Helm-Release mit mehreren Diensten
-│   │   ├── values.yaml       ← nur Gemeinsames des Charts (z. B. welche Dienste an/aus)
-│   │   ├── prometheus.yaml   ← je Dienst eine eigene Datei: Einstellungen + CPU/RAM
-│   │   └── grafana.yaml
-│   └── …                  ← Etappe 2: zusätzlich up.sh  down.sh  check.sh
+│   ├── b1-monitoring/
+│   │   └── values.yaml    ← ein Helm-Release = eine Datei; je Komponente ein Abschnitt mit CPU/RAM
+│   └── …                  ← Etappe 2: zusätzlich Prüfskripte (Abschnitt 4)
 │
 │   ab Etappe 2:
 ├── lab                    ← der eine Einstiegspunkt für alles
-├── versions.env           ← alle Versionen an einer Stelle
+├── helmfile.yaml          ← alle Helm-Releases mit festen Chart-Versionen (Abschnitt 4)
+├── versions.env           ← Versionen außerhalb von Helm (k3s, Helm selbst)
 ├── .env.example           ← Vorlage für Zugangsdaten (echte .env bleibt lokal)
 ├── lib/                   ← gemeinsame Hilfsfunktionen der Skripte
 ├── experiments/
@@ -68,7 +67,7 @@ Dateien und Ordner werden erst angelegt, wenn sie gebraucht werden.
 
 ## 3. Bausteine des Aufbaus
 
-Der Aufbau ist in **Bausteine** gegliedert. In Etappe 1 ist jeder Baustein ein Abschnitt in `AUFBAU.md`; benötigte Konfigurationsdateien (z. B. Helm-Werte) liegen bereits im Ordner `setup/<baustein>/`. In Etappe 2 kommen dort die Skripte hinzu. Die Kennung bleibt dabei gleich (z. B. Abschnitt `a2 – k3s` → Ordner `setup/a2-k3s/`).
+Der Aufbau ist in **Bausteine** gegliedert. In Etappe 1 ist jeder Baustein ein Abschnitt in `AUFBAU.md`; die Helm-Werte liegen bereits als `setup/<baustein>/values.yaml` vor. In Etappe 2 kommen dort die Skripte hinzu. Die Kennung bleibt dabei gleich (z. B. Abschnitt `a2 – k3s` → Ordner `setup/a2-k3s/`).
 
 ### Benennung: Phase + Schritt
 
@@ -84,11 +83,13 @@ Dadurch ist die Reihenfolge sichtbar, `ls` sortiert automatisch richtig, und ein
 | Phase | Inhalt | Bausteine (Planung) |
 |---|---|---|
 | **a** – Basis | System, Kubernetes-Cluster und Werkzeuge | `a1-system`, `a2-k3s`, `a3-helm` |
-| **b** – Monitoring | Messinfrastruktur | `b1-monitoring` (Prometheus, Grafana, cAdvisor-Metriken) |
-| **c** – Datenraum | Dienste des Datenraums | `c1-datenraum` (Tractus-X Umbrella 26.03.00, ein Release; je Dienst eine YAML-Datei) |
+| **b** – Monitoring | Messinfrastruktur | `b1-monitoring` (kube-prometheus-stack: Prometheus, Grafana, Exporter), `b2-logs` (Loki + Grafana Alloy) |
+| **c** – Datenraum | je Firma eigener EDC und DTR; zentral nur die Identität | `c1-identitaet` (`identity-and-trust-bundle`, Wallet-Stub), `c2-customer-edc`, `c3-customer-dtr`, `c4-supplier-edc`, `c5-supplier-dtr` (`dataspace-connector-bundle`, `digital-twin-bundle`) |
 | **d** – PURIS | Anwendung unter Test | `d1-puris-customer`, `d2-puris-supplier` |
 | **e** – Testdaten | Daten und Funktionsnachweis | `e1-testdaten`, `e2-funktionstest` |
 | **f** – Lastgenerator | k6 | `f1-k6` (k6-Operator per Helm, Lauf als `TestRun`) |
+
+Phase c folgt dem offiziellen Bereitstellungsmodell von PURIS (EDC und DTR **je Partner**) und den „Hausanschluss“-Bundles von Tractus-X (Quellen in Abschnitt 13). Jeder Baustein der Phasen b–f ist **ein Helm-Release**.
 
 Die genaue Aufteilung ergibt sich beim Aufbau. Neue Bausteine werden **hinten** an eine Phase angefügt (`c4-…`) oder bilden eine neue Phase. Bestehende Bausteine werden **nie umbenannt**, damit Laborbuch, Commits und Befehle gültig bleiben.
 
@@ -100,36 +101,35 @@ Die genaue Aufteilung ergibt sich beim Aufbau. Neue Bausteine werden **hinten** 
 4. Wenn bekannt: ein **Rückbau**-Befehl (wird in Etappe 2 zu `down.sh`).
 5. **Keine Geheimnisse:** Passwörter und Tokens nur als Platzhalter (`<PASSWORT>`), mit Hinweis, wo der echte Wert liegt.
 6. Fehlversuche gehören nicht in `AUFBAU.md`, sondern kurz ins Laborbuch.
-7. **Alles im Cluster per Helm und YAML-Datei**, je Dienst eine eigene Datei (siehe unten, „Konfiguration als YAML-Dateien“).
+7. **Alles im Cluster per Helm**, eine `values.yaml` je Helm-Release (siehe unten, „Konfiguration als YAML-Dateien“).
 8. **CPU und RAM für jeden Container festgelegt** und in der **Ressourcenübersicht** von `AUFBAU.md` eingetragen (siehe unten, „CPU und Arbeitsspeicher“).
 
 ### Regeln für jeden Baustein in `setup/` (Etappe 2)
 
 1. **Drei Skripte:** `up.sh` (aufbauen), `down.sh` (vollständig entfernen), `check.sh` (prüfen; Exit-Code 0 = funktioniert).
 2. **Idempotent:** Zweimaliges `up.sh` schadet nicht (`helm upgrade --install`, `kubectl apply`).
-3. **Versionen nur aus `versions.env`**, nie `latest`.
+3. **Versionen nur aus `helmfile.yaml` (Charts) bzw. `versions.env` (k3s, Helm)**, nie `latest`.
 4. **Keine Handarbeit:** Alles Nötige steht im Skript.
 5. **Abhängigkeiten nur nach vorn:** Ein Baustein setzt nur frühere Bausteine voraus.
-6. **Konfiguration als Datei:** Die Skripte verwenden dieselben YAML-Dateien wie Etappe 1 (siehe unten); keine Werte direkt im Skript.
+6. **Konfiguration als Datei:** `helmfile.yaml` und Skripte verwenden dieselben `values.yaml` wie Etappe 1 (siehe unten); keine Werte direkt im Skript.
 
 Für beide Etappen gilt: **Kein automatisches Skalieren (HPA)** – Replikate und Ressourcen werden nur gezielt und dokumentiert verändert.
 
 ### Konfiguration als YAML-Dateien (Helm) – gilt ab Etappe 1
 
-**Grundsatz:** Alles, was im Cluster läuft, wird mit **Helm** installiert und über **YAML-Dateien im Repository** konfiguriert. Die Konfiguration eines Dienstes steht vollständig in seiner Datei – nirgendwo sonst.
+**Grundsatz:** Alles, was im Cluster läuft, wird mit **Helm** installiert und über **YAML-Dateien im Repository** konfiguriert. Die Konfiguration eines Releases steht vollständig in seiner `values.yaml` – nirgendwo sonst.
 
-1. **Ein Dienst = eine eigene YAML-Datei**, benannt nach dem Dienst (`prometheus.yaml`, `grafana.yaml`, `edc-supplier.yaml`, `puris-backend.yaml`, `postgresql.yaml` …). Sie liegt im Ordner des Bausteins `setup/<baustein>/`.
-2. **`values.yaml`** (optional) enthält nur Einstellungen, die das ganze Chart betreffen, z. B. welche Dienste ein- oder ausgeschaltet sind. Kein Dienst wird dort konfiguriert.
-3. **Jeder Schlüssel steht in genau einer Datei.** Helm führt mehrere `-f`-Dateien zusammen; käme ein Schlüssel doppelt vor, gewänne still die spätere Datei.
-4. **Installation immer gleich**, mit fester Chart-Version und allen Dateien des Bausteins (`values.yaml` zuerst):
+1. **Ein Baustein = ein Helm-Release = eine `values.yaml`** in `setup/<baustein>/` (übliche Praxis bei Helm).
+2. **Je Komponente ein Abschnitt:** Installiert ein Chart mehrere Komponenten (z. B. Prometheus, Grafana und Hilfsdienste in `kube-prometheus-stack`), steht jede Komponente in einem eigenen, mit einem Kommentar überschriebenen Abschnitt – mit ihren Einstellungen **und** ihren CPU/RAM-Werten.
+3. **Weitere Dateien nur als Überlagerung:** Eine zweite Datei mit `-f` wird nur für bewusste Abweichungen vom Grundaufbau verwendet, vor allem für Skalierungskonfigurationen in Etappe 3 (Ressourcenregel 10). Bei gleichen Schlüsseln gewinnt die spätere Datei.
+4. **Installation immer gleich**, mit fester Chart-Version:
    ```bash
-   helm upgrade --install <release> <repo>/<chart> --version <X.Y.Z> -n <namespace> --create-namespace \
-     -f setup/<baustein>/values.yaml -f setup/<baustein>/<dienst-1>.yaml -f setup/<baustein>/<dienst-2>.yaml
+   helm upgrade --install <release> <chart> --version <X.Y.Z> -n <namespace> --create-namespace -f setup/<baustein>/values.yaml
    ```
 5. **Kein `--set`**, kein `kubectl edit`/`patch`, keine Änderungen über Oberflächen. Jede Änderung geschieht in der YAML-Datei und wird mit demselben `helm upgrade --install` angewendet.
 6. **Nur bewusste Abweichungen** von den Standardwerten des Charts eintragen, jeweils mit kurzem Kommentar *warum*. Standardwerte: `helm show values <repo>/<chart> --version <X.Y.Z>`.
-7. **Kopf jeder Datei:** Dienst, Baustein, Chart mit Version und Zweck als Kommentar (siehe Beispiel unten).
-8. **Gibt es kein Helm-Chart** (z. B. eine k6-`TestRun`-Ressource), liegt ein Kubernetes-Manifest als YAML-Datei im Baustein-Ordner und wird mit `kubectl apply -f` angewendet. Auch dafür gelten Regeln 1 und 7 sowie die Ressourcenregeln.
+7. **Kopf jeder Datei:** Baustein, Chart mit Version, enthaltene Komponenten und Zweck als Kommentar (siehe Beispiel unten).
+8. **Gibt es kein Helm-Chart** (z. B. eine k6-`TestRun`-Ressource), liegt ein Kubernetes-Manifest als eigene YAML-Datei im Baustein-Ordner (z. B. `testrun.yaml`) und wird mit `kubectl apply -f` angewendet. Auch dafür gelten Regel 7 und die Ressourcenregeln.
 9. **Geheimnisse nie in YAML-Dateien.** Passwörter stehen in einem Kubernetes-Secret, das aus lokalen Werten erzeugt wird (in `AUFBAU.md` nur mit Platzhalter); die YAML-Datei verweist nur auf dessen Namen (z. B. `existingSecret`).
 10. **Installiert wird vom Mac** aus dem lokalen Repository (Abschnitt 5, „Wo Befehle laufen“). Beim Ausprobieren darf aus nicht committeten Dateien installiert werden. **Fertig** ist ein Baustein erst, wenn er aus committeten Dateien installiert wurde (`git status` für `setup/<baustein>/` sauber); der Commit wird in `AUFBAU.md` vermerkt.
 
@@ -137,13 +137,13 @@ Für beide Etappen gilt: **Kein automatisches Skalieren (HPA)** – Replikate un
 
 Die Ressourcengrenzen bestimmen, **wo Sättigung auftritt**. Sie sind deshalb Teil des Experiments und werden genauso sorgfältig festgelegt und dokumentiert wie Versionen.
 
-1. **Jeder Container** (auch Sidecars und Init-Container, soweit das Chart es erlaubt) hat in seiner YAML-Datei `resources.requests` **und** `resources.limits` für `cpu` **und** `memory`. Kein Container ohne Werte.
+1. **Jeder Container** (auch Sidecars und Init-Container, soweit das Chart es erlaubt) hat im Abschnitt seiner Komponente in der `values.yaml` `resources.requests` **und** `resources.limits` für `cpu` **und** `memory`. Kein Container ohne Werte.
 2. **requests = limits** (Kubernetes-QoS-Klasse `Guaranteed`): Der Knoten wird nicht überbucht, und jeder Dienst hat in jedem Lauf dieselben Ressourcen.
 3. **Einheiten:** CPU in Millicores (`500m` = ½ Kern), Arbeitsspeicher in `Mi`/`Gi`.
 4. **Jeder Wert hat einen Kommentar** mit Begründung (z. B. Chart-Standard, beobachteter Verbrauch, Empfehlung des Herstellers).
 5. **Java-Dienste** (z. B. PURIS, EDC): Der Heap der JVM muss in das Speicherlimit passen, sonst wird der Container beendet (`OOMKilled`). Die Heap-Einstellung steht in derselben YAML-Datei.
 6. **Budget prüfen:** Die Summe aller `requests` muss unter den zuteilbaren Ressourcen des Knotens (`Allocatable`) bleiben; ein Rest bleibt für k3s und das Betriebssystem frei.
-7. **Ressourcenübersicht:** `AUFBAU.md` enthält direkt nach der Versionsübersicht eine Tabelle aller Container mit ihren Werten, der Datei, in der sie stehen, und der Summe im Vergleich zum Knoten. Sie wird **im selben Schritt** wie die YAML-Datei aktualisiert. Die k3s-eigenen Pods (werden nicht verändert) stehen ebenfalls darin.
+7. **Ressourcenübersicht:** `AUFBAU.md` enthält direkt nach der Versionsübersicht eine Tabelle aller Container mit ihren Werten, der Datei und dem Abschnitt, in dem sie stehen, und der Summe im Vergleich zum Knoten. Sie wird **im selben Schritt** wie die `values.yaml` aktualisiert. Die k3s-eigenen Pods (werden nicht verändert) stehen ebenfalls darin.
 8. **Prüfung nach jedem Baustein**, Ergebnis in `AUFBAU.md`:
    ```bash
    kubectl get pods -n <namespace> -o custom-columns='POD:.metadata.name,QOS:.status.qosClass,CPU_REQ:.spec.containers[*].resources.requests.cpu,CPU_LIM:.spec.containers[*].resources.limits.cpu,MEM_REQ:.spec.containers[*].resources.requests.memory,MEM_LIM:.spec.containers[*].resources.limits.memory'
@@ -154,23 +154,28 @@ Die Ressourcengrenzen bestimmen, **wo Sättigung auftritt**. Sie sind deshalb Te
 10. **Skalierungskonfigurationen (Etappe 3)** ändern die Basisdateien nicht, sondern kommen als **zusätzliche YAML-Datei** mit `-f` dazu; sie werden in der Ressourcenübersicht und im Laborbuch vermerkt.
 11. Lässt ein Chart für einen Container keine Werte zu, wird das in der Ressourcenübersicht („nicht einstellbar“) und im Laborbuch vermerkt.
 
-### Beispiel einer Dienst-Datei
+### Beispiel: Aufbau einer `values.yaml`
 
 ```yaml
-# Dienst:   Prometheus
-# Baustein: b1-monitoring
-# Chart:    <repo>/<chart> <X.Y.Z>
-# Zweck:    Speichert CPU- und Speichermetriken aller Pods für die Auswertung.
+# Baustein:    b1-monitoring
+# Chart:       <chart> <X.Y.Z>
+# Komponenten: Prometheus, Grafana, …
+# Zweck:       Messinfrastruktur für CPU, RAM und Drosselung aller Pods
 
+# ═══ Prometheus ═══════════════════════════════════════════════
 prometheus:
   prometheusSpec:
-    retention: 15d                # Begründung …
+    retention: 30d                # Begründung …
     resources:                    # requests = limits → QoS Guaranteed
-      requests: { cpu: 500m, memory: 2Gi }   # Begründung …
-      limits:   { cpu: 500m, memory: 2Gi }
+      requests: { cpu: 1000m, memory: 2Gi }   # Begründung …
+      limits:   { cpu: 1000m, memory: 2Gi }
+
+# ═══ Grafana ══════════════════════════════════════════════════
+grafana:
+  resources: …
 ```
 
-*(Werte und Schlüssel nur als Beispiel; die echten Schlüssel stehen in `helm show values` des jeweiligen Charts.)*
+*(Kurzform; die vollständige Datei ist `setup/b1-monitoring/values.yaml`. Die echten Schlüssel stehen in `helm show values` des jeweiligen Charts.)*
 
 ---
 
@@ -189,6 +194,8 @@ prometheus:
 | `./lab reset` | Ausgangszustand zwischen zwei Messläufen herstellen |
 | `./lab run <plan>` | Messreihe nach Plan ausführen, Ergebnisse in `runs/` |
 
+**Helmfile:** In Etappe 2 beschreibt eine `helmfile.yaml` alle Helm-Releases der Phasen b–f (Chart, feste Version, Namespace, `values.yaml`, Reihenfolge über `needs`). `./lab up`/`down` rufen Helmfile auf; die Systembausteine der Phase a bleiben Skripte. Bewusst **kein** GitOps-Controller (z. B. Argo CD) im Cluster: Er verbraucht selbst Ressourcen und könnte den Aufbau während einer Messung verändern.
+
 **`reset` ist methodisch wichtig:** PURIS speichert ausgehandelte Verträge in der Datenbank und verwendet sie wieder. Ohne Reset würde jeder Lauf vom vorherigen beeinflusst. Der Reset stellt sicher, dass Wiederholungen **unabhängig** sind. Was genau zurückgesetzt werden muss, wird in Etappe 1 ermittelt und in `AUFBAU.md` festgehalten.
 
 ---
@@ -197,15 +204,12 @@ prometheus:
 
 ### Versionen
 - **Etappe 1:** `AUFBAU.md` beginnt mit einer **Versionsübersicht** (Tabelle aller eingesetzten Versionen). Jede Version steht zusätzlich ausdrücklich im jeweiligen Befehl.
-- **Etappe 2:** Die Versionsübersicht wird zu `versions.env`. Beispiel (Platzhalter):
+- **Etappe 2:** Chart-Versionen stehen in `helmfile.yaml`, alle übrigen Versionen in `versions.env`. Beispiel (Platzhalter):
 
 ```bash
-K3S_VERSION="vX.Y.Z+k3s1"        # Kubernetes-Distribution
-HELM_VERSION="vX.Y.Z"
-MONITORING_CHART_VERSION="X.Y.Z" # kube-prometheus-stack
-UMBRELLA_CHART_VERSION="26.03.00"
-PURIS_CHART_VERSION="7.2.0"      # enthält PURIS 6.2.0
-K6_VERSION="vX.Y.Z"
+K3S_VERSION="vX.Y.Z+k3s1"        # Kubernetes-Distribution (Phase a)
+HELM_VERSION="vX.Y.Z"            # Phase a
+HELMFILE_VERSION="vX.Y.Z"
 ```
 
 Wo möglich, werden Container-Images zusätzlich über ihren Digest (`@sha256:…`) festgelegt.
@@ -252,12 +256,13 @@ Die Bestandsabfrage von PURIS ist **asynchron** (Abschnitt 13): Der Endpunkt ant
 |---|---|---|
 | **Eingangslast** | Auslösungen pro Sekunde (festgelegte Rate) | k6 (`constant-arrival-rate`) |
 | Antwortzeit der Auslösung | misst **nur** das Auslösen, **nicht** die Transaktion | k6 |
-| **Abgeschlossene Transaktionen/s** | eigentlicher Durchsatz | Log des Customer-PURIS: `Updated ReportedMaterialItemStocks for …` |
-| **Fehlgeschlagene Transaktionen/s** | eigentliche Fehlerrate (Fehler erscheinen **nicht** in der HTTP-Antwort) | Log des Customer-PURIS: `Error in ReportedMaterialItemStockRequest for …` |
+| **Abgeschlossene Transaktionen/s** | eigentlicher Durchsatz | Log des Customer-PURIS über Loki (`b2-logs`): `Updated ReportedMaterialItemStocks for …` |
+| **Fehlgeschlagene Transaktionen/s** | eigentliche Fehlerrate (Fehler erscheinen **nicht** in der HTTP-Antwort) | Log des Customer-PURIS über Loki (`b2-logs`): `Error in ReportedMaterialItemStockRequest for …` |
 | **Dauer einer Transaktion** | Ende-zu-Ende-Zeit | Zeitstempel der Transferprozesse in den EDCs bzw. der Log-Zeilen (genaues Verfahren wird im Probelauf festgelegt) |
 | CPU, RAM, CPU-Drosselung je Pod | Ressourcennutzung, Engpasskandidaten | Prometheus (cAdvisor) |
 
 - **Sättigung** ist erreicht, wenn die abgeschlossenen Transaktionen pro Sekunde der Eingangslast nicht mehr folgen und sich ein Rückstau bildet.
+- **Logs über Loki statt `kubectl logs`:** Kubernetes rotiert Container-Logs standardmäßig ab 10 Mi je Datei, und `kubectl logs` liefert nur die neueste Datei. Bei hoher Last gingen Zeilen verloren; Loki sammelt alle Zeilen fortlaufend.
 - **Gültigkeit des Lastgenerators** je Lauf: k6 meldet `dropped_iterations = 0` (die geplante Rate wurde tatsächlich gesendet) und bleibt unter seinem CPU-Limit.
 
 ### Inhalt eines Laufordners
@@ -358,7 +363,7 @@ Diese Arbeit **zeigt Wiederholbarkeit** und **ermöglicht Reproduzierbarkeit**.
 
 ### Nachbau auf einem anderen Rechner
 
-Voraussetzungen (nicht skriptbar, daher beschrieben): VM mit 8 vCPU, 32 GB RAM, 100 GB Speicher, Ubuntu Server 26.04.1 LTS, automatische Snap-Aktualisierungen angehalten, SSH-Zugang. Optional ein Arbeitsrechner mit `kubectl` und `helm` in den Versionen der Versionsübersicht und SSH-Tunnel zur k3s-API (Abschnitt 5); alle Befehle ab Phase b laufen auch direkt auf der VM.
+Voraussetzungen (nicht skriptbar, daher beschrieben): VM mit 8 vCPU, 32 GB RAM, 100 GB Speicher, Ubuntu Server 26.04.1 LTS, automatische Snap-Aktualisierungen angehalten, automatische apt-Updates abgeschaltet (`apt-daily.timer`, `apt-daily-upgrade.timer`), SSH-Zugang. Optional ein Arbeitsrechner mit `kubectl` und `helm` in den Versionen der Versionsübersicht und SSH-Tunnel zur k3s-API (Abschnitt 5); alle Befehle ab Phase b laufen auch direkt auf der VM.
 
 Nach Etappe 2:
 
@@ -445,9 +450,12 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Nur funktionierende Befehle in `AUFBAU.md` | Ein vollständiges Befehlsprotokoll wäre unlesbar und riskant (Geheimnisse); Fehlversuche stehen kurz im Laborbuch. |
 | Kein HPA | Automatisches Skalieren würde die Wirkung der Laststufen verdecken. |
 | Alles im Cluster per Helm und YAML-Dateien, kein `--set` | Die Konfiguration liegt vollständig und versioniert im Repository; Etappe 2 und der Nachbau verwenden dieselben Dateien. |
-| Eine YAML-Datei pro Dienst | Einstellungen und Ressourcen eines Dienstes stehen an genau einer Stelle; jede Änderung ist im Git-Log einem Dienst zuzuordnen. |
+| Eine `values.yaml` je Helm-Release, je Komponente ein Abschnitt | Übliche Praxis bei Helm; ein Baustein = ein Release = eine Datei. Weitere Dateien nur als Überlagerung (Skalierungskonfigurationen). |
 | CPU und RAM für jeden Container festgelegt (requests = limits) und in `AUFBAU.md` dokumentiert | Die Ressourcengrenzen bestimmen, wo Sättigung auftritt. Ohne feste Werte wären Läufe nicht vergleichbar; QoS `Guaranteed` verhindert ein Überbuchen des Knotens. |
-| Datenraum mit dem Tractus-X Umbrella-Chart 26.03.00 | Ein Chart mit aufeinander abgestimmten Diensten (EDC, DTR, Identität); nicht benötigte Teile werden ausgeschaltet. |
+| Datenraum aus den Tractus-X-„Hausanschluss“-Bundles: je Firma eigener EDC (`dataspace-connector-bundle`) und DTR (`digital-twin-bundle`), zentral nur die Identität (`identity-and-trust-bundle`) | Entspricht dem offiziellen Bereitstellungsmodell von PURIS (EDC und DTR je Partner) und dem Datenaustausch-Profil des Umbrella-Charts 26.03.00; dieselben Bausteine wie im Umbrella-Chart. Jede Komponente einer Firma lässt sich für Skalierungskonfigurationen einzeln ändern. |
+| Identität über den Wallet-Stub (DCP ≥ 1.0), nicht über den IdentityHub | Mit dem Wallet-Stub ist PURIS 6.2.0 dokumentiert getestet. Der IdentityHub ist seit Tractus-X 25.12 die empfohlene Variante; er wird in der Arbeit als Einschränkung bzw. Ausblick genannt. |
+| Logs über Loki und Grafana Alloy (`b2-logs`) | Vollständige Logzeilen trotz Log-Rotation; Auswertung per LogQL auf derselben Zeitachse wie Prometheus. Promtail ist seit 2026-03-02 ohne Unterstützung (End of Life); Nachfolger ist Alloy. |
+| Helmfile in Etappe 2, kein GitOps-Controller | Deklarative Beschreibung aller Releases mit festen Versionen, ohne zusätzlichen Controller im Cluster, der Ressourcen verbraucht oder während Messungen eingreift. |
 | k6 im Cluster über den k6-Operator (Helm) | Passt zu den Regeln (Helm, YAML, feste CPU/RAM); der Verbrauch von k6 ist in Prometheus sichtbar und liegt auf derselben Zeitachse wie alle anderen Messwerte. |
 | Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
 | Täglicher Batch-Abgleich von PURIS abgeschaltet | Er würde zu einer festen Uhrzeit alle Partnerdaten abfragen und Messungen stören. |
@@ -479,7 +487,13 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
   - PURIS gibt nur den Health-Endpunkt frei; Prometheus-Metriken der JVM gibt es nicht.
 - Quellen (alle Tag `6.2.0`): `backend/.../stock/controller/StockViewController.java` (Z. 685–718), `backend/.../PurisApplication.java` (Z. 47–49), `backend/.../stock/logic/service/ItemStockRequestApiService.java` (Z. 187–234), `backend/.../common/edc/logic/service/EdcAdapterService.java` (Z. 901–1006, ab Z. 1155), `backend/src/main/resources/application.properties` (Z. 84, 110–111, 122–128), `charts/puris/values.yaml`, `frontend/.env` (Z. 13).
 
-**Phase c: Umbrella-Chart oder einzelne Charts?** Umbrella-Chart 26.03.00. Laut Chart enthält jeder Teilnehmer (`tx-data-provider`) einen EDC (`tractusx-connector` 0.12.0) mit eigener PostgreSQL und Vault im Dev-Modus, einen DTR und ein einfaches Daten-Backend; gemeinsam genutzt werden u. a. `centralidp`, `bdrs-server-memory` und `identity-and-trust-bundle`. Nicht benötigte Teile (u. a. Portal, BPDM sowie das eigene Prometheus/Grafana des Umbrella-Charts, da Monitoring Baustein `b1` ist) bleiben ausgeschaltet. PURIS ist nicht enthalten und wird mit eigenem Chart installiert (Phase d). Jeder Dienst bekommt eine eigene YAML-Datei; sie werden mit mehreren `-f` zu einem Release zusammengeführt (Abschnitt 3).
+**Phase c: Wie wird der Datenraum aufgebaut?** (Stand 2026-10-06; ersetzt die Planung „ein Umbrella-Release“ vom 2026-10-05)
+- **PURIS 6.2.0, Deployment View:** EDC und DTR gehören nicht zum PURIS-Chart und werden **je Partner** bereitgestellt („need to be deployed per partner: DTR including Postgres and Keycloak / IDP; Connector including Postgres“). Die lokale Referenzumgebung von PURIS hat je Firma eigenen EDC und DTR; die Identität stellt ein Wallet-Stub (DCP ≥ 1.0) bereit.
+- **Tractus-X „Hausanschluss“-Bundles** (Umbrella 26.03.00): EDC (`dataspace-connector-bundle`, mit PostgreSQL und Vault), DTR (`digital-twin-bundle`, mit PostgreSQL) und Identität (`identity-and-trust-bundle`) als eigenständige Helm-Charts, „independently deployable“ und mehrfach installierbar. Im Repository `tractusx-dev` veröffentlicht: `dataspace-connector-bundle` 1.3.0, `digital-twin-bundle` 1.3.0, `identity-and-trust-bundle` 1.1.3. Laut Konzept PoC (TRL 3), nicht produktionsreif.
+- **Umbrella 26.03.00, Datenaustausch-Profil** (`values-adopter-data-exchange.yaml`): eingeschaltet sind nur die beiden Teilnehmer und `identity-and-trust-bundle` (sowie pgAdmin); `centralidp` und `bdrs-server-memory` sind aus.
+- **Umbrella 26.03.00, IdentityHub-Profil:** seit Release 25.12 die empfohlene Standardvariante (jeder Teilnehmer mit eigenem IdentityHub). PURIS 6.2.0 dokumentiert diese Variante nicht.
+- **Ergebnis:** `c1-identitaet` (Wallet-Stub) + je Firma ein EDC-Release und ein DTR-Release (`c2`–`c5`) + je Firma ein PURIS-Release (`d1`, `d2`). Die Identitätsangaben je Firma (BPN, DID) werden aus den getesteten Werten des Umbrella-Charts 26.03.00 übernommen (`dataconsumerOne` → Customer, `tx-data-provider` → Supplier).
+- Quellen: PURIS `docs/architecture/07_deployment_view.md` und `local/INSTALL.md` (Tag `6.2.0`); Umbrella `docs/common/concept/solution-design-hausanschluss-bundle.md`, `docs/user/common/guides/hausanschluss-bundles.md`, `docs/user/common/guides/data-exchange-identityhub.md`, `charts/umbrella/values-adopter-data-exchange.yaml` (Tag `umbrella-26.03.00`); Helm-Repository `https://eclipse-tractusx.github.io/charts/dev`.
 
 **k6 im Cluster oder auf der VM?** Im Cluster über den **k6-Operator** (Helm), ein Runner (`parallelism: 1`) mit festen CPU/RAM-Werten (requests = limits); k6-Metriken möglichst direkt an Prometheus. Nachweis, dass k6 nicht der Engpass war: `dropped_iterations = 0` und k6-CPU unter seinem Limit. Dass sich k6 den Knoten mit dem System unter Test teilt, bleibt eine Einschränkung und wird gemessen und berichtet.
 
@@ -510,5 +524,7 @@ Ablauf:
 - Parallele Aufträge für dasselbe Material löschen und schreiben dieselben Bestandszeilen: Treten dabei Fehler oder Doppelungen auf? Im Probelauf prüfen.
 - Genaues Verfahren für die Dauer einer Transaktion (Log-Zeitstempel oder Transferprozesse der EDCs) – im Probelauf festlegen.
 - Wachsen die EDC-Tabellen über die Läufe? Zeilen vor und nach einem Probelauf zählen.
-- Automatische Updates (apt-Timer, `unattended-upgrades`) vor den Messungen abschalten – noch nicht ausgeführt.
+- Braucht der DTR in diesem Aufbau einen eigenen Anmeldedienst (Keycloak), wie in der PURIS-Referenzumgebung? Beim Aufbau von `c3`/`c5` prüfen.
+- Identitätsangaben je Firma (BPN, DID, Wallet-Zugang) aus den Umbrella-Werten 26.03.00 übernehmen und mit dem Wallet-Stub prüfen.
+- Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.

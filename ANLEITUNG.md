@@ -13,13 +13,25 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 ## 2. Das Experiment
 
 ```
- k6 ("drückt den Knopf")                         Prometheus + Grafana ("Stoppuhr + Messgeräte")
-      │  immer öfter pro Sekunde                         │ misst CPU, Speicher aller Pods
-      ▼                                                  ▼
- ┌─────────── Firma A: Customer ───────────┐   ┌─────────── Firma B: Supplier ───────────┐
- │ PURIS ── EDC ── (Keycloak, PostgreSQL)  │◄─►│ EDC ── DTR ── PURIS ── PostgreSQL        │
- └─────────────────────────────────────────┘   └──────────────────────────────────────────┘
-        „Wie viel Bestand hast du von Material X?"  →  Antwort: Bestandsdaten
+ k6 – „drückt den Knopf“ (f1)
+  │  löst die Bestandsabfrage aus, immer öfter pro Sekunde
+  ▼
+ ┌────────── Firma A: Customer ───────────┐        ┌────────── Firma B: Supplier ───────────┐
+ │ PURIS (+ PostgreSQL)                d1 │        │                                        │
+ │  └─► EDC (+ PostgreSQL, Vault)      c2 │◄──────►│ EDC (+ PostgreSQL, Vault)           c4 │
+ │ DTR (+ PostgreSQL)                  c3 │        │  ├─► (1) DTR (+ PostgreSQL)         c5 │
+ │     (bei dieser Abfrage nicht gefragt) │        │  └─► (2) PURIS (+ PostgreSQL)       d2 │
+ └───────────────────┬────────────────────┘        └───────────────────┬────────────────────┘
+                     │                                                 │
+                     └────────── Identität: Wallet-Stub (c1) ──────────┘
+                    zentral – wie beim Betreiber eines echten Datenraums
+
+ „Wie viel Bestand hast du von Material X?“  →  Antwort: Bestandsdaten
+   (1) Zwilling des Materials im DTR des Suppliers finden   (2) Bestandsdaten bei PURIS abrufen
+
+ Messung – „Stoppuhr + Messgeräte“, läuft neben allem:
+   Prometheus + Grafana (b1)   CPU, RAM und CPU-Drosselung aller Pods
+   Loki + Alloy (b2)           Logs → abgeschlossene und fehlgeschlagene Transaktionen
 ```
 
 **Eine Transaktion** = Der Customer fragt beim Supplier den Bestand eines Materials ab (Item-Stock-Exchange).
@@ -45,8 +57,8 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 
 | Schritt | Was | Womit |
 |---|---|---|
-| **A. Monitoring** | Prometheus + Grafana installieren | `kube-prometheus-stack`, Baustein `b1-monitoring` |
-| **B. Datenraum-Basis** | EDCs, Identitätsdienste usw. | Helm-Chart **Tractus-X Umbrella** (26.03.00) |
+| **A. Monitoring** | Prometheus + Grafana installieren; Logs sammeln | `kube-prometheus-stack` (`b1-monitoring`), Loki + Alloy (`b2-logs`) |
+| **B. Datenraum** | zentral die Identität; **je Firma** ein eigener EDC und ein eigener DTR | Tractus-X-„Hausanschluss“-Bundles: `identity-and-trust-bundle` (`c1`), `dataspace-connector-bundle` und `digital-twin-bundle` je Firma (`c2`–`c5`) |
 | **C. PURIS 2×** | eine Instanz als **Customer**, eine als **Supplier** | Helm-Chart **`puris` 7.2.0** (= PURIS **6.2.0**), bringt PostgreSQL mit; Bausteine `d1-puris-customer`, `d2-puris-supplier` |
 | **D. Einrichten** | In beiden PURIS: Partner, Material und Beziehung anlegen; beim Supplier einen Bestand eintragen | PURIS-Oberfläche oder REST-API |
 | **E. Funktionstest** | **Eine** Abfrage von Hand: Kommt der Bestand beim Customer an? | PURIS-Oberfläche |
@@ -54,10 +66,10 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 
 **Hinweise:**
 
-- Das **Umbrella-Chart enthält kein PURIS**. PURIS wird zusätzlich mit dem eigenen Chart installiert und mit den EDCs aus dem Umbrella verbunden.
-- Das Umbrella-Chart startet viele Dienste. Nur einschalten, was benötigt wird (EDC Provider/Consumer, Identität, Digital Twin Registry). Portal, BPDM usw. ausgeschaltet lassen, damit der Speicher des k3s-Servers reicht.
-- Alles wird mit **Helm** installiert; **jeder Dienst hat eine eigene YAML-Datei** in `setup/<baustein>/` mit festen **CPU- und RAM-Werten** (Regeln in [`KONZEPT.md`](KONZEPT.md), Abschnitt 3).
-- Alle Versionen (k3s, Umbrella, PURIS-Chart) und alle CPU/RAM-Werte stehen in `AUFBAU.md` (Versions- und Ressourcenübersicht) und gehen in Kapitel 4.3 der Arbeit ein.
+- **Jede Firma hat ihren eigenen EDC und ihren eigenen DTR** – wie im offiziellen Bereitstellungsmodell von PURIS. Gemeinsam ist nur der Identitätsdienst (Wallet-Stub), wie beim Betreiber eines echten Datenraums.
+- PURIS enthält weder EDC noch DTR; es bekommt in seiner `values.yaml` nur die Adressen des EDC und DTR **seiner** Firma.
+- Alles wird mit **Helm** installiert: **ein Baustein = ein Release = eine `values.yaml`** in `setup/<baustein>/`, darin je Komponente ein Abschnitt mit festen **CPU- und RAM-Werten** (Regeln in [`KONZEPT.md`](KONZEPT.md), Abschnitt 3).
+- Alle Versionen (k3s, Helm-Charts, PURIS-Chart) und alle CPU/RAM-Werte stehen in `AUFBAU.md` (Versions- und Ressourcenübersicht) und gehen in Kapitel 4.3 der Arbeit ein.
 
 **Geklärt für Schritt F:** Die Abfrage wird mit `GET /catena/stockView/update-reported-material-stocks` am Backend des Customer-PURIS ausgelöst (wie die Aktualisieren-Schaltfläche). Der Endpunkt ist **asynchron**: Eine k6-Iteration löst genau eine Transaktion je Lieferant aus, misst aber nicht ihre Dauer. Details in [`KONZEPT.md`](KONZEPT.md), Abschnitt 13.
 
