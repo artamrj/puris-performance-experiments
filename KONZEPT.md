@@ -85,10 +85,10 @@ Dadurch ist die Reihenfolge sichtbar, `ls` sortiert automatisch richtig, und ein
 |---|---|---|
 | **a** – Basis | System, Kubernetes-Cluster und Werkzeuge | `a1-system`, `a2-k3s`, `a3-helm` |
 | **b** – Monitoring | Messinfrastruktur | `b1-monitoring` (Prometheus, Grafana, cAdvisor-Metriken) |
-| **c** – Datenraum | Dienste des Datenraums | `c1-identitaet`, `c2-edc`, `c3-dtr` |
+| **c** – Datenraum | Dienste des Datenraums | `c1-datenraum` (Tractus-X Umbrella 26.03.00, ein Release; je Dienst eine YAML-Datei) |
 | **d** – PURIS | Anwendung unter Test | `d1-puris-customer`, `d2-puris-supplier` |
 | **e** – Testdaten | Daten und Funktionsnachweis | `e1-testdaten`, `e2-funktionstest` |
-| **f** – Lastgenerator | k6 | `f1-k6` |
+| **f** – Lastgenerator | k6 | `f1-k6` (k6-Operator per Helm, Lauf als `TestRun`) |
 
 Die genaue Aufteilung ergibt sich beim Aufbau. Neue Bausteine werden **hinten** an eine Phase angefügt (`c4-…`) oder bilden eine neue Phase. Bestehende Bausteine werden **nie umbenannt**, damit Laborbuch, Commits und Befehle gültig bleiben.
 
@@ -229,6 +229,22 @@ Ein Messlauf ist das **vollständige Lastprofil** in einem Durchgang: Reset → 
 4. Während einer Messreihe wird **nichts am Aufbau geändert**.
 5. Rohdaten werden **nie verändert oder gelöscht** – auch nicht von fehlgeschlagenen Läufen.
 
+### Was gemessen wird
+
+Die Bestandsabfrage von PURIS ist **asynchron** (Abschnitt 13): Der Endpunkt antwortet sofort, der eigentliche Datenaustausch läuft danach im Hintergrund. Daraus folgt:
+
+| Größe | Bedeutung | Quelle |
+|---|---|---|
+| **Eingangslast** | Auslösungen pro Sekunde (festgelegte Rate) | k6 (`constant-arrival-rate`) |
+| Antwortzeit der Auslösung | misst **nur** das Auslösen, **nicht** die Transaktion | k6 |
+| **Abgeschlossene Transaktionen/s** | eigentlicher Durchsatz | Log des Customer-PURIS: `Updated ReportedMaterialItemStocks for …` |
+| **Fehlgeschlagene Transaktionen/s** | eigentliche Fehlerrate (Fehler erscheinen **nicht** in der HTTP-Antwort) | Log des Customer-PURIS: `Error in ReportedMaterialItemStockRequest for …` |
+| **Dauer einer Transaktion** | Ende-zu-Ende-Zeit | Zeitstempel der Transferprozesse in den EDCs bzw. der Log-Zeilen (genaues Verfahren wird im Probelauf festgelegt) |
+| CPU, RAM, CPU-Drosselung je Pod | Ressourcennutzung, Engpasskandidaten | Prometheus (cAdvisor) |
+
+- **Sättigung** ist erreicht, wenn die abgeschlossenen Transaktionen pro Sekunde der Eingangslast nicht mehr folgen und sich ein Rückstau bildet.
+- **Gültigkeit des Lastgenerators** je Lauf: k6 meldet `dropped_iterations = 0` (die geplante Rate wurde tatsächlich gesendet) und bleibt unter seinem CPU-Limit.
+
 ### Inhalt eines Laufordners
 
 ```
@@ -236,13 +252,14 @@ runs/2026-10-08_1400_k0_rep-1/        (Probelauf: runs/…_pilot_…/)
 ├── meta.json          ← Git-Commit, Tag, alle Versionen, Messplan, Konfiguration,
 │                         Wiederholung, Start/Ende jeder Phase und Laststufe (UTC),
 │                         Knoten-Infos, Gültigkeit
-├── k6-summary.json    ← Durchsatz, Antwortzeiten (inkl. p95), Fehlerrate
+├── k6-summary.json    ← gesendete Rate, Antwortzeit der Auslösung, dropped_iterations
 ├── k6-raw.csv         ← Einzelwerte der Anfragen (falls Größe vertretbar)
-├── prometheus/        ← CPU und Speicher je Pod im Messzeitraum (CSV)
+├── prometheus/        ← CPU, Speicher und CPU-Drosselung je Pod im Messzeitraum (CSV)
+├── edc/               ← Transferprozesse der EDCs (für die Dauer; Form wird im Probelauf festgelegt)
 └── cluster/
     ├── pods.txt       ← kubectl get pods -o wide
     ├── helm.txt       ← helm list -A
-    └── logs/*.txt     ← Pod-Logs (als .txt, da *.log ignoriert wird)
+    └── logs/*.txt     ← Pod-Logs (als .txt, da *.log ignoriert wird); vor dem Ablegen auf Geheimnisse prüfen (Abschnitt 13)
 ```
 
 ### Einfrieren des Aufbaus
@@ -415,14 +432,67 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Alles im Cluster per Helm und YAML-Dateien, kein `--set` | Die Konfiguration liegt vollständig und versioniert im Repository; Etappe 2 und der Nachbau verwenden dieselben Dateien. |
 | Eine YAML-Datei pro Dienst | Einstellungen und Ressourcen eines Dienstes stehen an genau einer Stelle; jede Änderung ist im Git-Log einem Dienst zuzuordnen. |
 | CPU und RAM für jeden Container festgelegt (requests = limits) und in `AUFBAU.md` dokumentiert | Die Ressourcengrenzen bestimmen, wo Sättigung auftritt. Ohne feste Werte wären Läufe nicht vergleichbar; QoS `Guaranteed` verhindert ein Überbuchen des Knotens. |
+| Datenraum mit dem Tractus-X Umbrella-Chart 26.03.00 | Ein Chart mit aufeinander abgestimmten Diensten (EDC, DTR, Identität); nicht benötigte Teile werden ausgeschaltet. |
+| k6 im Cluster über den k6-Operator (Helm) | Passt zu den Regeln (Helm, YAML, feste CPU/RAM); der Verbrauch von k6 ist in Prometheus sichtbar und liegt auf derselben Zeitachse wie alle anderen Messwerte. |
+| Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
+| Täglicher Batch-Abgleich von PURIS abgeschaltet | Er würde zu einer festen Uhrzeit alle Partnerdaten abfragen und Messungen stören. |
+| Reset auf einen festen Datenbank-Stand S0 mit ausgehandelten Verträgen (vorläufig, wird in Etappe 1 geprüft) | Im Betrieb werden Verträge einmal ausgehandelt und dann wiederverwendet; gemessen wird der Dauerbetrieb, nicht die einmalige Aushandlung. |
 
 ---
 
-## 13. Offene Punkte
+## 13. Offene und geklärte Punkte
 
-- Welcher PURIS-REST-Endpunkt löst eine Bestandsabfrage beim Partner aus? Antwortet er erst nach Abschluss aller Schritte (synchron) oder sofort (asynchron)? (bestimmt das k6-Skript)
-- Aufteilung von Phase c: Umbrella-Chart (nur benötigte Komponenten) oder einzelne Charts. In beiden Fällen bekommt jeder Dienst eine eigene YAML-Datei (Abschnitt 3); beim Umbrella-Chart werden sie mit mehreren `-f` zu einem Release zusammengeführt.
-- k6 im Cluster (k6-Operator) oder als Programm auf der VM? In beiden Fällen teilt sich der Lastgenerator Ressourcen mit dem System unter Test – das ist als Einschränkung zu messen und zu dokumentieren.
-- Was der Reset zwischen Messläufen genau zurücksetzt (Datenbank leeren, Pods neu starten, Verträge im EDC).
-- Pod-Logs vor der Veröffentlichung auf Tokens oder Zugangsdaten prüfen.
+### Geklärt (Stand 2026-10-06)
+
+**Welcher Endpunkt löst die Bestandsabfrage aus – synchron oder asynchron?** Geprüft im Quellcode von PURIS 6.2.0 (Tag `6.2.0`, Helm-Chart 7.2.0):
+
+- Aufruf am Backend des **Customer-PURIS** (Port 8081), derselbe wie die Aktualisieren-Schaltfläche der Oberfläche:
+  ```
+  GET /catena/stockView/update-reported-material-stocks?ownMaterialNumber=<Materialnummer in Base64>
+  Header: X-API-KEY: <API-Key>
+  ```
+- **Asynchron:** Der Endpunkt gibt sofort die Liste der Lieferanten zurück und übergibt je Lieferant einen Auftrag an einen Thread-Pool (`executorService.submit`). Das Ergebnis steht später über `GET /catena/stockView/reported-material-stocks` bereit.
+- **Ablauf eines Auftrags:** EDC-Transfer zum DTR des Lieferanten und Suche des digitalen Zwillings → zweiter EDC-Transfer zum Item-Stock-Submodell → Abruf über die Datenebene des Lieferanten (Transferzustand wird alle 100 ms abgefragt) → Transfer beenden → alte gemeldete Bestände löschen, neue speichern, Zeitstempel des Materials aktualisieren.
+- **Verträge** (DTR und Item Stock) werden in der PURIS-Datenbank gespeichert und wiederverwendet. Bei einem Fehler wird wiederholt und der gespeicherte Vertrag verworfen (nächste Abfrage handelt neu aus).
+- **Thread-Pool ohne Obergrenze** (`Executors.newCachedThreadPool()`): keine Warteschlange, kein Gegendruck. Unter Überlast stauen sich Aufträge als Threads; CPU und RAM steigen, die HTTP-Antwort bleibt schnell.
+- **Fehler** erscheinen nur im Log, nicht in der HTTP-Antwort.
+- **Folgerungen:**
+  - Messgrößen: siehe Abschnitt 6, „Was gemessen wird“.
+  - Der tägliche Batch-Abgleich (Standard 09:00 Uhr Containerzeit, `puris.batch.partnerdataupdate.cron`) wird in `d1`/`d2` abgeschaltet: `PURIS_BATCH_PARTNERDATAUPDATE_ENABLED: "false"` über `backend.env` in der YAML-Datei.
+  - k6 ruft das **Backend direkt** auf, nicht über das Frontend (dessen nginx begrenzt auf 10 Anfragen/s).
+  - PURIS gibt nur den Health-Endpunkt frei; Prometheus-Metriken der JVM gibt es nicht.
+- Quellen (alle Tag `6.2.0`): `backend/.../stock/controller/StockViewController.java` (Z. 685–718), `backend/.../PurisApplication.java` (Z. 47–49), `backend/.../stock/logic/service/ItemStockRequestApiService.java` (Z. 187–234), `backend/.../common/edc/logic/service/EdcAdapterService.java` (Z. 901–1006, ab Z. 1155), `backend/src/main/resources/application.properties` (Z. 84, 110–111, 122–128), `charts/puris/values.yaml`, `frontend/.env` (Z. 13).
+
+**Phase c: Umbrella-Chart oder einzelne Charts?** Umbrella-Chart 26.03.00. Laut Chart enthält jeder Teilnehmer (`tx-data-provider`) einen EDC (`tractusx-connector` 0.12.0) mit eigener PostgreSQL und Vault im Dev-Modus, einen DTR und ein einfaches Daten-Backend; gemeinsam genutzt werden u. a. `centralidp`, `bdrs-server-memory` und `identity-and-trust-bundle`. Nicht benötigte Teile (u. a. Portal, BPDM sowie das eigene Prometheus/Grafana des Umbrella-Charts, da Monitoring Baustein `b1` ist) bleiben ausgeschaltet. PURIS ist nicht enthalten und wird mit eigenem Chart installiert (Phase d). Jeder Dienst bekommt eine eigene YAML-Datei; sie werden mit mehreren `-f` zu einem Release zusammengeführt (Abschnitt 3).
+
+**k6 im Cluster oder auf der VM?** Im Cluster über den **k6-Operator** (Helm), ein Runner (`parallelism: 1`) mit festen CPU/RAM-Werten (requests = limits); k6-Metriken möglichst direkt an Prometheus. Nachweis, dass k6 nicht der Engpass war: `dropped_iterations = 0` und k6-CPU unter seinem Limit. Dass sich k6 den Knoten mit dem System unter Test teilt, bleibt eine Einschränkung und wird gemessen und berichtet.
+
+**Was setzt der Reset zurück?** (vorläufig; wird in Etappe 1 geprüft)
+
+| Ort | Was sich ansammelt |
+|---|---|
+| Datenbank Customer-PURIS | gespeicherte Verträge (werden wiederverwendet); gemeldete Bestände (je Auftrag gelöscht und neu geschrieben) |
+| Backend Customer-PURIS | nach Überlast evtl. noch laufende Hintergrundaufträge; Zustand der JVM (JIT, Verbindungspools) |
+| Datenbanken beider EDCs | je Transaktion **zwei neue Transferprozesse**, dazu Verhandlungen und Verträge; eine automatische Bereinigung wurde nicht gefunden |
+| Vault (Dev-Modus) | nur im Speicher; wird beim Start über `postStart` neu befüllt |
+| DTR, Supplier-PURIS | werden nur gelesen |
+
+Ablauf:
+1. Warten, bis keine Hintergrundaufträge mehr laufen (keine neuen Log-Zeilen, CPU im Leerlauf).
+2. Alle PostgreSQL-Datenbanken auf den Stand **S0** zurücksetzen. S0 wird einmal nach den Testdaten und einer erfolgreichen Abfrage gesichert und enthält damit die ausgehandelten Verträge.
+3. PURIS- und EDC-Pods neu starten (frische JVM, leerer Thread-Pool).
+4. Aufwärmphase (wird nicht ausgewertet).
+5. Prüfen: Zeilenzahlen wie in S0, alle Pods `Ready`.
+
+**Geheimnisse in Pod-Logs und Dateien:**
+- Logs vor dem Ablegen in `runs/` nach `password`, `secret`, `token`, `x-api-key`, `Authorization` und `eyJ` (Beginn eines Tokens) durchsuchen und Treffer maskieren.
+- Vor jedem Commit den Diff prüfen (optional mit einem Scanner wie gitleaks).
+- Gelangt ein Geheimnis in Git, wird es **geändert** – Löschen reicht nicht, die Historie bleibt erhalten.
+
+### Noch offen
+
+- Parallele Aufträge für dasselbe Material löschen und schreiben dieselben Bestandszeilen: Treten dabei Fehler oder Doppelungen auf? Im Probelauf prüfen.
+- Genaues Verfahren für die Dauer einer Transaktion (Log-Zeitstempel oder Transferprozesse der EDCs) – im Probelauf festlegen.
+- Wachsen die EDC-Tabellen über die Läufe? Zeilen vor und nach einem Probelauf zählen.
+- Automatische Updates (apt-Timer, `unattended-upgrades`) vor den Messungen abschalten – noch nicht ausgeführt.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.

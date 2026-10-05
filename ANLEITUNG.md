@@ -28,8 +28,9 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 
 1. Zuerst **1 Transaktion pro Sekunde**, 10 Minuten lang. Messen.
 2. Dann **2 pro Sekunde**, dann 5, dann 10, … (5–10 Laststufen).
-3. In jeder Stufe beobachten: **Durchsatz**, **p95-Antwortzeit**, **Fehlerrate**, **CPU/Speicher je Pod**.
-4. Irgendwann steigt der Durchsatz nicht mehr, aber die Antwortzeit steigt stark → **Sättigung**. Die Komponente, die dann am Limit ist, ist ein **Engpass-Kandidat**.
+3. In jeder Stufe beobachten: **abgeschlossene Transaktionen pro Sekunde** (Durchsatz), **Dauer einer Transaktion** (p95), **Fehlerrate**, **CPU/Speicher je Pod**.
+   Achtung: k6 **löst die Abfrage nur aus**. PURIS antwortet sofort und tauscht die Daten danach im Hintergrund aus. Durchsatz, Dauer und Fehler kommen deshalb aus den **PURIS-Logs** und den **EDCs**, nicht aus der Antwortzeit von k6 (Details: [`KONZEPT.md`](KONZEPT.md), Abschnitte 6 und 13).
+4. Irgendwann schafft PURIS nicht mehr so viele Transaktionen, wie k6 auslöst: Der Durchsatz steigt nicht mehr, Aufträge stauen sich, die Dauer steigt stark → **Sättigung**. Die Komponente, die dann am Limit ist, ist ein **Engpass-Kandidat**.
 5. Alles **3× wiederholen**. Danach mit **mehr Replikaten oder mehr CPU** für den Engpass erneut messen und prüfen, ob die Grenze steigt.
 
 **Wichtig:**
@@ -58,17 +59,17 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 - Alles wird mit **Helm** installiert; **jeder Dienst hat eine eigene YAML-Datei** in `setup/<baustein>/` mit festen **CPU- und RAM-Werten** (Regeln in [`KONZEPT.md`](KONZEPT.md), Abschnitt 3).
 - Alle Versionen (k3s, Umbrella, PURIS-Chart) und alle CPU/RAM-Werte stehen in `AUFBAU.md` (Versions- und Ressourcenübersicht) und gehen in Kapitel 4.3 der Arbeit ein.
 
-**Offene Frage für Schritt F:** Welcher PURIS-REST-Endpunkt löst eine Bestandsabfrage beim Partner aus? Davon hängt ab, ob eine k6-Iteration genau einer Transaktion entspricht.
+**Geklärt für Schritt F:** Die Abfrage wird mit `GET /catena/stockView/update-reported-material-stocks` am Backend des Customer-PURIS ausgelöst (wie die Aktualisieren-Schaltfläche). Der Endpunkt ist **asynchron**: Eine k6-Iteration löst genau eine Transaktion je Lieferant aus, misst aber nicht ihre Dauer. Details in [`KONZEPT.md`](KONZEPT.md), Abschnitt 13.
 
 ---
 
 ## 4. Wie die Ergebnisse entstehen
 
-1. **k6** liefert pro Lauf Durchsatz, Antwortzeiten (p95) und Fehlerrate als **JSON/CSV**.
+1. **k6** liefert pro Lauf die gesendete Rate und `dropped_iterations` (Nachweis, dass die geplante Last wirklich gesendet wurde) als **JSON/CSV**. **Durchsatz, Dauer und Fehler** einer Transaktion kommen aus den **PURIS-Logs** und den **Transferdaten der EDCs**.
 2. **Prometheus** speichert CPU und Speicher pro Pod. Für jeden Messzeitraum als **CSV** exportieren.
 3. **Python-Skript** (pandas + matplotlib): pro Laststufe Mittelwert über die 3 Wiederholungen, daraus Diagramme:
    - Last → Durchsatz
-   - Last → p95-Antwortzeit
+   - Last → p95-Dauer einer Transaktion
    - Last → Fehlerrate
    - Last → CPU je Komponente
 4. Diagramme und Tabellen kommen in **Kapitel 5**, die Interpretation in **Kapitel 6**.
