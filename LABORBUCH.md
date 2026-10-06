@@ -328,3 +328,17 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Umgesetzt in `setup/c2-customer-edc/values.yaml`; lokal mit `helm template` geprüft: weiterhin 21 Objekte, alle Container requests = limits; gegenüber Revision 1 ändert sich nur das StatefulSet `edc-vault`.
 
 **Nächstes:** Commit, `helm upgrade` von `c2`, Prüfung (5 Schlüssel, Verbrauch von Vault, Token beim Wallet-Stub).
+
+## 2026-10-06 – `c2`: Korrektur von Vault zunächst ohne Wirkung
+
+**Gemacht:** `c2` mit der Korrektur aus Commit `8678f54` aktualisiert (Release `edc`, Revision 2, `deployed`).
+
+**Problem:** Revision 2 wirkte nicht: Der Pod `edc-vault-0` lief unverändert weiter (Start 14:07:36 UTC), weiterhin 4 von 5 Schlüsseln und die alte Bereitschaftsprüfung (erneut Zeitüberschreitung um 14:15:26). Ursache: Das StatefulSet des Vault-Charts nutzt standardmäßig `updateStrategyType: OnDelete` – eine neue Pod-Vorlage gilt erst, wenn der Pod von Hand gelöscht wird (`currentRevision` ≠ `updateRevision`; `kubectl rollout status` meldet „only available for RollingUpdate“).
+
+**Entscheidung:** `vault.server.updateStrategyType: RollingUpdate` (Option des Charts) statt den Pod von Hand zu löschen.
+  Begründung: Jede Änderung soll allein über `helm upgrade` wirksam werden (keine Handgriffe, wiederholbar in Etappe 2); bei einem einzelnen Vault-Pod im Dev-Modus gibt es keinen Grund für `OnDelete` (gedacht für Vault-Cluster mit mehreren Knoten). Umsetzung folgt dem Auftrag des Verfassers, die Probleme von Vault zu lösen.
+- Lokal mit `helm template` geprüft: weiterhin 21 Objekte, alle Container requests = limits, StatefulSet `edc-vault` mit `updateStrategy.type: RollingUpdate`.
+
+- Revision 3 (16:15:37 Ortszeit, 23 s nach Revision 2) entstand durch einen wiederholten Aufruf desselben Befehls vor dieser Änderung; Manifeste und Werte von Revision 2 und 3 sind identisch.
+
+**Nächstes:** Commit, `helm upgrade` (Revision 4), Prüfung.

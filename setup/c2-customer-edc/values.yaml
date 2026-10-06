@@ -146,6 +146,10 @@ vault:
     # verhindern.
     authDelegator:
       enabled: false
+    # Änderungen per `helm upgrade` sofort wirksam (Standard: OnDelete – neue
+    # Einstellungen gelten erst, wenn der Pod von Hand gelöscht wird; so blieb
+    # Revision 2 zunächst wirkungslos). Ein Pod, Dev-Modus: nichts zu schützen.
+    updateStrategyType: RollingUpdate
     # Secret `edc-vault-secrets` (lokal erzeugt, nicht im Repository) als
     # Dateien einhängen: client-secret, aesKey, tokenEncryptionAesKey,
     # tokenSignerPrivateKey, tokenSignerPublicKey.
