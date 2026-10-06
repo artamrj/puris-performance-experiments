@@ -43,6 +43,7 @@ Der Aufbau **wächst schrittweise**: Es wird nicht alles im Voraus geplant, sond
 ├── KONZEPT.md             ← dieses Dokument
 ├── ANLEITUNG.md           ← was untersucht wird (einfache Sprache)
 ├── CHECKLISTE.md          ← Fortschritt je Etappe und Baustein (nur Haken, keine Befehle)
+├── VPS-VARIANTE.md        ← Planung: zweite Umgebung auf einem VPS (Hauptmessungen, Nachbau-Test)
 ├── README.md              ← Schnellstart
 ├── runs/                  ← ein Ordner pro Messlauf (ab erstem Probelauf)
 ├── setup/                 ← Bausteine des Aufbaus (siehe Abschnitt 3)
@@ -561,7 +562,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | **Summe Grundkonfiguration K0** | **14,6 Kerne** | **22,6 GiB** |
 | + Spielraum für eine Skalierungskonfiguration, + 15 % unverplant | ≈ 19 vCPU | ≈ 28 GiB |
 
-Folgerung: Die NAS-VM (8 vCPU) reicht für K0 nicht; sie bleibt Entwicklungs- und Funktionsumgebung (verkleinertes Profil). Für die Hauptmessungen ist eine VM mit mindestens 16 **dedizierten** vCPU nötig (Entscheidung offen, siehe „Noch offen“). Vergleichswerte: k3s-Server mindestens 2 Kerne/2 GB; GKE reserviert für Systemdienste höchstens 1 vCPU; k6 braucht ca. 1–5 MB je VU und sollte 20 % CPU frei lassen.
+Folgerung: Die NAS-VM (8 vCPU) reicht für K0 nicht; sie bleibt Entwicklungs- und Funktionsumgebung (verkleinertes Profil). Für die Hauptmessungen ist eine VM mit mindestens 16 **dedizierten** vCPU nötig (Entscheidung offen, siehe „Noch offen“). Ausführliche Planung mit dem Profil „VPS optimal“ (20,6 Kerne / 36,2 GiB reserviert, empfohlen 32 dedizierte vCPU) in [`VPS-VARIANTE.md`](VPS-VARIANTE.md). Vergleichswerte: k3s-Server mindestens 2 Kerne/2 GB; GKE reserviert für Systemdienste höchstens 1 vCPU; k6 braucht ca. 1–5 MB je VU und sollte 20 % CPU frei lassen.
 
 **k6 im Cluster oder auf der VM?** Im Cluster über den **k6-Operator** (Helm), ein Runner (`parallelism: 1`) mit festen CPU/RAM-Werten (requests = limits); k6-Metriken möglichst direkt an Prometheus. Nachweis, dass k6 nicht der Engpass war: `dropped_iterations = 0` und k6-CPU unter seinem Limit. Dass sich k6 den Knoten mit dem System unter Test teilt, bleibt eine Einschränkung und wird gemessen und berichtet.
 
@@ -596,6 +597,6 @@ Ablauf:
 - Identitätsangaben je Firma (BPN, DID, Wallet-Zugang) aus den Umbrella-Werten 26.03.00 übernehmen und mit dem Wallet-Stub prüfen.
 - Stellt der Wallet-Stub die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0)? Mit der ersten Katalogabfrage in Phase c prüfen – sonst scheitert die Vertragsverhandlung.
 - Wallet-Stub 0.0.11 (Bundle) statt 0.0.8 (PURIS-Referenz): neuere Patch-Version, im Funktionstest bestätigen.
-- Zweite, stärkere VM für die Hauptmessungen (mind. 16 dedizierte vCPU, siehe „Rechenbedarf“): Rolle, Anbieter, Größe und Erfolgskriterium des Nachbau-Tests festlegen.
+- Zweite, stärkere VM für die Hauptmessungen (mind. 16 dedizierte vCPU, siehe „Rechenbedarf“): Rolle, Anbieter, Größe und Erfolgskriterium des Nachbau-Tests festlegen – Planung und offene Entscheidungen in [`VPS-VARIANTE.md`](VPS-VARIANTE.md).
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.

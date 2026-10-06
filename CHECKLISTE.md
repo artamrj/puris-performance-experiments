@@ -73,6 +73,7 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] `AUFBAU.md` mit Versions- und Ressourcenübersicht
 - [x] `LABORBUCH.md` mit datierten Einträgen (seit 2026-10-02)
 - [x] `CHECKLISTE.md` (diese Datei, 2026-10-06)
+- [x] `VPS-VARIANTE.md` – Planung der zweiten Umgebung auf einem VPS (Status: Planung) – 2026-10-06
 - [x] Offene Änderungen committen: `AUFBAU.md`, `KONZEPT.md`, `LABORBUCH.md`, `ANLEITUNG.md`, `CHECKLISTE.md`, `setup/b1-monitoring/values.yaml` – Commit `2ae8388`, 2026-10-06
 - [x] Lokale Commits pushen – `77e0323..2ae8388` nach `origin/main`, 2026-10-06
 - [ ] Danach im Thesis-Repository den Submodul-Verweis `6-experiment` aktualisieren
@@ -241,7 +242,7 @@ Noch offen:
 - [ ] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf)
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
 - [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset)
-- [ ] Zweite, stärkere VM/VPS (Idee des Nutzers, 2026-10-06): Rolle festlegen (Hauptmessungen oder Nachbau-Test), Anbieter und Größe (dedizierte vCPU, mind. 8 vCPU/32 GB, stundenweise Abrechnung), Erfolgskriterium vorab in `KONZEPT.md` – Entscheidung bis So 18.10.
+- [ ] Zweite, stärkere VM/VPS (Idee des Nutzers, 2026-10-06): Rolle festlegen (Hauptmessungen oder Nachbau-Test), Anbieter und Größe (dedizierte vCPU; Schätzung 2026-10-06: optimal 32 vCPU/128 GB, mindestens 16 vCPU/64 GB für ein schlankes Profil; stundenweise Abrechnung), Erfolgskriterium vorab in `KONZEPT.md` – Entscheidung bis So 18.10.; Planung und offene Punkte in `VPS-VARIANTE.md`, Abschnitt 11
 - [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [x] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden – weggelassen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [ ] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c
