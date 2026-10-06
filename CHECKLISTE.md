@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); Phase d vorbereitet (`d1`/`d2` geprüft), als Nächstes Installation von PURIS. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); als Nächstes Phase e (Testdaten, Funktionstest). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -174,18 +174,18 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 
 **Für beide Bausteine:**
 - [x] Chart-Quelle geklärt: Paket 7.2.0 im Helm-Repository nicht abrufbar (404) → Git-Tag `puris-7.2.0` (Commit `d0027bb`) – 2026-10-07
-- [ ] Täglicher Batch-Abgleich abgeschaltet (`PURIS_BATCH_PARTNERDATAUPDATE_ENABLED: "false"` über `backend.env`)
-- [ ] Adressen von EDC und DTR **der eigenen Firma** eingetragen
-- [ ] API-Key und Datenbank-Zugangsdaten nur als Secret
-- [ ] PostgreSQL des Charts mit festen CPU/RAM-Werten
-- [ ] Heap des Backends passt ins Speicherlimit
+- [x] Täglicher Batch-Abgleich abgeschaltet (`PURIS_BATCH_PARTNERDATAUPDATE_ENABLED: "false"` über `backend.env`) – über `backend.puris.batch` (Abgleich und Aufräumen), im Pod `false`; 2026-10-07
+- [x] Adressen von EDC und DTR **der eigenen Firma** eingetragen – mit Namespace, im Pod geprüft; 2026-10-07
+- [x] API-Key und Datenbank-Zugangsdaten nur als Secret – Zufallswerte des Charts; Ausnahme: Management-API-Key des eigenen EDC (öffentlicher Testwert); 2026-10-07
+- [x] PostgreSQL des Charts mit festen CPU/RAM-Werten – 200m bzw. 100m / 512Mi, `Guaranteed`; 2026-10-07
+- [x] Heap des Backends passt ins Speicherlimit – `MaxRAMPercentage=75` von 1536Mi; 2026-10-07
 - [x] Entschieden, ob Frontend und Anmeldedienst gebraucht werden (nur für die Einrichtung); Entscheidung im Laborbuch – kein Frontend, kein Keycloak, nur API-Key, 2026-10-06 *(abgeleitet – bitte bestätigen)*
-- [ ] PURIS-Einstellungen: `dtr.idp.enabled: false`, Profil `profile2509`, Nachweis `DataExchangeGovernance` 1.0, Zweck `cx.puris.base` 1; Adressen über Dienstnamen
-- [ ] Health-Endpunkt meldet `UP`
+- [x] PURIS-Einstellungen: `dtr.idp.enabled: false`, Profil `profile2509`, Nachweis `DataExchangeGovernance` 1.0, Zweck `cx.puris.base` 1; Adressen über Dienstnamen – 2026-10-07
+- [x] Health-Endpunkt meldet `UP` – beide, 2026-10-07
 
 **Bausteine:**
-- [ ] `d1-puris-customer`; Definition „fertig“ erfüllt
-- [ ] `d2-puris-supplier`; Definition „fertig“ erfüllt
+- [x] `d1-puris-customer`; Definition „fertig“ erfüllt – 2026-10-07, aus Commit `b78086f`; 14 Assets im EDC, API-Key geprüft (Punkt 11: mit dem Commit dieser Dokumentation)
+- [x] `d2-puris-supplier`; Definition „fertig“ erfüllt – 2026-10-07, aus Commit `b78086f`; 14 Assets im EDC, API-Key geprüft (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ## 6 Phase e – Testdaten und Funktionstest
 

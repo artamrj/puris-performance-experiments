@@ -497,3 +497,21 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Abgeleitet aus dem NAS-Profil: Backend 600m/1536Mi (Customer) bzw. 400m/1536Mi (Supplier), PostgreSQL 200m bzw. 100m / 512Mi; `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`.
 
 **Nächstes:** Chart lokal holen, Commit, Installation von `d1` und `d2`, Prüfung (Health `UP`, Assets im EDC, Zwillinge im DTR).
+
+## 2026-10-07 – `d1`/`d2` installiert: PURIS läuft, Assets im EDC
+
+**Gemacht:**
+- Chart lokal geholt (Git-Tag `puris-7.2.0`, Commit `d0027bb` geprüft; `helm dependency build` → `postgres` 0.18.3, Digest `sha256:7c17b294…`).
+- `d1` und `d2` aus Commit `b78086f` installiert (Release `puris`, Namespaces `customer`/`supplier`, je Revision 1; 22:23 UTC). Bereit nach ca. 3,5 min (Warten im Hintergrund): Customer „Started PurisApplication in 95.292 seconds“, Supplier „… in 151.397 seconds“. Health `UP`; Java-Option übernommen; kein Frontend-Pod.
+- Einstellungen im laufenden Pod geprüft (Adressen mit Namespace, Batch und Aufräumen aus, DTR ohne Anmeldung, BPNL, Anmeldedienst `.invalid`).
+- Je EDC hat PURIS 14 Assets, 5 Policies und 12 Contract Definitions angelegt; PURIS-API mit API-Key HTTP 200, ohne HTTP 401.
+- Summe der requests nach Phase d: 6175m CPU (88 % von 7000m), 21836Mi RAM (78 %). Dokumentation in `AUFBAU.md`, „d1 und d2“.
+
+**Problem:** Der Customer-Backend-Container startete vor seiner Datenbank (Liquibase: `Connection to puris-postgresql:5432 refused`, Exit-Code 1, 22:23:55 UTC) und wurde einmal neu gestartet; der zweite Start gelang. Gleiches Verhalten wie beim Wallet-Stub (`c1`); der Chart hat keine Startreihenfolge. Kein Eingriff nötig.
+
+**Beobachtungen:**
+- Contract Definitions für Item-Stock-Submodell und DTR-Asset fehlen noch; PURIS legt sie je Partner an, sobald der Partner eingetragen ist (Phase e).
+- Verbrauch im Leerlauf: Backend ca. 340Mi, 14–25m CPU; PostgreSQL ca. 67Mi.
+- Die Startprüfung des Customer-Backends lief einmal in ihr Zeitlimit (Standard 1 s), bei erlaubten 30 Fehlschlägen ohne Folgen.
+
+**Nächstes:** Phase e – Testdaten (`e1`) über die REST-API, danach Funktionstest (`e2`, Meilenstein 1).

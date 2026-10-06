@@ -38,6 +38,9 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | digital-twin-bundle (Helm-Chart) | 1.3.0 (Sub-Charts `digital-twin-registry` 0.11.0, `postgresql` 15.2.1 Bitnami) | Cluster | c3, c5 |
 | Digital Twin Registry | 0.11.0 (Image setzt `-Xms512m -Xmx2048m`) | Cluster | c3, c5 |
 | PostgreSQL (DTR) | 15.4.0 (Image `bitnamilegacy/postgresql:15.4.0-debian-11-r45`) | Cluster | c3, c5 |
+| puris (Helm-Chart) | 7.2.0 aus Git-Tag `puris-7.2.0` (Commit `d0027bb`); Sub-Chart `postgres` 0.18.3 (cloudpirates) | Cluster | d1, d2 |
+| PURIS-Backend | 6.2.0 (Java 21, `eclipse-temurin:21-jre-alpine`) | Cluster | d1, d2 |
+| PostgreSQL (PURIS) | 18.0 (Image `postgres:18.0`, per Digest festgelegt) | Cluster | d1, d2 |
 
 ---
 
@@ -76,20 +79,26 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | c3 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 50m | 50m | 256Mi | 256Mi | Guaranteed |
 | c5 | DTR: `digital-twin-registry` (Heap vom Image: `-Xms512m -Xmx2048m`) | `c5-supplier-dtr/values.yaml` › Digital Twin Registry | 200m | 200m | 3Gi | 3Gi | Guaranteed |
 | c5 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 100m | 100m | 256Mi | 256Mi | Guaranteed |
+| d1 | PURIS-Backend (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | `d1-puris-customer/values.yaml` › Backend | 600m | 600m | 1536Mi | 1536Mi | Guaranteed |
+| d1 | PostgreSQL: `postgresql` | › PostgreSQL | 200m | 200m | 512Mi | 512Mi | Guaranteed |
+| d1 | Frontend (0 Replikate, kein Pod) | › Frontend | 200m | 200m | 128Mi | 128Mi | – |
+| d2 | PURIS-Backend (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | `d2-puris-supplier/values.yaml` › Backend | 400m | 400m | 1536Mi | 1536Mi | Guaranteed |
+| d2 | PostgreSQL: `postgresql` | › PostgreSQL | 100m | 100m | 512Mi | 512Mi | Guaranteed |
+| d2 | Frontend (0 Replikate, kein Pod) | › Frontend | 200m | 200m | 128Mi | 128Mi | – |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM; c3: 150m CPU, 3328Mi RAM; c5: 300m CPU, 3328Mi RAM.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM; c3: 150m CPU, 3328Mi RAM; c5: 300m CPU, 3328Mi RAM; d1: 800m CPU, 2048Mi RAM; d2: 500m CPU, 2048Mi RAM (Frontend ohne Pod).*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach Phase c):
+**Summe gegenüber dem Knoten** (Stand 2026-10-07, nach Phase d):
 
 | | CPU | RAM |
 |---|---|---|
 | Kapazität der VM (`Capacity`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
 | Puffer für Betriebssystem und k3s (`system-reserved`, a2) | 1000m | 3Gi |
 | Zuteilbar (`Allocatable`) | 7 (= 7000m) | 28661608Ki (≈ 27,3 GiB) |
-| Summe aller requests | 4875m (69 %) | 17740Mi (63 %) |
-| Rest | 2125m | ≈ 10,0 GiB |
+| Summe aller requests | 6175m (88 %) | 21836Mi (78 %) |
+| Rest | 825m | ≈ 6,0 GiB |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi; nach `c3`/`c5` 4875m / 17740Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi; nach `c3`/`c5` 4875m / 17740Mi; nach `d1`/`d2` 6175m / 21836Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -761,6 +770,66 @@ helm uninstall dtr -n supplier && kubectl delete pvc data-dtr-postgresql-0 -n su
 - Mit 0,1 bzw. 0,2 Kernen dauert der Start 10–20 min; die Lebendprüfung erlaubt 1800 s. Ein Neustart eines DTR (z. B. beim Neuaufbau) kostet entsprechend Zeit.
 - Bei einer Aktualisierung laufen die alten Pods weiter, bis der neue Pod bereit ist (RollingUpdate mit 1 Replikat); bei mehreren Aktualisierungen hintereinander ggf. `helm uninstall` und Neuinstallation.
 - Der Heap wird vom Image festgelegt (bis 2048 MB); das Speicherlimit muss deshalb deutlich darüber liegen.
+
+---
+
+## d1 und d2 – PURIS des Customers und des Suppliers
+
+**Datum:** 2026-10-07 (Installation 22:23 UTC am 06.10. = 00:23 Ortszeit am 07.10.)
+**Ziel:** PURIS-Backend 6.2.0 je Firma mit eigener PostgreSQL, angebunden an EDC und DTR der eigenen Firma; ohne Frontend und ohne Anmeldedienst, Zugriff per API-Key.
+
+**YAML-Dateien:** [`setup/d1-puris-customer/values.yaml`](setup/d1-puris-customer/values.yaml), [`setup/d2-puris-supplier/values.yaml`](setup/d2-puris-supplier/values.yaml), Commit `b78086f`.
+
+**Chart holen `[Mac]`** (einmalig, wiederholbar; das Paket 7.2.0 im Helm-Repository ist nicht abrufbar, siehe `LABORBUCH.md`, 2026-10-07):
+```bash
+D="$HOME/.local/opt/puris-loadlab/charts/puris-7.2.0"
+[ -d "$D/.git" ] || git clone -q --depth 1 --branch puris-7.2.0 https://github.com/eclipse-tractusx/puris.git "$D"
+git -C "$D" rev-parse --short HEAD
+helm dependency build "$D/charts/puris"
+```
+Ergebnis: Commit `d0027bb`; Abhängigkeit `cloudpirates/postgres` 0.18.3 geladen (Digest `sha256:7c17b294…`).
+
+**Installation `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm upgrade --install puris "$HOME/.local/opt/puris-loadlab/charts/puris-7.2.0/charts/puris" -n customer -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/d1-puris-customer/values.yaml"
+helm upgrade --install puris "$HOME/.local/opt/puris-loadlab/charts/puris-7.2.0/charts/puris" -n supplier -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/d2-puris-supplier/values.yaml"
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → je 14 Objekte, kein Ingress; 3 Container mit requests = limits (Frontend 0 Replikate); keine Platzhalter des Charts mehr.
+- API-Key und Datenbank-Passwörter erzeugt der Chart (Zufallswerte, Secrets `secret-puris-backend`, `secret-puris-postgres-init`, `puris-postgresql-custom-user-credentials`). API-Key lesen: `kubectl get secret secret-puris-backend -n <namespace> -o jsonpath='{.data.puris-api-key}' | base64 -d` (nie ins Repository).
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl rollout status deploy/puris-backend -n <namespace> --timeout=1500s
+kubectl get --raw "/api/v1/namespaces/<namespace>/services/http:puris-backend:8081/proxy/catena/actuator/health"
+kubectl exec -n <namespace> deploy/puris-backend -- printenv PURIS_BASEURL PURIS_BATCH_PARTNERDATAUPDATE_ENABLED PURIS_BATCH_PARTNERDATAUPDATE_CLEANUP_ENABLED PURIS_DTR_IDP_ENABLED PURIS_DTR_URL EDC_CONTROLPLANE_MANAGEMENT_URL OWN_BPNL IDP_URI
+# Management-API des eigenen EDC (port-forward), Assets/Policies/Contract Definitions:
+curl -s -X POST http://127.0.0.1:<Port>/management/v3/assets/request -H "X-Api-Key: <Management-API-Key>" -H "Content-Type: application/json" -d '{"@context":{"@vocab":"https://w3id.org/edc/v0.0.1/ns/"},"@type":"QuerySpec","offset":0,"limit":100}'
+# PURIS-API (port-forward auf puris-backend):
+curl -s -o /dev/null -w "%{http_code}" -H "X-API-KEY: <PURIS-API-Key>" http://127.0.0.1:<Port>/catena/stockView/materials
+```
+Ergebnis:
+- Releases `puris` (Namespaces `customer`, `supplier`), je Revision 1, `deployed` (Chart `puris-7.2.0` aus dem Git-Tag); Images `tractusx/app-puris-backend:6.2.0`, `postgres:18.0@sha256:1ffc019d…`
+- Customer: „Started PurisApplication in 95.292 seconds“ (zweiter Start, siehe Hinweise), bereit 22:26:39 UTC; Supplier: „… in 151.397 seconds“, bereit 22:26:40 UTC (ca. 3,5 min nach der Installation); beide `Guaranteed`; kein Frontend-Pod
+- `Picked up JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75`; `/catena/actuator/health` → `UP` (beide)
+- Volume `data-puris-postgresql-0` je Namespace gebunden (8Gi, `local-path`; Standard des Sub-Charts)
+- Im laufenden Pod: `PURIS_BASEURL` = `http://puris-backend.<namespace>:8081`, Batch und Aufräumen `false`, `PURIS_DTR_IDP_ENABLED=false`, DTR und EDC der eigenen Firma, BPNL des Umbrella-Charts, `IDP_URI=http://keycloak.invalid/auth`
+- Je EDC von PURIS angelegt: **14 Assets** (u. a. `itemstocksubmodel-api-asset@<BPNL>`, `DigitalTwinRegistryId@<BPNL>`), **5 Policies** (`<BPNL>_policy`, `Contract_Policy_for_Profile_2405`/`_2509`, jeweils auch `_DTR`), **12 Contract Definitions** (anonymisierte und allgemeine Submodelle, je für `profile2405` und `profile2509`). Contract Definitions für Item-Stock-Submodell und DTR fehlen noch – PURIS legt sie je Partner an (Phase e).
+- PURIS-API: mit API-Key HTTP 200, ohne HTTP 401
+- Warnungen im Log nur beim Start (Liquibase: Bezeichner gekürzt; Hibernate: Dialekt; `spring.jpa.open-in-view`)
+- Verbrauch im Leerlauf: Backend 25m / 341Mi (Customer), 14m / 338Mi (Supplier); PostgreSQL je ca. 24m / 67Mi
+
+**Ressourcen:** siehe Ressourcenübersicht (d1, d2).
+
+**Rückbau `[Mac]`:**
+```bash
+helm uninstall puris -n customer && kubectl delete pvc -n customer -l app.kubernetes.io/instance=puris
+helm uninstall puris -n supplier && kubectl delete pvc -n supplier -l app.kubernetes.io/instance=puris
+```
+Volume und Secrets gemeinsam entfernen: Bei einer Neuinstallation mit altem Volume passt das neu erzeugte Datenbank-Passwort nicht mehr.
+
+**Hinweise:**
+- Der Customer-Backend-Container wurde einmal neu gestartet: Er startete vor seiner Datenbank (`Connection to puris-postgresql:5432 refused`, Exit-Code 1); der zweite Start gelang. Der Chart hat keine Startreihenfolge.
+- Die Startprüfung lief einmal in ihre Zeitbegrenzung (22:26:10); sie erlaubt 30 Fehlschläge.
 
 ---
 
