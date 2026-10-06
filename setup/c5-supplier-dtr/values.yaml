@@ -56,12 +56,17 @@ digital-twin-registry:
       requests: { cpu: 200m, memory: 1Gi }
       limits:   { cpu: 200m, memory: 1Gi }
 
-    # Mit 0,2 Kernen startet der Java-Dienst langsam. Lebendprüfung erst
-    # nach 300 s (Standard: 100 s, Neustart nach 3 × 3 s), damit der Container
-    # beim Start nicht in eine Neustart-Schleife gerät. Startdauer wird bei der
-    # Installation gemessen.
+    # Lebendprüfung (Standard: Beginn nach 100 s, alle 3 s, Neustart nach 3
+    # Fehlschlägen = 9 s). Mit 0,2 Kernen dauert der Start des Java-Dienstes
+    # über 5 min; mit 300 s wurde er beim Start abgebrochen (LABORBUCH.md,
+    # 2026-10-06). Daher: Beginn nach 1800 s; danach alle 10 s und Neustart
+    # erst nach 6 Fehlschlägen (60 s), damit kurze Verzögerungen unter Last
+    # (CPU-Drosselung) keinen Neustart mitten im Messlauf auslösen.
+    # Bereitschaftsprüfung unverändert.
     livenessProbe:
-      initialDelaySeconds: 300
+      initialDelaySeconds: 1800
+      periodSeconds: 10
+      failureThreshold: 6
 
 
 # ═══ PostgreSQL (Datenbank des DTR) ═══════════════════════════════════════════

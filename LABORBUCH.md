@@ -411,3 +411,21 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Ingress aus; Anmeldung aus (wie im Bundle).
 
 **Nächstes:** Commit, Installation von `c3` und `c5`, Startdauer messen, Prüfung (API des DTR erreichbar, auch über den Dienstnamen).
+
+## 2026-10-06 – `c3`/`c5` installiert: DTR startet zu langsam
+
+**Gemacht:** `c3` und `c5` aus Commit `a4154d4` installiert (Release `dtr`, Namespaces `customer` und `supplier`, je Revision 1; 16:38:26 bzw. 16:38:28 Ortszeit). Beide PostgreSQL-Pods nach wenigen Sekunden bereit.
+
+**Problem:** Die DTRs starten mit 0,1 bzw. 0,2 Kernen sehr langsam.
+- Supplier-DTR (`c5`, 200m): Container 14:38:35 UTC gestartet, um 14:43:41 (nach ca. 5 min) noch bei der Initialisierung von Hibernate („Processing PersistenceUnitInfo“); um 14:44:11 von der Lebendprüfung beendet (Beginn nach 300 s, Exit-Code 137) und neu gestartet.
+- Customer-DTR (`c3`, 100m): nach ca. 400 s erst der Webserver gestartet („Started oejs.Server … @400542ms“), Datenbank-Verbindung hergestellt; um 14:46 (ca. 8 min) noch nicht bereit, 0 Neustarts; die Lebendprüfung beginnt nach 600 s.
+- Bereitschaftsprüfung bis dahin fortlaufend `connection refused` (Anwendung lauscht noch nicht).
+
+**Beobachtung:** Der Chart des DTR sieht als Standard requests 250m / limits 750m CPU vor; mit 0,1–0,2 Kernen dauert der Start des Java-Dienstes deutlich länger als die verlängerte Lebendprüfung erlaubt.
+
+**Nächstes:** Entscheidung über Lebendprüfung bzw. CPU der DTRs (Verfasser).
+
+**Entscheidung** (vom Verfasser bestätigt, Option A): CPU der DTRs bleibt beim NAS-Profil (`c3` 100m, `c5` 200m); Lebendprüfung beider DTRs: Beginn nach 1800 s, danach alle 10 s, Neustart erst nach 6 Fehlschlägen (60 s); Bereitschaftsprüfung unverändert.
+  Begründung: Der lange Start ist einmalig und für die Messung ohne Bedeutung; die Frage, ob die CPU der DTRs reicht, beantwortet der Probelauf (Startwerte des NAS-Profils prüfen). Die tolerantere Prüfung im laufenden Betrieb verhindert, dass kurze Verzögerungen unter Last (CPU-Drosselung) einen Neustart mitten im Messlauf auslösen (Standard: Neustart nach 9 s). Verworfen: Option B (Supplier-DTR 400m) – Gesamtplanung dann 6925m von 7000m (99 %), kaum Reserve.
+- Umgesetzt in `setup/c3-customer-dtr/values.yaml` und `setup/c5-supplier-dtr/values.yaml`; lokal mit `helm template` geprüft (je 13 Objekte, requests = limits, Lebendprüfung 1800 s / 10 s / 6).
+- Stand vor der Änderung (14:48 UTC): Customer-DTR nach ca. 9,5 min noch nicht bereit, 0 Neustarts; Supplier-DTR 1 Neustart.
