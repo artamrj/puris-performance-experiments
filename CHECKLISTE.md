@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; `b2-loki` und `b3-alloy` installiert und geprüft (offen: Loki als Datenquelle in Grafana); danach Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); als Nächstes Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -21,7 +21,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 0 Projekt und Dokumentation | weitgehend erledigt | laufend |
 | 1 Versuchsrechner und Zugang | erledigt (Reste vor dem Einfrieren) | Reste bis Sa 24.10. |
 | 2 Phase a – Basis | erledigt (2026-10-05) | Puffer festlegen bis So 11.10. |
-| 3 Phase b – Monitoring und Logs | in Arbeit | Di 06.–Sa 10.10. |
+| 3 Phase b – Monitoring und Logs | erledigt (2026-10-06) | Di 06.–Sa 10.10. |
 | 4 Phase c – Datenraum | offen | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | offen | Do 15.–Fr 16.10. |
 | 6 Phase e – Testdaten und Funktionstest | offen | Sa 17.–**So 18.10. (Meilenstein 1)** |
@@ -125,8 +125,8 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] `values.yaml` erstellt und mit `helm template` geprüft (10 Objekte, requests = limits) – 2026-10-06
 - [x] Betriebsart, dauerhaftes Volume, Aufbewahrung mindestens über die gesamte Messphase – SingleBinary, 20Gi `local-path`, 30 Tage; installiert 2026-10-06
 - [x] Aufnahmegrenzen so gesetzt, dass bei hoher Last keine Zeilen abgewiesen werden – 32/64 MB/s, je Stream 16/64 MB; Nachweis über `loki_discarded_samples_total` im Probelauf – 2026-10-06
-- [ ] Loki als Datenquelle in Grafana
-- [ ] Definition „Baustein fertig“ erfüllt
+- [x] Loki als Datenquelle in Grafana – `b1` Revision 3, Datenquelle `OK`, 2026-10-06
+- [x] Definition „Baustein fertig“ erfüllt – 2026-10-06 (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ### `b3-alloy` (Grafana Alloy)
 

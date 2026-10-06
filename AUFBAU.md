@@ -320,6 +320,10 @@ kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 ```
 Dann im Browser `http://localhost:3000` öffnen, Benutzer `admin`, Passwort aus dem Secret.
 
+**Änderung 2026-10-06 – Loki als Datenquelle (Revision 3) `[Mac]`:** Im Abschnitt Grafana der `values.yaml` `additionalDataSources` mit Loki (`http://loki.logging.svc.cluster.local:3100`, UID `loki`) ergänzt (Commit `7183bc6`), dann derselbe Befehl `helm upgrade --install monitoring …` wie oben.
+- Vorab geprüft: Gegenüber Revision 2 ändert sich nur die ConfigMap `monitoring-kube-prometheus-grafana-datasource`.
+- Ergebnis: Revision 3 `deployed`, keine Neustarts; `/api/datasources/uid/loki/health` → `Data source successfully connected` (`OK`); Explore mit `{namespace="monitoring"}` zeigt Logzeilen und Logvolumen.
+
 **Ressourcen:** siehe Ressourcenübersicht (b1).
 
 **Rückbau `[Mac]`:**
