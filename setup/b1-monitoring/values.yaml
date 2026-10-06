@@ -130,6 +130,16 @@ grafana:
   admin:
     existingSecret: grafana-admin
 
+  # Loki (b2-loki) als zweite Datenquelle: Logs neben den Metriken ansehen
+  # (Standard: keine). Prometheus bleibt Standard-Datenquelle.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.logging.svc.cluster.local:3100
+      access: proxy
+      isDefault: false
+
   resources:
     requests: { cpu: 200m, memory: 512Mi }
     limits:   { cpu: 200m, memory: 512Mi }

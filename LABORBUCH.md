@@ -91,6 +91,7 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - `setup/b2-loki/values.yaml` für Loki-Chart 7.3.0 (Loki 3.6.12, SingleBinary) erstellt und lokal mit `helm template` (Kubernetes 1.37.1, mit ServiceMonitor-API) geprüft: 10 Objekte, ein Container mit requests = limits (500m, 1Gi); im Standard aktive Zusatzdienste (Gateway, Canary, Caches mit 8 GiB bzw. 1 GiB RAM, Test, Regel-Sidecar) abgeschaltet; Nutzungsstatistik an Grafana Labs abgeschaltet.
 - `b2-loki` installiert (Release `loki`, Revision 1, Chart 7.3.0) aus Commit `ab97766`: Pod `loki-0` bereit und `Guaranteed`, Volume 20Gi gebunden, `/ready` → `ready`, Prometheus-Ziel `logging/loki` `up` (siehe `AUFBAU.md`, „b2“). Offen: Loki als Datenquelle in Grafana.
 - `setup/b3-alloy/values.yaml` für Alloy-Chart 1.13.0 (Alloy v1.20.0, DaemonSet) erstellt und lokal mit `helm template` geprüft: 7 Objekte, beide Container (Alloy, config-reloader) mit requests = limits; liest `/var/log/pods` der VM, Lesepositionen auf der VM (`/var/lib/alloy/data`), Nutzungsstatistik abgeschaltet, ServiceMonitor an.
+- `b3-alloy` installiert (Release `alloy`, Revision 1, Chart 1.13.0) aus Commit `f4f27a7`: Pod bereit und `Guaranteed`, keine Fehler, Logs aller Namespaces in Loki. Zähltest an vier Pods (coredns 2675, kube-state-metrics 19, Prometheus Operator 114, local-path-provisioner 17 Zeilen): in Loki jede Zeile genau einmal – keine fehlenden, keine doppelten. Alloy: 6763 gelesen = 6763 gesendet, 0 verworfen; Loki: 0 abgewiesen (siehe `AUFBAU.md`, „b3“).
 - Automatische apt-Updates abgeschaltet: `apt-daily.timer` und `apt-daily-upgrade.timer` sind `disabled` und `inactive` (Ergänzung zu `a1` in `AUFBAU.md`). Damit ist die Beobachtung vom 2026-10-05 zu `unattended-upgrades` umgesetzt.
 - `CHECKLISTE.md` angelegt (Fortschritt je Etappe und Baustein mit Zielterminen, Stand 2026-10-06) und in `KONZEPT.md` (Abschnitte 2 und 7) verankert. Zwei neue offene Punkte in `KONZEPT.md`, Abschnitt 13: `b2-logs` besteht aus zwei Helm-Charts (Loki, Alloy); Puffer für k3s und Betriebssystem ist noch festzulegen.
 
@@ -159,4 +160,6 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 
 **Beobachtung:** Chart `loki` 7.3.0 nennt `appVersion` 3.6.12, liefert aber das Image `grafana/loki:3.6.11` aus; Loki meldet selbst Version 3.6.11. Dokumentiert wird die laufende Version.
 
-**Nächstes:** Loki als Datenquelle in Grafana (Änderung an `b1`), dann `b3-alloy`.
+**Problem:** Das erste Skript für den Zähltest lief in zsh fehlerhaft (Variablen werden dort nicht in Wörter zerlegt) und fand keine Pods; seine Ausgabe („0 = 0“) war ohne Aussage und wurde verworfen. Der Test wurde mit einem Python-Skript wiederholt (Ergebnis oben).
+
+**Nächstes:** Loki als Datenquelle in Grafana (Änderung an `b1`); danach Phase c.

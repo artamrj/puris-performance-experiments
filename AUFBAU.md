@@ -25,6 +25,9 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | node-exporter | v1.12.1 | Cluster | b1 |
 | loki (Helm-Chart) | 7.3.0 | Cluster | b2 |
 | Loki | 3.6.11 (Image `grafana/loki:3.6.11`; `appVersion` des Charts nennt 3.6.12) | Cluster | b2 |
+| alloy (Helm-Chart) | 1.13.0 | Cluster | b3 |
+| Grafana Alloy | v1.20.0 | Cluster | b3 |
+| config-reloader (Alloy) | v0.94.0 (mit Digest im Chart festgelegt) | Cluster | b3 |
 
 ---
 
@@ -47,18 +50,20 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | b1 | Grafana: `grafana-sc-dashboard`, `grafana-sc-datasources` (je) | › Grafana (`sidecar`) | 50m | 50m | 128Mi | 128Mi | Guaranteed |
 | b1 | Admission-Jobs `create`, `patch` (einmalig, beim Installieren) | › Prometheus Operator (`admissionWebhooks.patch`) | 50m | 50m | 64Mi | 64Mi | – |
 | b2 | Loki (SingleBinary): `loki` | `b2-loki/values.yaml` › Loki (`singleBinary`) | 500m | 500m | 1Gi | 1Gi | Guaranteed |
+| b3 | Alloy: `alloy` | `b3-alloy/values.yaml` › Alloy | 300m | 300m | 256Mi | 256Mi | Guaranteed |
+| b3 | Alloy: `config-reloader` (Sidecar) | › config-reloader | 50m | 50m | 64Mi | 64Mi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 1650m CPU, 3200Mi RAM; b2: 500m CPU, 1024Mi RAM.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 1650m CPU, 3200Mi RAM; b2: 500m CPU, 1024Mi RAM; b3: 350m CPU, 320Mi RAM.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `b2`):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `b3`):
 
 | | CPU | RAM |
 |---|---|---|
 | Zuteilbar (`Allocatable`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
-| Summe aller requests | 2350m (29 %) | 4364Mi (14 %) |
-| Rest | 5650m | ≈ 26,1 GiB |
+| Summe aller requests | 2700m (33 %) | 4684Mi (15 %) |
+| Rest | 5300m | ≈ 25,8 GiB |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -385,6 +390,57 @@ Das Volume bleibt bei `helm uninstall` bewusst erhalten (`enableStatefulSetAutoD
 **Hinweise:**
 - Die Installation lief in einem Terminal-Tab mit `puris` (Helm v4.3.0, Tunnel). Ein vorheriger Versuch über die Eingabezeile des Chat-Werkzeugs scheiterte an der Heimnetz-Adresse der Standard-kubeconfig (`i/o timeout`); dabei wurde nichts installiert.
 - Die `appVersion` des Charts (3.6.12) weicht vom ausgelieferten Image (3.6.11) ab; maßgeblich ist das laufende Image.
+
+---
+
+## b3 – Alloy (Logs sammeln)
+
+**Datum:** 2026-10-06
+**Ziel:** Die Container-Logs aller Pods fortlaufend von der Platte der VM lesen und an Loki (`b2`) liefern – vollständig, ohne Doppelungen, mit dem Zeitstempel aus dem Container-Log.
+
+**YAML-Datei:** [`setup/b3-alloy/values.yaml`](setup/b3-alloy/values.yaml) (Abschnitte: Alloy mit Konfiguration, Lesepositionen, config-reloader, ServiceMonitor), Commit `f4f27a7`.
+
+**Befehle `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm upgrade --install alloy grafana/alloy --version 1.13.0 -n logging -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b3-alloy/values.yaml"
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1 --api-versions monitoring.coreos.com/v1/ServiceMonitor` → 7 Objekte, beide Container mit requests = limits; Argumente `--storage.path=/var/lib/alloy/data` und `--disable-reporting`.
+- Ablauf in Alloy: Pods finden (`discovery.kubernetes`) → Labels `namespace`, `pod`, `container` und Dateipfad `/var/log/pods/…` setzen, übrige Labels verwerfen (`discovery.relabel`) → Dateien lesen (`local.file_match`, `loki.source.file`) → CRI-Format zerlegen, Zeitstempel übernehmen (`loki.process`, `stage.cri`) → an Loki senden (`loki.write`).
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl rollout status ds/alloy -n logging
+kubectl get pods -n logging -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[*].ready,QOS:.status.qosClass,RESTARTS:.status.containerStatuses[*].restartCount'
+kubectl logs ds/alloy -n logging -c alloy --since=3m | grep -i -E "level=(error|warn)|permission|denied"
+kubectl get --raw "/api/v1/namespaces/logging/services/http:loki:3100/proxy/loki/api/v1/label/namespace/values"
+```
+Ergebnis:
+- Release `alloy`, Revision 1, `deployed` (Chart `alloy-1.13.0`); Images `grafana/alloy:v1.20.0`, `prometheus-config-reloader:v0.94.0`
+- Pod `alloy-…` bereit (2/2), `Guaranteed`, 0 Neustarts; im Log keine Fehler, Warnungen oder fehlenden Leserechte
+- Loki enthält Logs aus allen Namespaces: `kube-system`, `logging`, `monitoring`
+- **Zähltest** (jede Zeile aus `kubectl logs` gegen Loki, je Pod, Häufigkeit je Zeile verglichen):
+
+  | Pod (Container) | Quelle | Loki | fehlend | doppelt |
+  |---|---|---|---|---|
+  | `coredns` | 2675 | 2675 | 0 | 0 |
+  | `kube-state-metrics` | 19 | 19 | 0 | 0 |
+  | Prometheus Operator | 114 | 114 | 0 | 0 |
+  | `local-path-provisioner` | 17 | 17 | 0 | 0 |
+
+- Zähler in Prometheus: Alloy gelesen `loki_source_file_read_lines_total` = 6763, gesendet `loki_write_sent_entries_total` = 6763, verworfen `loki_write_dropped_entries_total` = 0; Loki empfangen `loki_distributor_lines_received_total` = 6765 (6763 von Alloy + 2 aus den manuellen Push-Versuchen des Funktionstests von `b2`), abgewiesen `loki_discarded_samples_total` = 0
+- Prometheus-Ziele `alloy` und `logging/loki`: `up`; CPU im Leerlauf: Loki ca. 0,016, Alloy ca. 0,006 Kerne
+
+**Ressourcen:** siehe Ressourcenübersicht (b3).
+
+**Rückbau:**
+```bash
+helm uninstall alloy -n logging          # [Mac]
+sudo rm -rf /var/lib/alloy               # [VM] Lesepositionen (hostPath) entfernen
+```
+
+**Hinweise:**
+- Die Lesepositionen liegen auf der VM (`/var/lib/alloy/data`, hostPath). Nach einem Neustart von Alloy wird dort weitergelesen; ohne sie würden alle Dateien erneut gelesen (doppelte Zeilen).
+- Alloy muss mit der Logmenge Schritt halten: Kubernetes rotiert Container-Logs ab 10 Mi und behält 5 Dateien je Container. Den Rückstand im Probelauf prüfen (gelesene gegen geschriebene Bytes).
 
 ---
 

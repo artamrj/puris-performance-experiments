@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; `b2-loki` installiert (offen: Datenquelle in Grafana); als Nächstes `b3-alloy`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; `b2-loki` und `b3-alloy` installiert und geprüft (offen: Loki als Datenquelle in Grafana); danach Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -132,9 +132,9 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 
 - [x] Chart-Version festgelegt (fest, kein `latest`) – Chart 1.13.0, Alloy v1.20.0, 2026-10-06
 - [x] `values.yaml` erstellt und mit `helm template` geprüft (7 Objekte, requests = limits) – 2026-10-06
-- [ ] Sammelt die Logs aller Pods (mindestens PURIS und EDC), mit Kennzeichnung von Namespace und Pod; Zeitstempel aus dem Container-Log
-- [ ] Prüfung: LogQL-Abfrage findet Zeilen eines bekannten Pods; Zähltest – keine verlorenen Zeilen gegenüber der Quelle
-- [ ] Definition „Baustein fertig“ erfüllt
+- [x] Sammelt die Logs aller Pods (mindestens PURIS und EDC), mit Kennzeichnung von Namespace und Pod; Zeitstempel aus dem Container-Log – alle vorhandenen Namespaces in Loki, 2026-10-06 (PURIS/EDC folgen in Phase c/d)
+- [x] Prüfung: LogQL-Abfrage findet Zeilen eines bekannten Pods; Zähltest – keine verlorenen Zeilen gegenüber der Quelle – 4 Pods, jede Zeile genau einmal, 2026-10-06
+- [x] Definition „Baustein fertig“ erfüllt – 2026-10-06 (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ## 4 Phase c – Datenraum
 
