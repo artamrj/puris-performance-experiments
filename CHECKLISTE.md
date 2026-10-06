@@ -238,7 +238,11 @@ Noch offen:
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
 - [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset)
 - [ ] Zweite, stärkere VM/VPS (Idee des Nutzers, 2026-10-06): Rolle festlegen (Hauptmessungen oder Nachbau-Test), Anbieter und Größe (dedizierte vCPU, mind. 8 vCPU/32 GB, stundenweise Abrechnung), Erfolgskriterium vorab in `KONZEPT.md` – Entscheidung bis So 18.10.
-- [ ] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`)
+- [ ] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1`
+- [ ] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden
+- [ ] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c
+- [ ] PostgreSQL der Bundles nutzt `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung ohne Updates) – als Einschränkung vermerken
+- [ ] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`) – Hinweis 2026-10-06: Tractus-X-Bundles setzen `authentication: false`
 - [ ] Identitätsangaben je Firma mit dem Wallet-Stub geprüft (Phase c)
 - [ ] Wallet-Stub wird als Engpasskandidat mitgemessen (Prometheus-Abfragen enthalten ihn)
 - [ ] Ablage der Rohdaten: kleine Dateien in Git, große auf Zenodo – Größe nach dem Probelauf abschätzen
