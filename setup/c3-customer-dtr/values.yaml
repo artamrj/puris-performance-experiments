@@ -48,14 +48,17 @@ digital-twin-registry:
     dataSource:
       url: "jdbc:postgresql://dtr-postgresql:5432/dtr"
 
-    # CPU nach dem NAS-Profil (im Ablauf nicht gefragt). RAM 1Gi statt 512Mi
-    # (NAS-Profil): Der Chart erlaubt keine Java-Einstellung (keine
-    # zusätzlichen Umgebungsvariablen), die JVM nimmt 25 % des Limits als Heap
-    # – mit 1Gi rund 256 MiB. 1Gi ist zugleich der Standard des Charts.
-    # (Standard des Charts: requests 250m/1024Mi, limits 750m/1024Mi.)
+    # CPU nach dem NAS-Profil (im Ablauf nicht gefragt).
+    # RAM 3Gi statt 512Mi/768Mi (NAS-Profil) bzw. 1Gi (Standard des Charts):
+    # Das Image setzt selbst `JAVA_TOOL_OPTIONS=-Xms512m -Xmx2048m` (Log:
+    # „Picked up JAVA_TOOL_OPTIONS“), der Chart kann das nicht ändern. Damit
+    # der größte Heap (2048 MB) samt Speicher der JVM außerhalb des Heaps ins
+    # Limit passt, 3Gi (LABORBUCH.md, 2026-10-06; ersetzt die Annahme „25 %
+    # des Limits“). (Standard des Charts: requests 250m/1024Mi, limits
+    # 750m/1024Mi.)
     resources:
-      requests: { cpu: 100m, memory: 1Gi }
-      limits:   { cpu: 100m, memory: 1Gi }
+      requests: { cpu: 100m, memory: 3Gi }
+      limits:   { cpu: 100m, memory: 3Gi }
 
     # Lebendprüfung (Standard: Beginn nach 100 s, alle 3 s, Neustart nach 3
     # Fehlschlägen = 9 s). Mit 0,1 Kernen war der Java-Dienst nach über 9 min

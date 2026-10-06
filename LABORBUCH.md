@@ -429,3 +429,20 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
   Begründung: Der lange Start ist einmalig und für die Messung ohne Bedeutung; die Frage, ob die CPU der DTRs reicht, beantwortet der Probelauf (Startwerte des NAS-Profils prüfen). Die tolerantere Prüfung im laufenden Betrieb verhindert, dass kurze Verzögerungen unter Last (CPU-Drosselung) einen Neustart mitten im Messlauf auslösen (Standard: Neustart nach 9 s). Verworfen: Option B (Supplier-DTR 400m) – Gesamtplanung dann 6925m von 7000m (99 %), kaum Reserve.
 - Umgesetzt in `setup/c3-customer-dtr/values.yaml` und `setup/c5-supplier-dtr/values.yaml`; lokal mit `helm template` geprüft (je 13 Objekte, requests = limits, Lebendprüfung 1800 s / 10 s / 6).
 - Stand vor der Änderung (14:48 UTC): Customer-DTR nach ca. 9,5 min noch nicht bereit, 0 Neustarts; Supplier-DTR 1 Neustart.
+
+## 2026-10-06 – DTR: Java-Speicher vom Image vorgegeben, Neuinstallation
+
+**Gemacht:** `c3` und `c5` mit der toleranteren Lebendprüfung aktualisiert (Commit `5e69864`, je Revision 2; 16:49:14 bzw. 16:49:16 Ortszeit). Neue Pods mit Lebendprüfung 1800 s / 10 s / 6 gestartet.
+
+**Problem 1 (Korrektur einer Annahme):** Das Log des neuen DTR-Pods zeigt „Picked up JAVA_TOOL_OPTIONS: -Xms512m -Xmx2048m“. Die Einstellung kommt aus dem Image `tractusx/sldt-digital-twin-registry:0.11.0` (im Container gesetzt, nicht im Pod-Manifest und nicht im Secret `dtr`); der Chart kann sie nicht ändern. Die Annahme im Eintrag „`c3-customer-dtr` und `c5-supplier-dtr` vorbereitet“ („Heap = JVM-Standard 25 % des Speicherlimits, mit 1Gi rund 256 MiB“) war **falsch**: Der Heap darf bis 2048 MB wachsen und überschreitet damit das Limit von 1Gi → Gefahr, dass Kubernetes den Container unter Last wegen Speichermangels beendet (OOMKilled).
+
+**Problem 2:** Bei der Aktualisierung liefen die alten Pods (Revision 1) neben den neuen weiter (RollingUpdate mit 1 Replikat: der alte Pod wird erst entfernt, wenn der neue bereit ist). Die alten Pods starteten weiter neu: Customer-DTR 1 Neustart (Lebendprüfung nach 600 s – bestätigt, dass auch er mit der ersten Einstellung nicht rechtzeitig gestartet wäre), Supplier-DTR 2 Neustarts. Mit einer weiteren Revision könnten die Pods dreier Revisionen sich gegenseitig blockieren (höchstens 2 Pods je Deployment erlaubt, keiner bereit).
+
+**Entscheidung** (Auftrag des Verfassers, das Problem zu lösen):
+- DTR mit **3Gi** RAM (requests = limits) statt 1Gi.
+  Begründung: größter Heap 2048 MB plus Speicher der JVM außerhalb des Heaps muss ins Limit passen (Definition „Baustein fertig“, Punkt 3). RAM-Planung danach (mit PURIS und k6): ca. 22,4 GiB von 27,3 GiB (ca. 80 %).
+- DTR-Releases einmal mit `helm uninstall` entfernen und neu installieren statt erneut zu aktualisieren.
+  Begründung: sauberer Stand mit genau einem Pod je DTR; die Datenbank-Volumes bleiben bei `helm uninstall` erhalten (noch keine Daten von Bedeutung).
+- Lokal mit `helm template` geprüft: je 13 Objekte, requests = limits (`c3`: DTR 100m/3Gi; `c5`: DTR 200m/3Gi).
+
+**Nächstes:** Commit, Neuinstallation von `c3` und `c5`, Startdauer messen, Prüfung.
