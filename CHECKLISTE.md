@@ -150,6 +150,9 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Adressen und DIDs über Kubernetes-Dienstnamen (kein Ingress); Wallet-Stub `didHost`/`stubUrl` auf seinen Dienstnamen
 - [ ] EDC: DCP-Einstellungen aus den Umbrella-Werten (DID, Trusted Issuer, STS, Credential Service, BPN-Verzeichnis = Wallet-Stub, `did:web` über HTTP)
 - [ ] PostgreSQL-Images `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (wie in den Bundles) mit festen CPU/RAM-Werten
+- [ ] Widerspruch klären: `c1` nutzt nicht `bitnamilegacy`, sondern das Sub-Chart `cloudpirates/postgres` 0.11.0 (Image `postgres:18.0` mit Digest) – `KONZEPT.md` (Abschnitte 3, 13) anpassen; Images von `c2`–`c5` einzeln prüfen (gefunden 2026-10-06)
+- [ ] `c1`: Chart schreibt das Datenbank-Passwort in eine ConfigMap, kein `existingSecret` möglich – Ausnahme von „Zugangsdaten nur als Secret“ entscheiden und dokumentieren (gefunden 2026-10-06)
+- [ ] Namespaces für Phase c und d festlegen (vor `c1`)
 
 **Bausteine:**
 - [ ] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt

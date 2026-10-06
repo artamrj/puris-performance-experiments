@@ -210,7 +210,7 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 
 **Problem:** `git pull --ff-only` auf der VM scheiterte (`Not possible to fast-forward`): Die Arbeitskopie auf der VM enthielt einen eigenen, nie gepushten Commit `e0fe59e` vom 2026-10-02 („docs: add lab journal with initial environment“). Auf GitHub steht unter derselben Nachricht der Commit `09c5939`; die beiden Fassungen von `LABORBUCH.md` unterscheiden sich nur in drei veralteten Zeilen (ein alter Punkt „Nächstes“ und der offene Punkt „Erfassen, was sonst auf dem NAS läuft“, der bereits in `CHECKLISTE.md`, Abschnitt 1, steht). Gelöst mit `git reset --hard origin/main` auf der VM.
 
-**Entscheidung (Vorschlag, vom Verfasser noch zu bestätigen):** Auf der VM wird im Repository nur noch gelesen (`git pull` bzw. `git reset --hard origin/main`), nie committet; alle Commits entstehen auf dem Mac.
+**Entscheidung** (vom Verfasser bestätigt): Auf der VM wird im Repository nur noch gelesen (`git pull` bzw. `git reset --hard origin/main`), nie committet; alle Commits entstehen auf dem Mac.
   Begründung: Der Stand auf der VM muss immer genau einem Commit auf GitHub entsprechen („aus committeten Dateien installiert“, `KONZEPT.md`, Abschnitt 3); eigene Commits auf der VM führen zu abweichenden Ständen.
 
 **Beobachtung:** Beim Upgrade von `b1` lief der alte Grafana-Pod kurz neben dem neuen weiter (Rollout); erst nach seinem Ende fiel die Summe der requests von 1925m auf 1625m.
