@@ -158,7 +158,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 
 **Bausteine:**
 - [x] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `f753a2b` (Punkt 11: mit dem Commit dieser Dokumentation)
-- [x] `c2-customer-edc` – `dataspace-connector-bundle` 1.3.0 (mit PostgreSQL und Vault); Definition „fertig“ erfüllt – 2026-10-06, Revision 4 aus Commit `d438167`; Katalogabfrage an sich selbst (DSP v0.8 und 2025-1) HTTP 200 (Punkt 11: mit dem Commit dieser Dokumentation)
+- [x] `c2-customer-edc` – `dataspace-connector-bundle` 1.3.0 (mit PostgreSQL und Vault); Definition „fertig“ erfüllt – 2026-10-06, Revision 6 (gleich Revision 4) aus Commit `d438167`; Katalogabfrage an sich selbst (DSP v0.8 und 2025-1) HTTP 200 (Punkt 11: mit dem Commit dieser Dokumentation)
   - [x] Vault: alle 5 Schlüssel zuverlässig beim Start schreiben (`client-secret` fehlte, `postStart` zu früh) und Bereitschaftsprüfung per HTTP – gefunden und behoben 2026-10-06 (dazu `RollingUpdate`)
 - [ ] `c3-customer-dtr` – `digital-twin-bundle` 1.3.0 (mit PostgreSQL); Definition „fertig“ erfüllt
 - [ ] `c4-supplier-edc` – `dataspace-connector-bundle` 1.3.0; Definition „fertig“ erfüllt

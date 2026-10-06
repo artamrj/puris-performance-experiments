@@ -346,7 +346,7 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 ## 2026-10-06 – `c2` geprüft: Identität funktioniert
 
 **Gemacht:**
-- `c2` mit `RollingUpdate` aktualisiert (Revision 4, aus Commit `d438167`): Vault-Pod automatisch neu erstellt (14:18:57 UTC), EDC-Pods liefen unverändert weiter (0 Neustarts). Vault enthält alle 5 Schlüssel; Bereitschaftsprüfung per HTTP.
+- `c2` mit `RollingUpdate` aktualisiert (Revision 4, aus Commit `d438167`): Vault-Pod automatisch neu erstellt (14:18:57 UTC), EDC-Pods liefen unverändert weiter (0 Neustarts). Revisionen 5 und 6 entstanden kurz danach durch wiederholte Aufrufe desselben Befehls (16:19:11 und 16:19:16 Ortszeit); Manifeste und Werte gleich Revision 4, kein Pod neu erstellt. Vault enthält alle 5 Schlüssel; Bereitschaftsprüfung per HTTP.
 - Funktionsprüfung: Katalogabfrage des Customer-EDC an sich selbst über seine DSP-Adresse – mit `dataspace-protocol-http` (v0.8, Partner als BPN, also über das BPN-Verzeichnis) HTTP 200 in 5,4 s (erster Aufruf), mit `dataspace-protocol-http:2025-1` (Partner als DID) HTTP 200 in 2,0 s; jeweils leerer Katalog (noch keine Assets). Keine Warnungen oder Fehler im Log der Control Plane. DSP-Versionen laut `/.well-known/dspace-version`: `v0.8` und `2025-1`.
 - Summe der requests nach `c2`: 3225m CPU (46 % von 7000m), 8396Mi RAM (29 %). Dokumentation in `AUFBAU.md`, „c2“.
 

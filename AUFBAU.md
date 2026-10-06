@@ -597,7 +597,7 @@ kubectl create secret generic edc-vault-secrets -n customer --from-file="$D/clie
 helm upgrade --install edc tractusx-dev/dataspace-connector-bundle --version 1.3.0 -n customer -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c2-customer-edc/values.yaml"
 ```
 - Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → 21 Objekte, keine clusterweiten Objekte, kein Ingress; 4 Container mit requests = limits; DSP-Adresse, öffentliche Adresse der Data Plane, DID, STS, Credential Service und BPN-Verzeichnis über Dienstnamen (kein `tx.test`).
-- Revisionen: 1 (16:07:33 Ortszeit, Installation) → 2 (Korrektur `postStart` und Bereitschaftsprüfung von Vault; ohne Wirkung wegen `OnDelete`) → 3 (derselbe Befehl erneut, identisch mit 2) → 4 (`updateStrategyType: RollingUpdate`; Vault-Pod automatisch neu erstellt).
+- Revisionen: 1 (16:07:33 Ortszeit, Installation) → 2 (Korrektur `postStart` und Bereitschaftsprüfung von Vault; ohne Wirkung wegen `OnDelete`) → 3 (derselbe Befehl erneut, identisch mit 2) → 4 (`updateStrategyType: RollingUpdate`; Vault-Pod automatisch neu erstellt) → 5 und 6 (derselbe Befehl erneut um 16:19:11 und 16:19:16, Manifeste und Werte identisch mit 4, kein Pod neu erstellt).
 
 **Prüfung `[Mac]`:**
 ```bash
@@ -612,7 +612,7 @@ curl -s -X POST http://127.0.0.1:18081/management/v3/catalog/request -H "X-Api-K
 kill %1
 ```
 Ergebnis:
-- Release `edc`, Revision 4, `deployed` (Chart `dataspace-connector-bundle-1.3.0`); Images `tractusx/edc-controlplane-postgresql-hashicorp-vault:0.12.0`, `tractusx/edc-dataplane-hashicorp-vault:0.12.0`, `bitnamilegacy/postgresql:15.4.0-debian-11-r45`, `hashicorp/vault:1.15.2`
+- Release `edc`, Revision 6 (inhaltlich gleich Revision 4), `deployed` (Chart `dataspace-connector-bundle-1.3.0`); Images `tractusx/edc-controlplane-postgresql-hashicorp-vault:0.12.0`, `tractusx/edc-dataplane-hashicorp-vault:0.12.0`, `bitnamilegacy/postgresql:15.4.0-debian-11-r45`, `hashicorp/vault:1.15.2`
 - 4 Pods bereit und `Guaranteed`, 0 Neustarts; „Runtime edc-controlplane ready“ ca. 60 s, „Runtime edc-dataplane ready“ ca. 95 s nach der Installation
 - Volume `data-edc-postgresql-0`: `Bound`, 2Gi, `local-path`
 - Vault: 5 Schlüssel (`aesKey`, `client-secret`, `tokenEncryptionAesKey`, `tokenSignerPrivateKey`, `tokenSignerPublicKey`); Bereitschaftsprüfung per HTTP; Strategie `RollingUpdate`
