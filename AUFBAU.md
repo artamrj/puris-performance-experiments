@@ -35,6 +35,9 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | Tractus-X EDC (Control Plane, Data Plane) | 0.12.0 (auf Basis von EDC 0.15.1) | Cluster | c2, c4 |
 | PostgreSQL (EDC) | 15.4.0 (Image `bitnamilegacy/postgresql:15.4.0-debian-11-r45`) | Cluster | c2, c4 |
 | HashiCorp Vault (EDC, Dev-Modus) | 1.15.2 | Cluster | c2, c4 |
+| digital-twin-bundle (Helm-Chart) | 1.3.0 (Sub-Charts `digital-twin-registry` 0.11.0, `postgresql` 15.2.1 Bitnami) | Cluster | c3, c5 |
+| Digital Twin Registry | 0.11.0 (Image setzt `-Xms512m -Xmx2048m`) | Cluster | c3, c5 |
+| PostgreSQL (DTR) | 15.4.0 (Image `bitnamilegacy/postgresql:15.4.0-debian-11-r45`) | Cluster | c3, c5 |
 
 ---
 
@@ -69,20 +72,24 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | c4 | EDC Data Plane (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | › EDC (`dataplane`) | 400m | 400m | 1Gi | 1Gi | Guaranteed |
 | c4 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 200m | 200m | 512Mi | 512Mi | Guaranteed |
 | c4 | Vault: `vault` | › Vault (`server`) | 100m | 100m | 128Mi | 128Mi | Guaranteed |
+| c3 | DTR: `digital-twin-registry` (Heap vom Image: `-Xms512m -Xmx2048m`) | `c3-customer-dtr/values.yaml` › Digital Twin Registry | 100m | 100m | 3Gi | 3Gi | Guaranteed |
+| c3 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 50m | 50m | 256Mi | 256Mi | Guaranteed |
+| c5 | DTR: `digital-twin-registry` (Heap vom Image: `-Xms512m -Xmx2048m`) | `c5-supplier-dtr/values.yaml` › Digital Twin Registry | 200m | 200m | 3Gi | 3Gi | Guaranteed |
+| c5 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 100m | 100m | 256Mi | 256Mi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM; c3: 150m CPU, 3328Mi RAM; c5: 300m CPU, 3328Mi RAM.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `c4`):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach Phase c):
 
 | | CPU | RAM |
 |---|---|---|
 | Kapazität der VM (`Capacity`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
 | Puffer für Betriebssystem und k3s (`system-reserved`, a2) | 1000m | 3Gi |
 | Zuteilbar (`Allocatable`) | 7 (= 7000m) | 28661608Ki (≈ 27,3 GiB) |
-| Summe aller requests | 4425m (63 %) | 11084Mi (39 %) |
-| Rest | 2575m | ≈ 16,5 GiB |
+| Summe aller requests | 4875m (69 %) | 17740Mi (63 %) |
+| Rest | 2125m | ≈ 10,0 GiB |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi; nach `c3`/`c5` 4875m / 17740Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -699,6 +706,61 @@ kubectl delete pvc data-edc-postgresql-0 -n supplier
 kubectl delete secret edc-vault-secrets -n supplier
 ```
 Den Namespace `supplier` erst löschen, wenn auch `c5` und `d2` entfernt sind. Lokale Schlüssel: `rm -rf ~/.local/opt/puris-loadlab/secrets/supplier-edc`.
+
+---
+
+## c3 und c5 – DTR des Customers und des Suppliers
+
+**Datum:** 2026-10-06
+**Ziel:** Digital Twin Registry je Firma (ohne Anmeldung, ohne Ingress), erreichbar über `http://dtr.customer:8080` bzw. `http://dtr.supplier:8080`.
+
+**YAML-Dateien:** [`setup/c3-customer-dtr/values.yaml`](setup/c3-customer-dtr/values.yaml), [`setup/c5-supplier-dtr/values.yaml`](setup/c5-supplier-dtr/values.yaml) (Abschnitte: Digital Twin Registry, PostgreSQL); Commits `a4154d4` (erste Fassung), `5e69864` (Lebendprüfung), `54aa5c3` (3Gi RAM, installierter Stand).
+
+**Befehle `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm upgrade --install dtr tractusx-dev/digital-twin-bundle --version 1.3.0 -n customer -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c3-customer-dtr/values.yaml"
+helm upgrade --install dtr tractusx-dev/digital-twin-bundle --version 1.3.0 -n supplier -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c5-supplier-dtr/values.yaml"
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → je 13 Objekte, kein Ingress, keine clusterweiten Objekte; je 2 Container mit requests = limits; Datenbank-Adresse `jdbc:postgresql://dtr-postgresql:5432/dtr`; `--spring.profiles.active=local` (ohne Anmeldung).
+- Verlauf (Einzelheiten in `LABORBUCH.md`): erste Installation 16:38 Ortszeit (Lebendprüfung 600 s / 300 s → Supplier-DTR beim Start neu gestartet) → Revision 2 16:49 (Lebendprüfung 1800 s / 10 s / 6; alte Pods liefen weiter) → `helm uninstall dtr` in beiden Namespaces und Neuinstallation 16:52 mit 3Gi RAM (Revision 1). Die Volumes `data-dtr-postgresql-0` blieben erhalten.
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl get pods -n customer -l app.kubernetes.io/name=digital-twin-registry; kubectl get pods -n supplier -l app.kubernetes.io/name=digital-twin-registry
+kubectl logs -n <namespace> deploy/dtr | grep "Started RegistryApplication"
+kubectl get --raw "/api/v1/namespaces/<namespace>/services/http:dtr:8080/proxy/actuator/health"
+kubectl get --raw "/api/v1/namespaces/<namespace>/services/http:dtr:8080/proxy/api/v3/shell-descriptors"
+kubectl exec -n supplier deploy/edc-dataplane -- sh -c 'busybox wget -qO- -T 5 http://dtr.supplier:8080/actuator/health; busybox wget -qO- -T 5 http://dtr.customer:8080/actuator/health'
+kubectl exec -n customer deploy/edc-controlplane -- sh -c 'busybox wget -qO- -T 5 http://dtr.customer:8080/api/v3/shell-descriptors'
+```
+Ergebnis:
+- Releases `dtr` (Namespaces `customer`, `supplier`), je Revision 1, `deployed` (Chart `digital-twin-bundle-1.3.0`); Images `tractusx/sldt-digital-twin-registry:0.11.0`, `bitnamilegacy/postgresql:15.4.0-debian-11-r45`
+- Start mit dem Stand `54aa5c3`, 0 Neustarts:
+
+  | DTR | CPU | „Started RegistryApplication in …“ | Container gestartet → bereit |
+  |---|---|---|---|
+  | Supplier (`c5`) | 200m | 537,8 s | 14:52:46 → 15:02:23 UTC (9,6 min) |
+  | Customer (`c3`) | 100m | 1201,1 s | 14:52:44 → 15:14:14 UTC (21,5 min) |
+
+- Das Image setzt `JAVA_TOOL_OPTIONS=-Xms512m -Xmx2048m` (Log „Picked up JAVA_TOOL_OPTIONS“; im Container gesetzt, nicht im Pod-Manifest)
+- `/actuator/health` → `UP` (beide); `/api/v3/shell-descriptors` → `{"paging_metadata":{},"result":[]}` (beide; noch keine Zwillinge)
+- Namensauflösung im Cluster: aus `edc-dataplane` (Namespace `supplier`) sind `dtr.supplier` und `dtr.customer` erreichbar, aus `edc-controlplane` (Namespace `customer`) die API von `dtr.customer`
+- Volumes `data-dtr-postgresql-0` je Namespace gebunden (10Gi, `local-path`)
+- Verbrauch im Leerlauf nach dem Start (`kubectl top`): Customer-DTR 55m / 606Mi, Supplier-DTR 118m / 772Mi, PostgreSQL je ca. 17m / 35Mi
+- Prometheus erfasst beide DTR-Container
+
+**Ressourcen:** siehe Ressourcenübersicht (c3, c5).
+
+**Rückbau `[Mac]`:**
+```bash
+helm uninstall dtr -n customer && kubectl delete pvc data-dtr-postgresql-0 -n customer
+helm uninstall dtr -n supplier && kubectl delete pvc data-dtr-postgresql-0 -n supplier
+```
+
+**Hinweise:**
+- Mit 0,1 bzw. 0,2 Kernen dauert der Start 10–20 min; die Lebendprüfung erlaubt 1800 s. Ein Neustart eines DTR (z. B. beim Neuaufbau) kostet entsprechend Zeit.
+- Bei einer Aktualisierung laufen die alten Pods weiter, bis der neue Pod bereit ist (RollingUpdate mit 1 Replikat); bei mehreren Aktualisierungen hintereinander ggf. `helm uninstall` und Neuinstallation.
+- Der Heap wird vom Image festgelegt (bis 2048 MB); das Speicherlimit muss deshalb deutlich darüber liegen.
 
 ---
 

@@ -446,3 +446,19 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Lokal mit `helm template` geprüft: je 13 Objekte, requests = limits (`c3`: DTR 100m/3Gi; `c5`: DTR 200m/3Gi).
 
 **Nächstes:** Commit, Neuinstallation von `c3` und `c5`, Startdauer messen, Prüfung.
+
+## 2026-10-06 – `c3`/`c5` geprüft: Phase c abgeschlossen
+
+**Gemacht:**
+- `helm uninstall dtr` in `customer` und `supplier`, Neuinstallation aus Commit `54aa5c3` (16:52:41 bzw. 16:52:43 Ortszeit, je Revision 1). Die alten Pods beendeten sich nach ihrer Frist von 30 s; die Volumes `data-dtr-postgresql-0` blieben erhalten.
+- Warten auf die Bereitschaft im Hintergrund (`kubectl wait`, ohne den Nutzer zu blockieren).
+- Startdauer (0 Neustarts): Supplier-DTR (200m) „Started RegistryApplication in 537.8 seconds“, bereit nach 9,6 min; Customer-DTR (100m) „… in 1201.132 seconds“, bereit nach 21,5 min.
+- Prüfung: `/actuator/health` beider DTRs `UP`; `/api/v3/shell-descriptors` liefert eine leere Liste; aus den EDC-Pods sind `dtr.supplier` und `dtr.customer` per Dienstnamen erreichbar (BusyBox `wget`). Prometheus erfasst beide DTRs.
+- Alle 14 Pods der Phase c bereit und `Guaranteed`; einziger Neustart: Wallet-Stub beim ersten Start (siehe „`c1-identitaet` installiert“). Summe der requests nach Phase c: 4875m CPU (69 % von 7000m), 17740Mi RAM (63 %).
+
+**Beobachtungen:**
+- Verbrauch der DTRs im Leerlauf nach dem Start: Customer 55m / 606Mi, Supplier 118m / 772Mi – über den ursprünglichen RAM-Werten des NAS-Profils (512Mi / 768Mi); die Erhöhung auf 3Gi (Heap vom Image bis 2048 MB) war nötig.
+- Der Customer-DTR braucht mit 0,1 Kernen gut 20 min für den Start; die Lebendprüfung erlaubt 30 min. Ein Neustart des DTR (z. B. beim Neuaufbau in Etappe 2 oder beim Nachbau-Test) kostet entsprechend Zeit. Im Ablauf der Bestandsabfrage wird er nicht gefragt.
+- Zugriff auf die DTRs über die EDCs (Assets) ist erst möglich, wenn PURIS sie anlegt (Phase d).
+
+**Nächstes:** Phase d – PURIS Customer (`d1`) und Supplier (`d2`).

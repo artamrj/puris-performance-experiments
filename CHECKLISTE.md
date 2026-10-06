@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) vorbereitet (`values.yaml` geprüft), als Nächstes Installation. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); als Nächstes Phase d (PURIS). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -143,15 +143,15 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnitte 3 und 13).
 
 **Für alle Bausteine der Phase c:**
-- [ ] Charts mit k3s v1.37.1 lauffähig (sonst Versionswechsel mit Laborbuch-Eintrag)
-- [ ] Identitätsangaben je Firma (BPN, DID) aus den getesteten Werten des Umbrella-Charts 26.03.00 übernommen (`dataconsumerOne` → Customer, `tx-data-provider` → Supplier)
-- [ ] Heap der Java-Dienste (EDC, DTR) passt ins Speicherlimit
-- [ ] Datenbank-Zugangsdaten nur als Secret
-- [ ] Adressen und DIDs über Kubernetes-Dienstnamen (kein Ingress); Wallet-Stub `didHost`/`stubUrl` auf seinen Dienstnamen
+- [x] Charts mit k3s v1.37.1 lauffähig (sonst Versionswechsel mit Laborbuch-Eintrag) – alle Bausteine `c1`–`c5` ohne Versionswechsel, 2026-10-06
+- [x] Identitätsangaben je Firma (BPN, DID) aus den getesteten Werten des Umbrella-Charts 26.03.00 übernommen (`dataconsumerOne` → Customer, `tx-data-provider` → Supplier) – `c1`, `c2`, `c4`, 2026-10-06
+- [x] Heap der Java-Dienste (EDC, DTR) passt ins Speicherlimit – EDC: `MaxRAMPercentage=75`; DTR: Heap vom Image bis 2048 MB, Limit 3Gi; Wallet-Stub: JVM-Standard; 2026-10-06
+- [x] Datenbank-Zugangsdaten nur als Secret – entfällt für `c1`–`c5` (Grund: Charts erlauben dafür kein Secret; öffentliche Testwerte, dokumentiert in `KONZEPT.md`, Abschnitt 3); eigene Schlüssel der EDCs dagegen nur als Secret
+- [x] Adressen und DIDs über Kubernetes-Dienstnamen (kein Ingress); Wallet-Stub `didHost`/`stubUrl` auf seinen Dienstnamen – 2026-10-06 (kein Ingress in `c1`–`c5`)
 - [x] EDC: DCP-Einstellungen aus den Umbrella-Werten (DID, Trusted Issuer, STS, Credential Service, BPN-Verzeichnis = Wallet-Stub, `did:web` über HTTP) – `c2`, `c4`; Katalogabfragen zwischen den Firmen erfolgreich, 2026-10-06
-- [ ] PostgreSQL-Images `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (wie in den Bundles) mit festen CPU/RAM-Werten
+- [x] PostgreSQL-Images `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (wie in den Bundles) mit festen CPU/RAM-Werten – `c2`–`c5` (`c1`: `postgres:18.0`, siehe unten), 2026-10-06
 - [x] Widerspruch klären: `c1` nutzt nicht `bitnamilegacy`, sondern das Sub-Chart `cloudpirates/postgres` 0.11.0 (Image `postgres:18.0` mit Digest) – `KONZEPT.md` Abschnitt 3 angepasst, 2026-10-06
-- [ ] PostgreSQL-Images von `c2`–`c5` je Baustein am gerenderten Chart prüfen
+- [x] PostgreSQL-Images von `c2`–`c5` je Baustein am gerenderten Chart prüfen – alle `bitnamilegacy/postgresql:15.4.0-debian-11-r45`, 2026-10-06
 - [x] `c1`: Chart schreibt das Datenbank-Passwort in eine ConfigMap, kein `existingSecret` möglich – Ausnahme von „Zugangsdaten nur als Secret“ entscheiden und dokumentieren – Standardwert des Charts bleibt; `KONZEPT.md` Abschnitt 3, `LABORBUCH.md`, 2026-10-06
 - [x] Namespaces für Phase c und d festlegen (vor `c1`) – `identity`, `customer`, `supplier`; 2026-10-06
 - [x] `c2`/`c4`: Schlüssel der Data Plane (`tokenSignerPrivateKey`/`tokenSignerPublicKey`) und Client-Secret in Vault bereitstellen – das Bundle legt sie nicht an, im Umbrella-Chart erledigt das der Wrapper `tx-data-provider` (gefunden 2026-10-06) – erledigt 2026-10-06: eigenes Secret je Firma, Vault schreibt bei jedem Start
@@ -160,15 +160,15 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `f753a2b` (Punkt 11: mit dem Commit dieser Dokumentation)
 - [x] `c2-customer-edc` – `dataspace-connector-bundle` 1.3.0 (mit PostgreSQL und Vault); Definition „fertig“ erfüllt – 2026-10-06, Revision 6 (gleich Revision 4) aus Commit `d438167`; Katalogabfrage an sich selbst (DSP v0.8 und 2025-1) HTTP 200 (Punkt 11: mit dem Commit dieser Dokumentation)
   - [x] Vault: alle 5 Schlüssel zuverlässig beim Start schreiben (`client-secret` fehlte, `postStart` zu früh) und Bereitschaftsprüfung per HTTP – gefunden und behoben 2026-10-06 (dazu `RollingUpdate`)
-- [ ] `c3-customer-dtr` – `digital-twin-bundle` 1.3.0 (mit PostgreSQL); Definition „fertig“ erfüllt
+- [x] `c3-customer-dtr` – `digital-twin-bundle` 1.3.0 (mit PostgreSQL); Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `54aa5c3`, Start 21,5 min (Punkt 11: mit dem Commit dieser Dokumentation)
 - [x] `c4-supplier-edc` – `dataspace-connector-bundle` 1.3.0; Definition „fertig“ erfüllt – 2026-10-06, Revision 1 aus Commit `6449ffc` (Punkt 11: mit dem Commit dieser Dokumentation)
-- [ ] `c5-supplier-dtr` – `digital-twin-bundle` 1.3.0; Definition „fertig“ erfüllt
+- [x] `c5-supplier-dtr` – `digital-twin-bundle` 1.3.0; Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `54aa5c3`, Start 9,6 min (Punkt 11: mit dem Commit dieser Dokumentation)
 
 **Prüfung des Datenraums:**
 - [x] Beide EDCs erhalten Identitätsnachweise vom Wallet-Stub – 2026-10-06 (Katalogabfragen in beide Richtungen, DSP v0.8 und 2025-1)
 - [x] Katalogabfrage Customer-EDC → Supplier-EDC erfolgreich – 2026-10-06, HTTP 200 (auch Supplier → Customer)
-- [ ] Beide DTRs erreichbar (über den EDC der jeweiligen Firma)
-- [ ] Summe der Ressourcen nach Phase c gegenüber `Allocatable` geprüft
+- [ ] Beide DTRs erreichbar (über den EDC der jeweiligen Firma) *(2026-10-06: aus den EDC-Pods per Dienstnamen erreichbar; Zugriff über EDC-Assets erst, wenn PURIS sie anlegt – Phase d)*
+- [x] Summe der Ressourcen nach Phase c gegenüber `Allocatable` geprüft – 4875m CPU (69 %), 17740Mi RAM (63 %), 2026-10-06
 
 ## 5 Phase d – PURIS (Chart `puris` 7.2.0 = PURIS 6.2.0)
 
