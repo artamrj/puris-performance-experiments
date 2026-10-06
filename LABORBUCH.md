@@ -200,3 +200,19 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 **Beobachtung:** Der Ist-Verbrauch von `b1`–`b3` im Leerlauf liegt weit unter den Werten des NAS-Profils (z. B. Prometheus 27m gegenüber 500m). Ob die Werte unter Last reichen, zeigt der Probelauf (Drosselung, abgewiesene Logzeilen).
 
 **Nächstes:** Puffer für k3s und Betriebssystem (`system-reserved=cpu=1000m,memory=3Gi` über `setup/a2-k3s/config.yaml`), dann `b1`–`b3` auf das NAS-Profil verkleinern.
+
+## 2026-10-06 – Puffer für Betriebssystem und k3s, NAS-Profil für `b1`–`b3`
+
+**Gemacht:**
+- `setup/a2-k3s/config.yaml` angelegt (`system-reserved=cpu=1000m,memory=3Gi`) und die CPU-Werte von `b1`–`b3` auf das NAS-Profil gesenkt; lokal mit `helm template` (Helm v4.3.0, Kubernetes 1.37.1) geprüft: Objektzahlen unverändert (99 / 10 / 7), alle Container requests = limits, laufende Container von `b1`–`b3` zusammen 1425m statt 2500m CPU; RAM unverändert. Commit `e6313b2`.
+- Puffer auf der VM aktiviert (Datei nach `/etc/rancher/k3s/config.yaml`, Neustart von k3s): `Allocatable` jetzt 7000m CPU und 28661608Ki RAM; alle Pods liefen ohne Neustart weiter (siehe `AUFBAU.md`, „a2“).
+- `b1`–`b3` mit den gesenkten CPU-Werten installiert (`monitoring` Revision 4, `loki` Revision 2, `alloy` Revision 2, aus Commit `e6313b2`): alle Pods `Guaranteed`, 0 Neustarts; Summe der requests 1625m CPU (23 % von 7000m), 4684Mi RAM (16 %). Prometheus-Ziele 13/13 `up`, Loki `ready` ohne abgewiesene Zeilen, Logzeilen der neu erstellten Pods kommen in Loki an (siehe `AUFBAU.md`, „b1“–„b3“).
+
+**Problem:** `git pull --ff-only` auf der VM scheiterte (`Not possible to fast-forward`): Die Arbeitskopie auf der VM enthielt einen eigenen, nie gepushten Commit `e0fe59e` vom 2026-10-02 („docs: add lab journal with initial environment“). Auf GitHub steht unter derselben Nachricht der Commit `09c5939`; die beiden Fassungen von `LABORBUCH.md` unterscheiden sich nur in drei veralteten Zeilen (ein alter Punkt „Nächstes“ und der offene Punkt „Erfassen, was sonst auf dem NAS läuft“, der bereits in `CHECKLISTE.md`, Abschnitt 1, steht). Gelöst mit `git reset --hard origin/main` auf der VM.
+
+**Entscheidung (Vorschlag, vom Verfasser noch zu bestätigen):** Auf der VM wird im Repository nur noch gelesen (`git pull` bzw. `git reset --hard origin/main`), nie committet; alle Commits entstehen auf dem Mac.
+  Begründung: Der Stand auf der VM muss immer genau einem Commit auf GitHub entsprechen („aus committeten Dateien installiert“, `KONZEPT.md`, Abschnitt 3); eigene Commits auf der VM führen zu abweichenden Ständen.
+
+**Beobachtung:** Beim Upgrade von `b1` lief der alte Grafana-Pod kurz neben dem neuen weiter (Rollout); erst nach seinem Ende fiel die Summe der requests von 1925m auf 1625m.
+
+**Nächstes:** Phase c, beginnend mit `c1-identitaet` (Wallet-Stub).

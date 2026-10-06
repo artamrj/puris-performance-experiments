@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus; als Nächstes Puffer für k3s, `b1`–`b3` auf das NAS-Profil, dann Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; als Nächstes Phase c (`c1-identitaet`). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -102,8 +102,8 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] `a2` k3s v1.37.1+k3s1 ohne Traefik; Knoten `Ready` – 2026-10-05
 - [x] `a3` Helm v4.3.0 (Prüfsumme kontrolliert) – 2026-10-05
 - [x] Zuteilbare Ressourcen des Knotens und k3s-eigene Pods in der Ressourcenübersicht – 2026-10-06
-- [ ] Puffer für den Prozess `k3s` und das Betriebssystem festlegen (CPU, RAM) und in der Ressourcenübersicht ausweisen – vor der Verteilung der Ressourcen in Phase c
-- [ ] `b1`–`b3` auf die Startwerte des NAS-Profils verkleinern (installiert: 2,5 Kerne, NAS-Profil: 1,43 Kerne) und Summe gegenüber `Allocatable` neu prüfen – vor `c1`, bis Sa 10.10. (`VPS-VARIANTE.md`, Abschnitt 2)
+- [x] Puffer für den Prozess `k3s` und das Betriebssystem festlegen (CPU, RAM) und in der Ressourcenübersicht ausweisen – vor der Verteilung der Ressourcen in Phase c – 1000m / 3Gi, `Allocatable` 7000m / 28661608Ki; 2026-10-06, Commit `e6313b2`
+- [x] `b1`–`b3` auf die Startwerte des NAS-Profils verkleinern (installiert: 2,5 Kerne, NAS-Profil: 1,43 Kerne) und Summe gegenüber `Allocatable` neu prüfen – vor `c1`, bis Sa 10.10. (`VPS-VARIANTE.md`, Abschnitt 2) – Revisionen 4 / 2 / 2 aus Commit `e6313b2`, requests gesamt 1625m von 7000m; 2026-10-06
 
 ## 3 Phase b – Monitoring und Logs
 
@@ -239,7 +239,7 @@ Geklärt (Details in `KONZEPT.md`, Abschnitt 13):
 
 Noch offen:
 - [x] Logs: zwei Bausteine `b2-loki` und `b3-alloy` – 2026-10-06
-- [ ] Puffer für k3s und Betriebssystem (Abschnitt 2)
+- [x] Puffer für k3s und Betriebssystem (Abschnitt 2) – 2026-10-06
 - [ ] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf)
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
 - [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset)

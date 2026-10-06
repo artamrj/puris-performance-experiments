@@ -41,29 +41,31 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | a2 (k3s) | `metrics-server` | – (Vorgabe k3s) | 100m | – | 70Mi | – | Burstable |
 | a2 (k3s) | `local-path-provisioner` | – (Vorgabe k3s) | – | – | – | – | BestEffort |
 | a2 (k3s) | `helm-install-gateway-api-crd` (einmaliger Job, abgeschlossen) | – (Vorgabe k3s) | 100m | 32 | 10M | 32G | Burstable |
-| b1 | Prometheus: `prometheus` | `b1-monitoring/values.yaml` › Prometheus | 1000m | 1000m | 2Gi | 2Gi | Guaranteed |
+| b1 | Prometheus: `prometheus` | `b1-monitoring/values.yaml` › Prometheus | 500m | 500m | 2Gi | 2Gi | Guaranteed |
 | b1 | Prometheus: `config-reloader` (Sidecar, auch Init-Container) | › Prometheus Operator (`prometheusConfigReloader`) | 50m | 50m | 64Mi | 64Mi | Guaranteed |
 | b1 | Prometheus Operator | › Prometheus Operator | 100m | 100m | 128Mi | 128Mi | Guaranteed |
-| b1 | kube-state-metrics | › kube-state-metrics | 100m | 100m | 128Mi | 128Mi | Guaranteed |
-| b1 | node-exporter | › node-exporter | 100m | 100m | 64Mi | 64Mi | Guaranteed |
-| b1 | Grafana: `grafana` | › Grafana | 200m | 200m | 512Mi | 512Mi | Guaranteed |
-| b1 | Grafana: `grafana-sc-dashboard`, `grafana-sc-datasources` (je) | › Grafana (`sidecar`) | 50m | 50m | 128Mi | 128Mi | Guaranteed |
+| b1 | kube-state-metrics | › kube-state-metrics | 50m | 50m | 128Mi | 128Mi | Guaranteed |
+| b1 | node-exporter | › node-exporter | 50m | 50m | 64Mi | 64Mi | Guaranteed |
+| b1 | Grafana: `grafana` | › Grafana | 100m | 100m | 512Mi | 512Mi | Guaranteed |
+| b1 | Grafana: `grafana-sc-dashboard`, `grafana-sc-datasources` (je) | › Grafana (`sidecar`) | 25m | 25m | 128Mi | 128Mi | Guaranteed |
 | b1 | Admission-Jobs `create`, `patch` (einmalig, beim Installieren) | › Prometheus Operator (`admissionWebhooks.patch`) | 50m | 50m | 64Mi | 64Mi | – |
-| b2 | Loki (SingleBinary): `loki` | `b2-loki/values.yaml` › Loki (`singleBinary`) | 500m | 500m | 1Gi | 1Gi | Guaranteed |
-| b3 | Alloy: `alloy` | `b3-alloy/values.yaml` › Alloy | 300m | 300m | 256Mi | 256Mi | Guaranteed |
-| b3 | Alloy: `config-reloader` (Sidecar) | › config-reloader | 50m | 50m | 64Mi | 64Mi | Guaranteed |
+| b2 | Loki (SingleBinary): `loki` | `b2-loki/values.yaml` › Loki (`singleBinary`) | 300m | 300m | 1Gi | 1Gi | Guaranteed |
+| b3 | Alloy: `alloy` | `b3-alloy/values.yaml` › Alloy | 200m | 200m | 256Mi | 256Mi | Guaranteed |
+| b3 | Alloy: `config-reloader` (Sidecar) | › config-reloader | 25m | 25m | 64Mi | 64Mi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 1650m CPU, 3200Mi RAM; b2: 500m CPU, 1024Mi RAM; b3: 350m CPU, 320Mi RAM.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU).*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `b3`):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach dem Puffer für k3s und dem NAS-Profil für `b1`–`b3`):
 
 | | CPU | RAM |
 |---|---|---|
-| Zuteilbar (`Allocatable`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
-| Summe aller requests | 2700m (33 %) | 4684Mi (15 %) |
-| Rest | 5300m | ≈ 25,8 GiB |
+| Kapazität der VM (`Capacity`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
+| Puffer für Betriebssystem und k3s (`system-reserved`, a2) | 1000m | 3Gi |
+| Zuteilbar (`Allocatable`) | 7 (= 7000m) | 28661608Ki (≈ 27,3 GiB) |
+| Summe aller requests | 1625m (23 %) | 4684Mi (16 %) |
+| Rest | 5375m | ≈ 22,8 GiB |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -71,7 +73,7 @@ kubectl describe node | grep -A 6 -E "^(Capacity|Allocatable):"; kubectl describ
 ```
 Ergebnis: `Capacity` und `Allocatable` sind gleich (CPU 8, RAM 31807336Ki, Pods 110). Zugeteilt: requests CPU 200m, RAM 140Mi; limits CPU 0, RAM 170Mi.
 
-**Hinweis:** `Allocatable` = `Capacity`: k3s hält standardmäßig nichts für das Betriebssystem und für sich selbst zurück. API-Server, Datenspeicher, kubelet und containerd laufen im Prozess `k3s` außerhalb von Pods und erscheinen nicht in dieser Tabelle. Ein Puffer für sie muss bei der Verteilung der Ressourcen selbst eingeplant werden.
+**Hinweis:** `Allocatable` = `Capacity`: k3s hält standardmäßig nichts für das Betriebssystem und für sich selbst zurück. API-Server, Datenspeicher, kubelet und containerd laufen im Prozess `k3s` außerhalb von Pods und erscheinen nicht in dieser Tabelle. Ein Puffer für sie muss bei der Verteilung der Ressourcen selbst eingeplant werden. Seit 2026-10-06 gesetzt: `system-reserved=cpu=1000m,memory=3Gi` (a2, Ergänzung).
 
 ---
 
@@ -166,6 +168,33 @@ Ergebnis (ca. 75 s nach der Installation):
 **Hinweise:**
 - Gewählt wurde die zum Zeitpunkt des Aufbaus neueste Version (Kanal `latest`: v1.37.1+k3s1). Der Kanal `stable` stand zu diesem Zeitpunkt bei v1.36.5+k3s1.
 - Das Installationsskript prüft die heruntergeladene Datei anhand der veröffentlichten SHA-256-Prüfsumme.
+
+**Ergänzung 2026-10-06 – Puffer für Betriebssystem und k3s `[VM]`:**
+Ohne Puffer ist `Allocatable` = `Capacity`; Pods könnten die ganze VM verplanen, obwohl API-Server, Datenspeicher, kubelet und containerd im Prozess `k3s` außerhalb von Pods laufen. Puffer nach dem NAS-Profil (`VPS-VARIANTE.md`, Abschnitt 2): 1000m CPU, 3Gi RAM.
+
+**YAML-Datei:** [`setup/a2-k3s/config.yaml`](setup/a2-k3s/config.yaml) (`kubelet-arg: system-reserved=cpu=1000m,memory=3Gi`), Commit `e6313b2`. Die Optionen der Installation (`--disable traefik`, `--write-kubeconfig-mode 644`) bleiben in der systemd-Unit.
+
+**Befehle `[VM]`** (vom Mac aus als `ssh -t puris-vm '<Befehl>'`):
+```bash
+cd ~/puris-performance-experiments && git reset --hard origin/main && git log -1 --oneline
+sudo install -m 644 setup/a2-k3s/config.yaml /etc/rancher/k3s/config.yaml && sudo systemctl restart k3s && systemctl is-active k3s
+```
+- `git reset --hard origin/main`: Die Arbeitskopie auf der VM enthielt einen nie gepushten Commit (siehe `LABORBUCH.md`, 2026-10-06); sie wird auf den Stand von GitHub gesetzt.
+- Laufende Pods bleiben beim Neustart von k3s erhalten (`KillMode=process` in `/etc/systemd/system/k3s.service`).
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl describe node | grep -A 6 -E "^(Capacity|Allocatable):"; kubectl describe node | grep -A 9 "Allocated resources:"
+kubectl get pods -A -o custom-columns='NS:.metadata.namespace,POD:.metadata.name,STATUS:.status.phase,QOS:.status.qosClass,RESTARTS:.status.containerStatuses[*].restartCount,START:.status.startTime'
+```
+Ergebnis:
+- `systemctl is-active k3s` → `active` (seit 10:04:53 UTC); Knoten `Ready`
+- `Capacity` unverändert: CPU 8, RAM 31807336Ki
+- `Allocatable`: CPU 7, RAM 28661608Ki (= Capacity − 3Gi; ≈ 27,3 GiB)
+- Alle Pods `Running`, 0 Neustarts, Startzeiten unverändert (kein Pod neu gestartet)
+- Zugeteilt: requests CPU 2700m (38 %), RAM 4684Mi (16 %)
+
+**Rückbau `[VM]`:** `sudo rm /etc/rancher/k3s/config.yaml && sudo systemctl restart k3s`
 
 ---
 
@@ -346,6 +375,13 @@ Dann im Browser `http://localhost:3000` öffnen, Benutzer `admin`, Passwort aus 
 - Vorab geprüft: Gegenüber Revision 2 ändert sich nur die ConfigMap `monitoring-kube-prometheus-grafana-datasource`.
 - Ergebnis: Revision 3 `deployed`, keine Neustarts; `/api/datasources/uid/loki/health` → `Data source successfully connected` (`OK`); Explore mit `{namespace="monitoring"}` zeigt Logzeilen und Logvolumen.
 
+**Änderung 2026-10-06 – CPU nach dem NAS-Profil (Revision 4) `[Mac]`:** CPU-Werte in der `values.yaml` gesenkt (`VPS-VARIANTE.md`, Abschnitt 2; Commit `e6313b2`): Prometheus 1000m → 500m, kube-state-metrics 100m → 50m, node-exporter 100m → 50m, Grafana 200m → 100m, Grafana-Hilfscontainer je 50m → 25m; RAM unverändert. Vorher gemessener Verbrauch im Leerlauf (`kubectl top`): Prometheus 27m, Grafana 26m, übrige ≤ 5m. Befehl (gemeinsam mit `b2` und `b3`):
+```bash
+puris && helm upgrade --install monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack --version 91.9.0 -n monitoring -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b1-monitoring/values.yaml" && helm upgrade --install loki grafana/loki --version 7.3.0 -n logging -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b2-loki/values.yaml" && helm upgrade --install alloy grafana/alloy --version 1.13.0 -n logging -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b3-alloy/values.yaml"
+```
+- Vorab lokal geprüft: `helm template` → weiterhin 99 Objekte, alle Container requests = limits.
+- Ergebnis: Revision 4 `deployed`; Pods von Prometheus, kube-state-metrics, node-exporter und Grafana mit den neuen Werten neu erstellt, alle `Guaranteed`, 0 Neustarts (alter Grafana-Pod nach dem Rollout beendet); Prometheus-Ziele 13/13 `up`; cAdvisor-Werte je Pod vorhanden.
+
 **Ressourcen:** siehe Ressourcenübersicht (b1).
 
 **Rückbau `[Mac]`:**
@@ -403,6 +439,9 @@ kill %1
 ```
 Ergebnis (2026-10-06): Schreiben `HTTP 204`; Zurücklesen: 1 Stream `{job="b2-funktionstest"}` mit der geschriebenen Zeile `Loki-Funktionstest b2 2026-10-06T00:11:39Z`. In Prometheus danach `loki_distributor_lines_received_total` = 1, `loki_discarded_samples_total` ohne Werte (= 0). Die Testzeile trägt ein eigenes Label und wird bei Auswertungen nicht mitgezählt.
 
+**Änderung 2026-10-06 – CPU nach dem NAS-Profil (Revision 2) `[Mac]`:** Loki 500m → 300m CPU, RAM unverändert (`VPS-VARIANTE.md`, Abschnitt 2; Commit `e6313b2`); vorher gemessen im Leerlauf: 15m. Befehl wie oben, gemeinsam mit `b1` und `b3` (siehe `b1`, Änderung Revision 4).
+- Ergebnis: Revision 2 `deployed`; `loki-0` mit 300m neu gestartet, `Guaranteed`, 0 Neustarts; `/ready` → `ready`; nach dem Neustart `loki_distributor_lines_received_total` = 1328, `loki_discarded_samples_total` ohne Werte (= 0); Logzeilen der neu erstellten Pods kommen an.
+
 **Ressourcen:** siehe Ressourcenübersicht (b2).
 
 **Rückbau `[Mac]`:**
@@ -455,6 +494,9 @@ Ergebnis:
 
 - Zähler in Prometheus: Alloy gelesen `loki_source_file_read_lines_total` = 6763, gesendet `loki_write_sent_entries_total` = 6763, verworfen `loki_write_dropped_entries_total` = 0; Loki empfangen `loki_distributor_lines_received_total` = 6765 (6763 von Alloy + 2 aus den manuellen Push-Versuchen des Funktionstests von `b2`), abgewiesen `loki_discarded_samples_total` = 0
 - Prometheus-Ziele `alloy` und `logging/loki`: `up`; CPU im Leerlauf: Loki ca. 0,016, Alloy ca. 0,006 Kerne
+
+**Änderung 2026-10-06 – CPU nach dem NAS-Profil (Revision 2) `[Mac]`:** Alloy 300m → 200m, config-reloader 50m → 25m CPU, RAM unverändert (`VPS-VARIANTE.md`, Abschnitt 2; Commit `e6313b2`); vorher gemessen im Leerlauf: Alloy 17m, config-reloader 1m. Befehl wie oben, gemeinsam mit `b1` und `b2` (siehe `b1`, Änderung Revision 4).
+- Ergebnis: Revision 2 `deployed`; Pod `alloy-…` mit den neuen Werten neu erstellt, `Guaranteed`, 0 Neustarts; Loki erhält Logzeilen der neu erstellten Pods (5 min nach dem Upgrade: Grafana 1845, `loki-0` 142, Alloy 52 Zeilen).
 
 **Ressourcen:** siehe Ressourcenübersicht (b3).
 
