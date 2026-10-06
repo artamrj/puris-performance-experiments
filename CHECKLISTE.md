@@ -145,6 +145,9 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Identitätsangaben je Firma (BPN, DID) aus den getesteten Werten des Umbrella-Charts 26.03.00 übernommen (`dataconsumerOne` → Customer, `tx-data-provider` → Supplier)
 - [ ] Heap der Java-Dienste (EDC, DTR) passt ins Speicherlimit
 - [ ] Datenbank-Zugangsdaten nur als Secret
+- [ ] Adressen und DIDs über Kubernetes-Dienstnamen (kein Ingress); Wallet-Stub `didHost`/`stubUrl` auf seinen Dienstnamen
+- [ ] EDC: DCP-Einstellungen aus den Umbrella-Werten (DID, Trusted Issuer, STS, Credential Service, BPN-Verzeichnis = Wallet-Stub, `did:web` über HTTP)
+- [ ] PostgreSQL-Images `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (wie in den Bundles) mit festen CPU/RAM-Werten
 
 **Bausteine:**
 - [ ] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt
@@ -167,7 +170,8 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] API-Key und Datenbank-Zugangsdaten nur als Secret
 - [ ] PostgreSQL des Charts mit festen CPU/RAM-Werten
 - [ ] Heap des Backends passt ins Speicherlimit
-- [ ] Entschieden, ob Frontend und Anmeldedienst gebraucht werden (nur für die Einrichtung); Entscheidung im Laborbuch
+- [x] Entschieden, ob Frontend und Anmeldedienst gebraucht werden (nur für die Einrichtung); Entscheidung im Laborbuch – kein Frontend, kein Keycloak, nur API-Key, 2026-10-06 *(abgeleitet – bitte bestätigen)*
+- [ ] PURIS-Einstellungen: `dtr.idp.enabled: false`, Profil `profile2509`, Nachweis `DataExchangeGovernance` 1.0, Zweck `cx.puris.base` 1; Adressen über Dienstnamen
 - [ ] Health-Endpunkt meldet `UP`
 
 **Bausteine:**
@@ -238,11 +242,11 @@ Noch offen:
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
 - [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset)
 - [ ] Zweite, stärkere VM/VPS (Idee des Nutzers, 2026-10-06): Rolle festlegen (Hauptmessungen oder Nachbau-Test), Anbieter und Größe (dedizierte vCPU, mind. 8 vCPU/32 GB, stundenweise Abrechnung), Erfolgskriterium vorab in `KONZEPT.md` – Entscheidung bis So 18.10.
-- [ ] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1`
-- [ ] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden
+- [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
+- [x] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden – weggelassen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [ ] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c
 - [ ] PostgreSQL der Bundles nutzt `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung ohne Updates) – als Einschränkung vermerken
-- [ ] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`) – Hinweis 2026-10-06: Tractus-X-Bundles setzen `authentication: false`
+- [x] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`) – nein: Tractus-X-Bundles setzen `authentication: false` (Quelle: Bundle-Werte, `KONZEPT.md` Abschnitt 13), 2026-10-06
 - [ ] Identitätsangaben je Firma mit dem Wallet-Stub geprüft (Phase c)
 - [ ] Wallet-Stub wird als Engpasskandidat mitgemessen (Prometheus-Abfragen enthalten ihn)
 - [ ] Ablage der Rohdaten: kleine Dateien in Git, große auf Zenodo – Größe nach dem Probelauf abschätzen

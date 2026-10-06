@@ -85,14 +85,56 @@ Dadurch ist die Reihenfolge sichtbar, `ls` sortiert automatisch richtig, und ein
 |---|---|---|
 | **a** – Basis | System, Kubernetes-Cluster und Werkzeuge | `a1-system`, `a2-k3s`, `a3-helm` |
 | **b** – Monitoring | Messinfrastruktur | `b1-monitoring` (kube-prometheus-stack: Prometheus, Grafana, Exporter), `b2-loki` (Loki: speichert die Logs), `b3-alloy` (Grafana Alloy: sammelt die Logs aller Pods) |
-| **c** – Datenraum | je Firma eigener EDC und DTR; zentral nur die Identität | `c1-identitaet` (`identity-and-trust-bundle`, Wallet-Stub), `c2-customer-edc`, `c3-customer-dtr`, `c4-supplier-edc`, `c5-supplier-dtr` (`dataspace-connector-bundle`, `digital-twin-bundle`) |
-| **d** – PURIS | Anwendung unter Test | `d1-puris-customer`, `d2-puris-supplier` |
+| **c** – Datenraum | je Firma eigener EDC und DTR; zentral nur der Wallet-Stub (Identität, Tokens, Nachweise, BPN-Verzeichnis) | `c1-identitaet` (`identity-and-trust-bundle`, Wallet-Stub), `c2-customer-edc`, `c3-customer-dtr`, `c4-supplier-edc`, `c5-supplier-dtr` (`dataspace-connector-bundle`, `digital-twin-bundle`) |
+| **d** – PURIS | Anwendung unter Test (Backend + PostgreSQL; Bedienung per API-Key) | `d1-puris-customer`, `d2-puris-supplier` |
 | **e** – Testdaten | Daten und Funktionsnachweis | `e1-testdaten`, `e2-funktionstest` |
 | **f** – Lastgenerator | k6 | `f1-k6` (k6-Operator per Helm, Lauf als `TestRun`) |
 
 Phase c folgt dem offiziellen Bereitstellungsmodell von PURIS (EDC und DTR **je Partner**) und den „Hausanschluss“-Bundles von Tractus-X (Quellen in Abschnitt 13). Jeder Baustein der Phasen b–f ist **ein Helm-Release**.
 
 Die genaue Aufteilung ergibt sich beim Aufbau. Neue Bausteine werden **hinten** an eine Phase angefügt (`c4-…`) oder bilden eine neue Phase. Bestehende Bausteine werden **nie umbenannt**, damit Laborbuch, Commits und Befehle gültig bleiben.
+
+### Benötigte Komponenten (Stand 2026-10-06)
+
+Was für den Versuch gebraucht wird – und nur das. Herleitung und Quellen in Abschnitt 13 („Welche Komponenten werden gebraucht?“).
+
+| Komponente | Chart (Version) | Anwendung | Baustein | Aufgabe in der Bestandsabfrage |
+|---|---|---|---|---|
+| Wallet-Stub + PostgreSQL (zentral) | `identity-and-trust-bundle` 1.1.3 (`ssi-dim-wallet-stub` 0.1.17) | Wallet-Stub 0.0.11 | `c1` | Identitäten (DIDs), Tokens für die EDCs (STS), Nachweise (Credential Service), BPN-Verzeichnis (BDRS) |
+| EDC (Control Plane, Data Plane) + PostgreSQL + Vault – je Firma | `dataspace-connector-bundle` 1.3.0 (`tractusx-connector` 0.12.0) | Tractus-X EDC 0.12.0 | `c2`, `c4` | Vertragsverhandlung, Transfers, Datenkanal zwischen den Firmen |
+| DTR + PostgreSQL – je Firma | `digital-twin-bundle` 1.3.0 (`digital-twin-registry` 0.11.0) | DTR 0.11.0 | `c3`, `c5` | Verzeichnis der digitalen Zwillinge (abgefragt wird der DTR des Suppliers) |
+| PURIS-Backend + PostgreSQL – je Firma | `puris` 7.2.0 | PURIS 6.2.0 | `d1`, `d2` | Anwendung unter Test |
+| Testdaten | – (REST-API von PURIS) | – | `e1` | Partner, Material, Material-Partner-Beziehung, Bestand |
+| Monitoring und Logs | `kube-prometheus-stack` 91.9.0, `loki` 7.3.0, `alloy` 1.13.0 | – | `b1`–`b3` | Messung (vorhanden) |
+| Lastgenerator | `k6-operator` 4.6.0 | k6-Operator 1.6.0 | `f1` | erzeugt die Last |
+
+- **Versionen passen zusammen:** PURIS 6.2.0 ist laut Changelog mit EDC 0.12.0 und DTR 0.11.0 getestet – genau den Versionen der Bundles. Ein neuerer EDC (0.13.0) wird deshalb **nicht** verwendet.
+- **PostgreSQL der Bundles:** `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung der Bundles nach der Bitnami-Umstellung 2025; ohne Updates – Einschränkung).
+- **Identitäten (Testwerte des Umbrella-Charts 26.03.00):** Customer `BPNL00000003AZQP`, Supplier `BPNL00000003AYRE`, Betreiber/Aussteller `BPNL00000003CRHK`. Der Wallet-Stub legt die Wallets beider Firmen beim Start an (`seeding.bpnList`).
+- **Von PURIS verlangt:** Policy-Profil `profile2509`, Nachweis Rahmenvertrag `DataExchangeGovernance` 1.0 (vom EDC geprüft), Zweck `cx.puris.base` 1.
+
+**Nicht benötigt** (bewusst weggelassen):
+
+| Komponente | Grund |
+|---|---|
+| `centralidp` (Keycloak) | Anmeldung für Portal und Betreiber; im Datenaustausch-Profil des Umbrella-Charts aus. Der Wallet-Stub stellt die Tokens selbst aus. |
+| `sharedidp` (Keycloak) | Benutzeranmeldung für Portal und Registrierung – nicht Teil des Datenaustauschs. |
+| Keycloak für PURIS, PURIS-Frontend | Nur für die Weboberfläche nötig (das Frontend hat keinen Schalter zum Abschalten der Anmeldung). Das Backend nimmt den API-Key an (`X-API-KEY`, Rolle `PURIS_ADMIN`); damit arbeiten Einrichtung und k6. Bei Bedarf nachrüstbar (ca. +0,7 Kerne, +1,3 GiB). |
+| Keycloak für den DTR | Die Tractus-X-Bundles setzen `authentication: false`; in PURIS `dtr.idp.enabled: false`. Abweichung von der PURIS-Referenzumgebung (dort mit Keycloak) – Einschränkung. |
+| BDRS-Server | Das BPN-Verzeichnis liefert der Wallet-Stub (`/api/v1/directory`) – so auch in der PURIS-Referenzumgebung und im Umbrella-Chart. |
+| Ingress-Controller (ingress-nginx) | Nicht nötig (siehe „Netzwerk im Cluster“); ingress-nginx ist seit März 2026 eingestellt (keine Updates, keine Sicherheitskorrekturen). |
+| cert-manager / TLS | Beide Referenzen arbeiten intern über HTTP (`EDC_IAM_DID_WEB_USE_HTTPS=false`). |
+| Portal, BPDM, Semantic Hub, Discovery Finder, BPN Discovery, SD-Factory, SSI Credential Issuer | Im Bestandsabgleich nicht verwendet; PURIS erhält die EDC-Adresse des Partners direkt. |
+| IssuerService + IdentityHub | Neueres Identitätsmodell (Tractus-X-Standard seit 25.12), für PURIS nicht dokumentiert – Einschränkung bzw. Ausblick. |
+| Data-Persistence-Bundle | PURIS liefert die Bestandsdaten selbst. |
+| pgAdmin, eigenes Prometheus/Grafana/Loki/Jaeger des Umbrella-Charts | Eigene Messinfrastruktur vorhanden (`b1`–`b3`). |
+
+### Netzwerk im Cluster: Dienstnamen statt Ingress
+
+- Alle Adressen und DIDs verwenden **Kubernetes-Dienstnamen** – wie die PURIS-Referenzumgebung (`did:web:wallet:<BPN>`). Beim Wallet-Stub werden dazu `didHost` und `stubUrl` auf seinen Dienstnamen gesetzt.
+- DID-Dokumente werden über HTTP abgerufen (`EDC_IAM_DID_WEB_USE_HTTPS=false`), wie im Umbrella-Chart und in der PURIS-Referenz.
+- Kein Ingress-Controller: Ein zusätzlicher Proxy läge in jeder Anfrage zwischen den Firmen und würde die Messung verändern; ingress-nginx ist zudem eingestellt.
+- Oberflächen (Grafana usw.) werden vom Mac nur per `kubectl port-forward` angesehen – nie im Lastweg.
 
 ### Regeln für jeden Baustein in `AUFBAU.md` (Etappe 1)
 
@@ -406,6 +448,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 |---|---|
 | Versionsübersicht (`AUFBAU.md` bzw. `versions.env`), Hardware | 4.3 Experimentierumgebung, Deployment und Testdaten (Versionstabelle) |
 | Bausteine a–f (`AUFBAU.md` bzw. `setup/`) | 4.3 (Abbildung des Aufbaus) |
+| Benötigte und nicht benötigte Komponenten (Abschnitt 3) | 4.2 Untersuchungsobjekt und Systemgrenze, 4.3 |
 | Ressourcenübersicht (`AUFBAU.md`), YAML-Dateien in `setup/` | 4.3 (Ressourcentabelle), 4.5 (Skalierungskonfigurationen) |
 | Baustein `e1-testdaten` | 4.3 Testdaten |
 | k6-Skript, Messpläne | 4.4 Lastmodell, 4.5 Versuchsplanung |
@@ -459,6 +502,10 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Identität über den Wallet-Stub (DCP ≥ 1.0), nicht über den IdentityHub | Mit dem Wallet-Stub ist PURIS 6.2.0 dokumentiert getestet. Der IdentityHub ist seit Tractus-X 25.12 die empfohlene Variante; er wird in der Arbeit als Einschränkung bzw. Ausblick genannt. |
 | Logs über Loki (`b2-loki`) und Grafana Alloy (`b3-alloy`) – zwei Bausteine, da zwei getrennte Helm-Charts | Vollständige Logzeilen trotz Log-Rotation; Auswertung per LogQL auf derselben Zeitachse wie Prometheus. Promtail ist seit 2026-03-02 ohne Unterstützung (End of Life); Nachfolger ist Alloy. |
 | Helmfile in Etappe 2, kein GitOps-Controller | Deklarative Beschreibung aller Releases mit festen Versionen, ohne zusätzlichen Controller im Cluster, der Ressourcen verbraucht oder während Messungen eingreift. |
+| Kein Keycloak (weder `centralidp`/`sharedidp` noch für PURIS oder DTR); PURIS nur per API-Key, ohne Frontend | Für den Datenaustausch nicht nötig (Abschnitt 3, „Nicht benötigt“); weniger Komponenten, weniger Ressourcen, weniger Fehlerquellen. |
+| Kubernetes-Dienstnamen statt Ingress | Kein zusätzlicher Proxy im gemessenen Weg; ingress-nginx eingestellt; Vorbild ist die PURIS-Referenzumgebung. |
+| EDC 0.12.0 und DTR 0.11.0 (nicht neuer) | Mit genau diesen Versionen ist PURIS 6.2.0 getestet. |
+| Wallet-Stub zugleich als BPN-Verzeichnis | So in Umbrella-Chart und PURIS-Referenz; ein eigener BDRS-Server entfällt. |
 | k6 im Cluster über den k6-Operator (Helm) | Passt zu den Regeln (Helm, YAML, feste CPU/RAM); der Verbrauch von k6 ist in Prometheus sichtbar und liegt auf derselben Zeitachse wie alle anderen Messwerte. |
 | Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
 | Täglicher Batch-Abgleich von PURIS abgeschaltet | Er würde zu einer festen Uhrzeit alle Partnerdaten abfragen und Messungen stören. |
@@ -498,6 +545,24 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 - **Ergebnis:** `c1-identitaet` (Wallet-Stub) + je Firma ein EDC-Release und ein DTR-Release (`c2`–`c5`) + je Firma ein PURIS-Release (`d1`, `d2`). Die Identitätsangaben je Firma (BPN, DID) werden aus den getesteten Werten des Umbrella-Charts 26.03.00 übernommen (`dataconsumerOne` → Customer, `tx-data-provider` → Supplier).
 - Quellen: PURIS `docs/architecture/07_deployment_view.md` und `local/INSTALL.md` (Tag `6.2.0`); Umbrella `docs/common/concept/solution-design-hausanschluss-bundle.md`, `docs/user/common/guides/hausanschluss-bundles.md`, `docs/user/common/guides/data-exchange-identityhub.md`, `charts/umbrella/values-adopter-data-exchange.yaml` (Tag `umbrella-26.03.00`); Helm-Repository `https://eclipse-tractusx.github.io/charts/dev`.
 
+**Welche Komponenten werden gebraucht?** (Stand 2026-10-06; Ergebnis in Abschnitt 3, „Benötigte Komponenten“)
+- **PURIS 6.2.0:** Backend nutzt Keycloak nur zur Prüfung von Benutzer-Tokens (Schlüssel werden erst bei Bedarf geladen); Anfragen mit API-Key (`X-API-KEY`) brauchen keinen Keycloak. Das Frontend hat keinen Schalter, die Anmeldung abzuschalten. DTR-Anmeldung über `puris.dtr.idp.enabled` (Standard in `application.properties`: `false`, im Chart: `true`). Verlangt `profile2509`, `DataExchangeGovernance` 1.0 und `cx.puris.base` 1. Getestet mit EDC 0.12.0 und DTR 0.11.0 (Changelog). Referenzumgebung: Wallet-Stub 0.0.8, `bdrs.server.url` = Verzeichnis des Wallet-Stubs, DIDs mit Dienstnamen (`did:web:wallet:<BPN>`), `edc.iam.did.web.use.https=false`.
+- **Umbrella 26.03.00:** Teilnehmer nutzen den Wallet-Stub für DID, STS (`/api/sts`, `/oauth/token`), Credential Service (`/api`) und BPN-Verzeichnis (`/api/v1/directory`); `centralidp`, `sharedidp` und `bdrs-server-memory` sind im Datenaustausch-Profil aus. DTR-Chart: `authentication: true` als Standard, in den Bundles `false`. Mindestausstattung laut Doku: 4 Kerne, 6 GB – „for a local development setup“. Netzwerk: NGINX-Ingress mit `*.tx.test`; für k3s ist die Namensauflösung innerhalb des Clusters nicht beschrieben.
+- **ingress-nginx:** seit März 2026 eingestellt (Kubernetes-Blog, 11/2025 und 01/2026); empfohlen wird die Gateway API.
+- Quellen: PURIS `backend/src/main/resources/application.properties`, `docs/admin/Admin_Guide.md`, `CHANGELOG.md`, `local/docker-compose*.yaml`, `charts/puris/values.yaml` (Tag `6.2.0`); Umbrella `charts/umbrella/values.yaml`, `values-adopter-data-exchange.yaml`, Bundle-Werte, `docs/user/mac/with-rancher-desktop.md`, `docs/admin/migration-guide.md` (Tag `umbrella-26.03.00`); Charts `digital-twin-registry` 0.11.0, `ssi-dim-wallet-stub` 0.1.17; `https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/`.
+
+**Rechenbedarf (Schätzung, 2026-10-06)** – Startwerte aus den Chart-Vorgaben und der Rolle jeder Komponente im Ablauf; endgültige Werte nach dem Probelauf:
+
+| Posten | CPU | RAM |
+|---|---|---|
+| Datenraum + PURIS (zentral, Customer, Supplier) | 9,6 Kerne | 13,6 GiB |
+| k6, Observability (`b1`–`b3`), k3s-eigene Pods, PURIS-Frontends | 4,0 Kerne | 6,0 GiB |
+| Puffer für k3s und Betriebssystem | 1,0 Kerne | 3,0 GiB |
+| **Summe Grundkonfiguration K0** | **14,6 Kerne** | **22,6 GiB** |
+| + Spielraum für eine Skalierungskonfiguration, + 15 % unverplant | ≈ 19 vCPU | ≈ 28 GiB |
+
+Folgerung: Die NAS-VM (8 vCPU) reicht für K0 nicht; sie bleibt Entwicklungs- und Funktionsumgebung (verkleinertes Profil). Für die Hauptmessungen ist eine VM mit mindestens 16 **dedizierten** vCPU nötig (Entscheidung offen, siehe „Noch offen“). Vergleichswerte: k3s-Server mindestens 2 Kerne/2 GB; GKE reserviert für Systemdienste höchstens 1 vCPU; k6 braucht ca. 1–5 MB je VU und sollte 20 % CPU frei lassen.
+
 **k6 im Cluster oder auf der VM?** Im Cluster über den **k6-Operator** (Helm), ein Runner (`parallelism: 1`) mit festen CPU/RAM-Werten (requests = limits); k6-Metriken möglichst direkt an Prometheus. Nachweis, dass k6 nicht der Engpass war: `dropped_iterations = 0` und k6-CPU unter seinem Limit. Dass sich k6 den Knoten mit dem System unter Test teilt, bleibt eine Einschränkung und wird gemessen und berichtet.
 
 **Was setzt der Reset zurück?** (vorläufig; wird in Etappe 1 geprüft)
@@ -528,7 +593,9 @@ Ablauf:
 - Parallele Aufträge für dasselbe Material löschen und schreiben dieselben Bestandszeilen: Treten dabei Fehler oder Doppelungen auf? Im Probelauf prüfen.
 - Genaues Verfahren für die Dauer einer Transaktion (Log-Zeitstempel oder Transferprozesse der EDCs) – im Probelauf festlegen.
 - Wachsen die EDC-Tabellen über die Läufe? Zeilen vor und nach einem Probelauf zählen.
-- Braucht der DTR in diesem Aufbau einen eigenen Anmeldedienst (Keycloak), wie in der PURIS-Referenzumgebung? Beim Aufbau von `c3`/`c5` prüfen.
 - Identitätsangaben je Firma (BPN, DID, Wallet-Zugang) aus den Umbrella-Werten 26.03.00 übernehmen und mit dem Wallet-Stub prüfen.
+- Stellt der Wallet-Stub die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0)? Mit der ersten Katalogabfrage in Phase c prüfen – sonst scheitert die Vertragsverhandlung.
+- Wallet-Stub 0.0.11 (Bundle) statt 0.0.8 (PURIS-Referenz): neuere Patch-Version, im Funktionstest bestätigen.
+- Zweite, stärkere VM für die Hauptmessungen (mind. 16 dedizierte vCPU, siehe „Rechenbedarf“): Rolle, Anbieter, Größe und Erfolgskriterium des Nachbau-Tests festlegen.
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.

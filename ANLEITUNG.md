@@ -60,14 +60,18 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 | **A. Monitoring** | Prometheus + Grafana installieren; Logs sammeln | `kube-prometheus-stack` (`b1-monitoring`), Loki (`b2-loki`) + Alloy (`b3-alloy`) |
 | **B. Datenraum** | zentral die Identität; **je Firma** ein eigener EDC und ein eigener DTR | Tractus-X-„Hausanschluss“-Bundles: `identity-and-trust-bundle` (`c1`), `dataspace-connector-bundle` und `digital-twin-bundle` je Firma (`c2`–`c5`) |
 | **C. PURIS 2×** | eine Instanz als **Customer**, eine als **Supplier** | Helm-Chart **`puris` 7.2.0** (= PURIS **6.2.0**), bringt PostgreSQL mit; Bausteine `d1-puris-customer`, `d2-puris-supplier` |
-| **D. Einrichten** | In beiden PURIS: Partner, Material und Beziehung anlegen; beim Supplier einen Bestand eintragen | PURIS-Oberfläche oder REST-API |
-| **E. Funktionstest** | **Eine** Abfrage von Hand: Kommt der Bestand beim Customer an? | PURIS-Oberfläche |
+| **D. Einrichten** | In beiden PURIS: Partner, Material und Beziehung anlegen; beim Supplier einen Bestand eintragen | REST-API von PURIS (mit API-Key) |
+| **E. Funktionstest** | **Eine** Abfrage von Hand: Kommt der Bestand beim Customer an? | REST-API von PURIS, Logs in Grafana |
 | **F. Lasttest** | k6-Skript, das die Abfrage automatisch und immer öfter auslöst | k6-Operator, Baustein `f1-k6` |
 
 **Hinweise:**
 
 - **Jede Firma hat ihren eigenen EDC und ihren eigenen DTR** – wie im offiziellen Bereitstellungsmodell von PURIS. Gemeinsam ist nur der Identitätsdienst (Wallet-Stub), wie beim Betreiber eines echten Datenraums.
 - PURIS enthält weder EDC noch DTR; es bekommt in seiner `values.yaml` nur die Adressen des EDC und DTR **seiner** Firma.
+- **Was wir brauchen:** zentral den **Wallet-Stub** (Identität, Tokens, Nachweise und BPN-Verzeichnis in einem); **je Firma** einen EDC, einen DTR und PURIS, jeweils mit eigener Datenbank; dazu Monitoring, Logs und k6.
+- **Was wir nicht brauchen:** Keycloak (`centralidp`, `sharedidp`), einen eigenen BDRS-Server, einen Ingress-Controller, Portal, BPDM und die Discovery-Dienste. PURIS wird nur über die REST-API mit API-Key bedient – ohne Weboberfläche.
+- Die Komponenten finden sich über **interne Kubernetes-Namen** (wie in der Referenzumgebung von PURIS) – ohne Ingress, damit kein zusätzlicher Proxy die Messung verändert.
+- Vollständige Liste mit Versionen und Gründen: [`KONZEPT.md`](KONZEPT.md), Abschnitt 3, „Benötigte Komponenten“.
 - Alles wird mit **Helm** installiert: **ein Baustein = ein Release = eine `values.yaml`** in `setup/<baustein>/`, darin je Komponente ein Abschnitt mit festen **CPU- und RAM-Werten** (Regeln in [`KONZEPT.md`](KONZEPT.md), Abschnitt 3).
 - Alle Versionen (k3s, Helm-Charts, PURIS-Chart) und alle CPU/RAM-Werte stehen in `AUFBAU.md` (Versions- und Ressourcenübersicht) und gehen in Kapitel 4.3 der Arbeit ein.
 

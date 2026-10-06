@@ -93,6 +93,7 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - `setup/b3-alloy/values.yaml` für Alloy-Chart 1.13.0 (Alloy v1.20.0, DaemonSet) erstellt und lokal mit `helm template` geprüft: 7 Objekte, beide Container (Alloy, config-reloader) mit requests = limits; liest `/var/log/pods` der VM, Lesepositionen auf der VM (`/var/lib/alloy/data`), Nutzungsstatistik abgeschaltet, ServiceMonitor an.
 - `b3-alloy` installiert (Release `alloy`, Revision 1, Chart 1.13.0) aus Commit `f4f27a7`: Pod bereit und `Guaranteed`, keine Fehler, Logs aller Namespaces in Loki. Zähltest an vier Pods (coredns 2675, kube-state-metrics 19, Prometheus Operator 114, local-path-provisioner 17 Zeilen): in Loki jede Zeile genau einmal – keine fehlenden, keine doppelten. Alloy: 6763 gelesen = 6763 gesendet, 0 verworfen; Loki: 0 abgewiesen (siehe `AUFBAU.md`, „b3“).
 - Loki als Datenquelle in Grafana ergänzt (`b1`, Revision 3, Commit `7183bc6`): nur die Datenquellen-ConfigMap geändert, keine Neustarts; Datenquelle `OK`, Explore zeigt Logzeilen. **Phase b damit abgeschlossen.**
+- Recherche, welche Komponenten der Versuch braucht (Quellcode und Konfiguration PURIS 6.2.0, Umbrella 26.03.00, Charts der Bundles, Kubernetes-Blog) und Abschätzung des Rechenbedarfs; Ergebnis in `KONZEPT.md`, Abschnitt 3 („Benötigte Komponenten“, „Netzwerk im Cluster“) und Abschnitt 13.
 - Automatische apt-Updates abgeschaltet: `apt-daily.timer` und `apt-daily-upgrade.timer` sind `disabled` und `inactive` (Ergänzung zu `a1` in `AUFBAU.md`). Damit ist die Beobachtung vom 2026-10-05 zu `unattended-upgrades` umgesetzt.
 - `CHECKLISTE.md` angelegt (Fortschritt je Etappe und Baustein mit Zielterminen, Stand 2026-10-06) und in `KONZEPT.md` (Abschnitte 2 und 7) verankert. Zwei neue offene Punkte in `KONZEPT.md`, Abschnitt 13: `b2-logs` besteht aus zwei Helm-Charts (Loki, Alloy); Puffer für k3s und Betriebssystem ist noch festzulegen.
 
@@ -136,6 +137,12 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Logs in **zwei Bausteinen** statt `b2-logs`: `b2-loki` (Loki) und `b3-alloy` (Grafana Alloy).
   Begründung: Loki und Alloy sind zwei getrennte Helm-Charts; so gilt „ein Baustein = ein Release = eine `values.yaml`“ ohne Ausnahme.
 - Zeitplan: Abgabe der Arbeit am **Di 10.11.2026** (Experiment fertig bis So 01.11.2026, siehe `CHECKLISTE.md`).
+- Komponenten festgelegt (Empfehlung aus der Recherche, auf Wunsch des Nutzers als Grundlage dokumentiert): zentral nur der Wallet-Stub (auch als BPN-Verzeichnis), je Firma EDC, DTR und PURIS mit eigener Datenbank. **Kein Keycloak** (`centralidp`, `sharedidp`, für PURIS oder DTR), kein BDRS-Server, kein Ingress, kein PURIS-Frontend; PURIS nur per API-Key, DTR ohne Anmeldung.
+  Begründung: Für den Datenaustausch nicht nötig (Datenaustausch-Profil des Umbrella-Charts, PURIS-Konfiguration); weniger Komponenten, Ressourcen und Fehlerquellen.
+- Netzwerk im Cluster über Kubernetes-Dienstnamen statt Ingress, auch in den DIDs (Wallet-Stub `didHost`/`stubUrl`).
+  Begründung: kein zusätzlicher Proxy im gemessenen Weg; ingress-nginx seit März 2026 eingestellt; Vorbild ist die PURIS-Referenzumgebung (`did:web:wallet:<BPN>`).
+- EDC 0.12.0 und DTR 0.11.0 werden beibehalten, obwohl EDC 0.13.0 existiert.
+  Begründung: Laut Changelog ist PURIS 6.2.0 mit genau diesen Versionen getestet.
 - Ziel: Abgabe der Bachelorarbeit am 2026-11-10 (statt zum Fristende 2026-12-11). Das Experiment soll bis 2026-11-01 abgeschlossen sein; Zieltermine und Entscheidungspunkte in `CHECKLISTE.md`.
   Begründung: Entscheidung des Verfassers; die offizielle Frist bleibt als Puffer.
 
@@ -163,4 +170,11 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 
 **Problem:** Das erste Skript für den Zähltest lief in zsh fehlerhaft (Variablen werden dort nicht in Wörter zerlegt) und fand keine Pods; seine Ausgabe („0 = 0“) war ohne Aussage und wurde verworfen. Der Test wurde mit einem Python-Skript wiederholt (Ergebnis oben).
 
-**Nächstes:** Phase c – `c1-identitaet` (Wallet-Stub); vorher Puffer für k3s und Betriebssystem festlegen (Ressourcenübersicht).
+**Beobachtungen (Recherche, noch nicht am Cluster geprüft):**
+- PURIS-Backend: Keycloak nur für Benutzer-Tokens (Schlüssel werden erst bei Bedarf geladen); API-Key-Anfragen brauchen ihn nicht. Das Frontend lässt sich nicht ohne Anmeldung betreiben.
+- DTR-Chart `digital-twin-registry` 0.11.0: `authentication: true` als Standard; die Tractus-X-Bundles setzen `false`.
+- PURIS-Referenzumgebung und Umbrella-Chart nutzen das Verzeichnis des Wallet-Stubs als BPN-Verzeichnis; ein eigener BDRS-Server ist nicht nötig.
+- PostgreSQL der Bundles: `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung nach der Bitnami-Umstellung 2025, ohne Updates).
+- Umbrella-Mindestausstattung laut Doku: 4 Kerne, 6 GB („for a local development setup“). Geschätzter Bedarf der Grundkonfiguration mit festen Ressourcen: ca. 14,6 Kerne und 22,6 GiB – die NAS-VM (8 vCPU) reicht dafür nicht.
+
+**Nächstes:** Puffer für k3s und Betriebssystem (`system-reserved`) und Swap aus; dann `c1-identitaet` (Wallet-Stub) mit Dienstnamen.
