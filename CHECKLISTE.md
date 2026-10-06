@@ -237,6 +237,7 @@ Noch offen:
 - [ ] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf)
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
 - [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset)
+- [ ] Zweite, stärkere VM/VPS (Idee des Nutzers, 2026-10-06): Rolle festlegen (Hauptmessungen oder Nachbau-Test), Anbieter und Größe (dedizierte vCPU, mind. 8 vCPU/32 GB, stundenweise Abrechnung), Erfolgskriterium vorab in `KONZEPT.md` – Entscheidung bis So 18.10.
 - [ ] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`)
 - [ ] Identitätsangaben je Firma mit dem Wallet-Stub geprüft (Phase c)
 - [ ] Wallet-Stub wird als Engpasskandidat mitgemessen (Prometheus-Abfragen enthalten ihn)
