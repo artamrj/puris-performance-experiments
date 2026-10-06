@@ -572,3 +572,21 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Auch beim Customer waren alle vier Versuche `PUT`-Anfragen (`updateMaterialAtDtr`, `DtrAdapterService.java`, Z. 186–195); die Logzeile „Failed to register material at DTR“ stammt aus diesem Update-Pfad, nicht aus einer Neuanlage per `POST`.
 
 **Nächstes:** `e2` – Bestandsabfrage am Customer-PURIS auslösen.
+
+## 2026-10-07 – `e2`: Bestandsabfrage funktioniert (Meilenstein 1)
+
+**Gemacht:**
+- Zwei Bestandsabfragen am Backend des Customer-PURIS ausgelöst (23:38:33 und 23:38:59 UTC am 06.10.), auf Wunsch des Verfassers vom Assistenten ausgeführt. Vorher und nachher Transferprozesse und Vertragsverhandlungen in beiden EDCs gezählt (Management-API). Dokumentation in `AUFBAU.md`, „e2 – Funktionstest“.
+- Ergebnis: Beide Abfragen erfolgreich („Updated ReportedMaterialItemStocks for MNR-7307-AU340474.002 and partner BPNL00000003AYRE“); der Customer sieht den Bestand des Suppliers (100 Stück).
+
+**Beobachtungen:**
+- Die HTTP-Antwort kommt sofort (0,10 bzw. 0,12 s), der Austausch läuft im Hintergrund – wie aus dem Quellcode erwartet (`KONZEPT.md`, Abschnitt 13). Die k6-Antwortzeit ist damit nicht die Transaktionsdauer.
+- 1. Abfrage ca. 10,4 s mit einer Vertragsverhandlung für das Item-Stock-Submodell und drei Transferprozessen (der DTR wurde zweimal abgefragt, vor und nach der Verhandlung). 2. Abfrage ca. 4,4 s, keine Verhandlung, genau zwei Transferprozesse je EDC (DTR, Item Stock). Der Dauerbetrieb entspricht der 2. Abfrage – Bezugsgröße für die Vorstudie: einige Sekunden je Transaktion im Leerlauf.
+- Die gespeicherten Verträge (DTR aus `e1`, Item Stock aus der 1. Abfrage) werden wiederverwendet. Das stützt die vorläufige Entscheidung, S0 mit ausgehandelten Verträgen zu sichern (`KONZEPT.md`, Abschnitt 6).
+- Der Bestand wird ersetzt, nicht angehängt: nach der 2. Abfrage weiterhin genau eine Zeile.
+- Je Transaktion entstehen pro EDC zwei dauerhafte Transferprozess-Einträge – die EDC-Tabellen wachsen also mit jeder Abfrage (offene Frage „Wachsen die EDC-Tabellen?“: ja, Größenordnung 2 Zeilen je Transaktion und EDC; Wirkung im Probelauf prüfen).
+- Ein falscher API-Key ergibt bei PURIS HTTP 500 statt 401.
+
+**Entscheidung:** Plan B für So 18.10. entfällt – Meilenstein 1 ist am 07.10. erreicht.
+
+**Nächstes:** Stand S0 sichern (alle PostgreSQL-Datenbanken) – Verfahren vorher festlegen; danach Entscheidung zur DTR-CPU und Phase f.

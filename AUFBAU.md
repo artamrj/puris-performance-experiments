@@ -916,6 +916,46 @@ Ergebnis: DTR Customer (Limit 100m) 38 % der Perioden gedrosselt, höchster Verb
 
 ---
 
+## e2 – Funktionstest
+
+**Datum:** 2026-10-07 (23:38–23:39 UTC am 06.10.)
+**Ziel:** Nachweis, dass eine Bestandsabfrage des Customers beim Supplier über den Datenraum funktioniert (Meilenstein 1); Bezugsgrößen für die Vorstudie.
+
+**Vorbereitung `[Mac]`** (zusätzlich zu e1: Zugriff auf die Management-API beider EDCs; Management-API-Keys sind die öffentlichen Testwerte aus `c2`/`c4`):
+```bash
+kubectl port-forward -n customer svc/edc-controlplane 18081:8081 >/dev/null 2>&1 & kubectl port-forward -n supplier svc/edc-controlplane 18082:8081 >/dev/null 2>&1 & sleep 3
+B64=$(printf %s 'MNR-7307-AU340474.002' | base64)
+# Transferprozesse bzw. Vertragsverhandlungen zählen (Port 18081 Customer, 18082 Supplier):
+curl -s -X POST http://127.0.0.1:<Port>/management/v3/transferprocesses/request -H "X-Api-Key: <Management-API-Key>" -H "Content-Type: application/json" -d '{"@context":{"@vocab":"https://w3id.org/edc/v0.0.1/ns/"},"@type":"QuerySpec","offset":0,"limit":1000}'
+curl -s -X POST http://127.0.0.1:<Port>/management/v3/contractnegotiations/request -H "X-Api-Key: <Management-API-Key>" -H "Content-Type: application/json" -d '{"@context":{"@vocab":"https://w3id.org/edc/v0.0.1/ns/"},"@type":"QuerySpec","offset":0,"limit":1000}'
+```
+
+**Bestandsabfrage auslösen und prüfen `[Mac]`** (zweimal ausgeführt):
+```bash
+curl -s -w "  -> HTTP %{http_code} in %{time_total}s\n" -H "X-API-KEY: $CK" "http://127.0.0.1:18181/catena/stockView/update-reported-material-stocks?ownMaterialNumber=$B64"
+kubectl logs -n customer deploy/puris-backend --since=3m | grep -v -E "^\s+at "
+curl -s -H "X-API-KEY: $CK" "http://127.0.0.1:18181/catena/stockView/reported-material-stocks?ownMaterialNumber=$B64"
+```
+
+Ergebnis:
+
+| | 1. Abfrage | 2. Abfrage |
+|---|---|---|
+| Auslösen (Log „Trigger Reported MaterialStockUpdate“) | 23:38:33.718 UTC | 23:38:59.761 UTC |
+| HTTP-Antwort | 200 in 0,096 s (Liste der Lieferanten: Supplier) | 200 in 0,125 s |
+| „Updated ReportedMaterialItemStocks for MNR-7307-AU340474.002 and partner BPNL00000003AYRE“ | 23:38:44.096 UTC | 23:39:04.149 UTC |
+| Dauer bis zum Log-Eintrag | ca. 10,4 s | ca. 4,4 s |
+| Neue Transferprozesse (Customer-EDC / Supplier-EDC) | 3 / 3 (DTR, DTR, Item Stock) | 2 / 2 (DTR, Item Stock) |
+| Neue Vertragsverhandlungen | 1 („Need Contract for ITEM_STOCK_SUBMODEL“, Vertrag gespeichert) | 0 (gespeicherte Verträge wiederverwendet) |
+
+- Bestand beim Customer vor der ersten Abfrage `[]`, danach 1 Zeile: 100 `unit:piece`, Standort `BPNS1234567890ZZ`, Partner Supplier, `lastUpdatedOn` = Zeitstempel beim Supplier (23:24:49 UTC). Nach der zweiten Abfrage weiterhin genau 1 Zeile (alte gelöscht, neue gespeichert).
+- Stand der EDCs nach beiden Abfragen: je 8 Transferprozesse (Customer `TERMINATED`, Supplier `DEPROVISIONED`) und je 3 Vertragsverhandlungen (`FINALIZED`; aus e1: DTR, Teileinformation; aus e2: Item Stock).
+- Keine Fehler oder Warnungen im Log des Customers während der Abfragen.
+
+**Hinweis:** Ein falscher API-Key liefert HTTP 500, kein HTTP 401 (ohne Key: HTTP 401) – bei der Fehlerzählung in k6 beachten.
+
+---
+
 ## Hilfswerkzeuge (optional, kein Teil des Experiments)
 
 ### k9s – Terminal-Oberfläche für Kubernetes

@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; **erste Datenübertragung zwischen den Firmen erfolgreich**: Verträge für DTR und Teileinformation, Zwilling über EDC gefunden); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); als Nächstes `e2` Funktionstest. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); als Nächstes Stand S0 sichern, dann Phase f. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -24,7 +24,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 3 Phase b – Monitoring und Logs | erledigt (2026-10-06) | Di 06.–Sa 10.10. |
 | 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
-| 6 Phase e – Testdaten und Funktionstest | `e1` erledigt (2026-10-07), `e2` offen | Sa 17.–**So 18.10. (Meilenstein 1)** |
+| 6 Phase e – Testdaten und Funktionstest | weitgehend erledigt (2026-10-07; Meilenstein 1 erreicht); offen: S0 sichern | Sa 17.–**So 18.10. (Meilenstein 1)** |
 | 7 Phase f – Lastgenerator und Probelauf | offen | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
@@ -40,7 +40,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 
 Wird ein Meilenstein verfehlt, wird am selben Tag entschieden und im Laborbuch festgehalten. Weicht der Plan vom Konzept ab (z. B. Reihenfolge der Etappen), wird zuerst `KONZEPT.md` angepasst.
 
-- [ ] **So 18.10.** – Funktionstest (`e2`) noch nicht erfolgreich: Betreuung sofort einbeziehen (Datenraum vereinfachen, Hilfe bei Fraunhofer ISST, oder Abgabe der Arbeit verschieben).
+- [x] **So 18.10.** – Funktionstest (`e2`) noch nicht erfolgreich: Betreuung sofort einbeziehen (Datenraum vereinfachen, Hilfe bei Fraunhofer ISST, oder Abgabe der Arbeit verschieben). – entfällt (Meilenstein 1 am 07.10.2026 erreicht)
 - [ ] **So 25.10.** – `setup-v1` noch nicht gesetzt: Etappe 2 nur so weit, wie für `./lab reset` und `./lab run` nötig; vollständige Automatisierung und Nachbau-Test nach den Hauptmessungen oder als Limitation.
 - [ ] **So 01.11.** – Messungen unvollständig: nur K0 und eine Skalierungskonfiguration auswerten; Fehlendes als Limitation bzw. Ausblick.
 
@@ -198,14 +198,15 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Anlage nicht idempotent (zweiter Aufruf → HTTP 409): in Etappe 2 vor dem Anlegen prüfen, ob die Daten schon da sind – gefunden 2026-10-07
 
 ### `e2-funktionstest`
-- [ ] Eine Abfrage von Hand am Backend des Customer-PURIS ausgelöst
-- [ ] Log des Customer-PURIS zeigt `Updated ReportedMaterialItemStocks for …`
-- [ ] Bestand beim Customer abrufbar (`GET /catena/stockView/reported-material-stocks`)
-- [ ] Je Transaktion zwei neue Transferprozesse in den EDCs beobachtet
-- [ ] Zweite Abfrage: gespeicherter Vertrag wird wiederverwendet (keine neue Verhandlung)
-- [ ] Dauer einer einzelnen Transaktion grob festgehalten (Bezugsgröße für die Vorstudie)
+- [x] Eine Abfrage von Hand am Backend des Customer-PURIS ausgelöst – zwei Abfragen, 2026-10-07
+- [x] Log des Customer-PURIS zeigt `Updated ReportedMaterialItemStocks for …` – beide Abfragen, 2026-10-07
+- [x] Bestand beim Customer abrufbar (`GET /catena/stockView/reported-material-stocks`) – 100 Stück, 2026-10-07
+- [x] Je Transaktion zwei neue Transferprozesse in den EDCs beobachtet – 2. Abfrage: 2 je EDC (1. Abfrage mit Vertragsverhandlung: 3); 2026-10-07
+- [x] Zweite Abfrage: gespeicherter Vertrag wird wiederverwendet (keine neue Verhandlung) – Verhandlungen 3 → 3, 2026-10-07
+- [x] Dauer einer einzelnen Transaktion grob festgehalten (Bezugsgröße für die Vorstudie) – ca. 4,4 s mit gespeicherten Verträgen, ca. 10,4 s mit Verhandlung; 2026-10-07
 - [ ] Stand **S0** gesichert: alle PostgreSQL-Datenbanken nach Testdaten und erfolgreicher Abfrage
-- [ ] Ergebnis als Grundlage für Kapitel 5.1 dokumentiert
+- [ ] Verfahren für S0 festlegen (welche Datenbanken – Wallet-Stub, EDC ×2, DTR ×2, PURIS ×2 –, Format, Ablage außerhalb von Git, Wiederherstellung) – vor dem Sichern, gefunden 2026-10-07
+- [x] Ergebnis als Grundlage für Kapitel 5.1 dokumentiert – `AUFBAU.md`, e2 (Tabelle); 2026-10-07
 
 ## 7 Phase f – Lastgenerator und Probelauf
 
@@ -251,7 +252,7 @@ Noch offen:
 - [x] Puffer für k3s und Betriebssystem (Abschnitt 2) – 2026-10-06
 - [ ] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf)
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
-- [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset)
+- [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset) *(2026-10-07: ja – je Transaktion 2 Transferprozess-Einträge je EDC; Wirkung im Probelauf prüfen)*
 - [x] Hauptumgebung festgelegt: NAS-VM mit eigenem NAS-Profil; VPS nur optional – 2026-10-06 (Entscheidung des Nutzers, `VPS-VARIANTE.md`)
 - [ ] Option VPS durchführen? (A: Nachbau-Test auf 8 dedizierten vCPU mit NAS-Profil, ≈ 5–10 €; B: größere Skalierung nur bei Bedarf) – bis So 18.10., `VPS-VARIANTE.md` Abschnitt 4 und 10
 - [ ] Startwerte des NAS-Profils nach dem Probelauf bestätigen oder anpassen (`VPS-VARIANTE.md`, Abschnitt 2)
