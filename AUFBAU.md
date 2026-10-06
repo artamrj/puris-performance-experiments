@@ -31,10 +31,10 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | identity-and-trust-bundle (Helm-Chart) | 1.1.3 (Sub-Charts `ssi-dim-wallet-stub` 0.1.17, `postgres` 0.11.0 von cloudpirates) | Cluster | c1 |
 | Wallet-Stub (`tractusx/ssi-dim-wallet-stub`) | 0.0.11 (Java 21.0.10) | Cluster | c1 |
 | PostgreSQL (Wallet-Stub) | 18.0 (Image `postgres:18.0`, mit Digest im Chart festgelegt) | Cluster | c1 |
-| dataspace-connector-bundle (Helm-Chart) | 1.3.0 (Sub-Charts `tractusx-connector` 0.12.0, `postgresql` 15.2.1 Bitnami, `vault` 0.27.0) | Cluster | c2 |
-| Tractus-X EDC (Control Plane, Data Plane) | 0.12.0 (auf Basis von EDC 0.15.1) | Cluster | c2 |
-| PostgreSQL (EDC) | 15.4.0 (Image `bitnamilegacy/postgresql:15.4.0-debian-11-r45`) | Cluster | c2 |
-| HashiCorp Vault (EDC, Dev-Modus) | 1.15.2 | Cluster | c2 |
+| dataspace-connector-bundle (Helm-Chart) | 1.3.0 (Sub-Charts `tractusx-connector` 0.12.0, `postgresql` 15.2.1 Bitnami, `vault` 0.27.0) | Cluster | c2, c4 |
+| Tractus-X EDC (Control Plane, Data Plane) | 0.12.0 (auf Basis von EDC 0.15.1) | Cluster | c2, c4 |
+| PostgreSQL (EDC) | 15.4.0 (Image `bitnamilegacy/postgresql:15.4.0-debian-11-r45`) | Cluster | c2, c4 |
+| HashiCorp Vault (EDC, Dev-Modus) | 1.15.2 | Cluster | c2, c4 |
 
 ---
 
@@ -65,20 +65,24 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | c2 | EDC Data Plane (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | › EDC (`dataplane`) | 200m | 200m | 768Mi | 768Mi | Guaranteed |
 | c2 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 200m | 200m | 512Mi | 512Mi | Guaranteed |
 | c2 | Vault: `vault` | › Vault (`server`) | 100m | 100m | 128Mi | 128Mi | Guaranteed |
+| c4 | EDC Control Plane (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | `c4-supplier-edc/values.yaml` › EDC (`controlplane`) | 500m | 500m | 1Gi | 1Gi | Guaranteed |
+| c4 | EDC Data Plane (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | › EDC (`dataplane`) | 400m | 400m | 1Gi | 1Gi | Guaranteed |
+| c4 | PostgreSQL: `postgresql` | › PostgreSQL (`primary`) | 200m | 200m | 512Mi | 512Mi | Guaranteed |
+| c4 | Vault: `vault` | › Vault (`server`) | 100m | 100m | 128Mi | 128Mi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `c2`):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `c4`):
 
 | | CPU | RAM |
 |---|---|---|
 | Kapazität der VM (`Capacity`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
 | Puffer für Betriebssystem und k3s (`system-reserved`, a2) | 1000m | 3Gi |
 | Zuteilbar (`Allocatable`) | 7 (= 7000m) | 28661608Ki (≈ 27,3 GiB) |
-| Summe aller requests | 3225m (46 %) | 8396Mi (29 %) |
-| Rest | 3775m | ≈ 19,1 GiB |
+| Summe aller requests | 4425m (63 %) | 11084Mi (39 %) |
+| Rest | 2575m | ≈ 16,5 GiB |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -635,6 +639,66 @@ Den Namespace `customer` erst löschen, wenn auch `c3` und `d1` entfernt sind. L
 - Das Vault-Chart nutzt standardmäßig `updateStrategyType: OnDelete`; ohne `RollingUpdate` werden Änderungen erst nach Löschen des Pods wirksam.
 - Vault im Dev-Modus hält Daten nur im Speicher; nach jedem Neustart schreibt `postStart` die Schlüssel aus dem Secret neu.
 - Die Adressen, die der EDC dem Partner nennt, müssen den Namespace enthalten (`url.protocol`, `url.public`); sonst würde der gleichnamige EDC des Suppliers sich selbst aufrufen.
+
+---
+
+## c4 – EDC des Suppliers
+
+**Datum:** 2026-10-06
+**Ziel:** Connector (EDC) des Suppliers (`BPNL00000003AYRE`), aufgebaut wie `c2`; erste Katalogabfragen zwischen beiden Firmen.
+
+**YAML-Datei:** [`setup/c4-supplier-edc/values.yaml`](setup/c4-supplier-edc/values.yaml) (aus `c2` abgeleitet; Werte des Suppliers aus dem Umbrella-Chart, `tx-data-provider`), Commit `6449ffc`.
+
+**Schlüssel und Secret `[Mac]`** (vorher `puris`; erzeugt Schlüssel nur, wenn sie fehlen – wiederholbar ohne Änderung):
+```bash
+D="$HOME/.local/opt/puris-loadlab/secrets/supplier-edc" && mkdir -p "$D" && chmod 700 "$D"
+[ -f "$D/tokenSignerPrivateKey" ] || openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$D/tokenSignerPrivateKey" 2>/dev/null
+[ -f "$D/tokenSignerPublicKey" ] || openssl pkey -in "$D/tokenSignerPrivateKey" -pubout -out "$D/tokenSignerPublicKey"
+for k in client-secret aesKey tokenEncryptionAesKey; do [ -f "$D/$k" ] || { openssl rand -base64 32 | tr -d '\n' > "$D/$k"; }; done && chmod 600 "$D"/*
+kubectl create namespace supplier --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic edc-vault-secrets -n supplier --from-file="$D/client-secret" --from-file="$D/aesKey" --from-file="$D/tokenEncryptionAesKey" --from-file="$D/tokenSignerPrivateKey" --from-file="$D/tokenSignerPublicKey" --dry-run=client -o yaml | kubectl apply -f -
+```
+- Vorab im Scratch-Ordner geprüft: zweiter Aufruf lässt alle Schlüssel unverändert (SHA-256).
+- Ergebnis: `namespace/supplier created`, `secret/edc-vault-secrets created` (5 Einträge); alle Einträge gleich den lokalen Dateien und verschieden von denen des Customers.
+
+**Installation `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm upgrade --install edc tractusx-dev/dataspace-connector-bundle --version 1.3.0 -n supplier -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c4-supplier-edc/values.yaml"
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → 21 Objekte, keine clusterweiten Objekte, kein Ingress; 4 Container mit requests = limits (1200m CPU); Teilnehmer, DID, STS-Client `BPNL00000003AYRE`, Kontext `…0002`, Management-API-Key des Umbrella-Charts für den Supplier; kein `tx.test`, keine Werte des Customers.
+
+**Prüfung `[Mac]`** (Befehle wie bei `c2`; Katalogabfragen über `kubectl port-forward` auf die Management-API beider EDCs):
+```bash
+curl -s -X POST http://127.0.0.1:<Port>/management/v3/catalog/request -H "X-Api-Key: <Management-API-Key>" -H "Content-Type: application/json" \
+  -d '{"@context":{"@vocab":"https://w3id.org/edc/v0.0.1/ns/"},"@type":"CatalogRequest","counterPartyAddress":"http://edc-controlplane.<Partner-Namespace>:8084/api/v1/dsp","counterPartyId":"<Partner-BPN>","protocol":"dataspace-protocol-http","querySpec":{"offset":0,"limit":10}}'
+```
+(für DSP 2025-1: Adresse `…/api/v1/dsp/2025-1`, `counterPartyId` = DID des Partners, `protocol` = `dataspace-protocol-http:2025-1`)
+
+Ergebnis:
+- Release `edc` (Namespace `supplier`), Revision 1, `deployed`; Images wie bei `c2`
+- 4 Pods bereit nach ca. 55 s (Images bereits auf dem Knoten), `Guaranteed`, 0 Neustarts; „Runtime edc-controlplane ready“ und „Runtime edc-dataplane ready“
+- Vault: alle 5 Schlüssel beim ersten Start vorhanden (Korrektur aus `c2` wirksam); Volume `data-edc-postgresql-0` gebunden (2Gi, `local-path`)
+- Im laufenden Pod: `EDC_DSP_CALLBACK_ADDRESS` = `http://edc-controlplane.supplier:8084/api/v1/dsp`, DID `did:web:ssi-dim-wallet-service.identity:BPNL00000003AYRE`
+- **Katalogabfragen zwischen den Firmen** (14:28 UTC), jeweils HTTP 200, leerer Katalog (noch keine Assets), Antwort vom jeweils anderen Teilnehmer:
+
+  | Richtung | Protokoll | Partner angegeben als | Antwortender Teilnehmer | Dauer |
+  |---|---|---|---|---|
+  | Customer → Supplier | `dataspace-protocol-http` (v0.8) | BPN | `BPNL00000003AYRE` | 5,0 s (erster Aufruf) |
+  | Customer → Supplier | `dataspace-protocol-http:2025-1` | DID | DID des Suppliers | 1,0 s |
+  | Supplier → Customer | `dataspace-protocol-http` (v0.8) | BPN | `BPNL00000003AZQP` | 1,8 s |
+  | Supplier → Customer | `dataspace-protocol-http:2025-1` | DID | DID des Customers | 1,2 s |
+
+- Keine Warnungen oder Fehler in den Logs beider EDCs nach den Abfragen; 0 Neustarts in `customer` und `supplier`
+
+**Ressourcen:** siehe Ressourcenübersicht (c4).
+
+**Rückbau `[Mac]`:**
+```bash
+helm uninstall edc -n supplier
+kubectl delete pvc data-edc-postgresql-0 -n supplier
+kubectl delete secret edc-vault-secrets -n supplier
+```
+Den Namespace `supplier` erst löschen, wenn auch `c5` und `d2` entfernt sind. Lokale Schlüssel: `rm -rf ~/.local/opt/puris-loadlab/secrets/supplier-edc`.
 
 ---
 

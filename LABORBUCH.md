@@ -368,3 +368,18 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - (vom Verfasser bestätigt) Schlüssel werden nur erzeugt, wenn noch keine vorhanden sind; Namespace und Secret per `kubectl apply`, sodass ein wiederholter Aufruf nichts verändert (Vorschlag aus dem Eintrag „`c2`: Schlüssel und Secret angelegt“).
 
 **Nächstes:** Schlüssel und Secret für `supplier`, Installation von `c4`, erste Katalogabfrage zwischen Customer und Supplier.
+
+## 2026-10-06 – `c4` installiert: erste Katalogabfragen zwischen den Firmen erfolgreich
+
+**Gemacht:**
+- Schlüssel und Secret für `supplier` mit dem wiederholbaren Befehl angelegt (Schlüssel nur, wenn sie fehlen); 5 Einträge, gleich den lokalen Dateien, verschieden von denen des Customers.
+- `c4` aus Commit `6449ffc` installiert (Release `edc`, Namespace `supplier`, Revision 1): 4 Pods nach ca. 55 s bereit, `Guaranteed`, 0 Neustarts; alle 5 Schlüssel beim ersten Start in Vault.
+- **Katalogabfragen zwischen Customer und Supplier** in beide Richtungen mit DSP v0.8 (Partner als BPN) und DSP 2025-1 (Partner als DID): alle HTTP 200, Antwort jeweils vom anderen Teilnehmer, leere Kataloge (noch keine Assets). Dauer: 5,0 s (erster Aufruf Customer → Supplier), danach 1,0–1,8 s. Keine Warnungen oder Fehler in den Logs beider EDCs, keine Neustarts.
+- Summe der requests nach `c4`: 4425m CPU (63 % von 7000m), 11084Mi RAM (39 %). Dokumentation in `AUFBAU.md`, „c4“.
+
+**Beobachtungen:**
+- Damit funktionieren Identität (Token und Nachweise vom Wallet-Stub, DID-Auflösung über Dienstnamen, BPN-Verzeichnis) und die Adressen mit Namespace zwischen beiden Firmen. Ob der Wallet-Stub auch den von PURIS verlangten Nachweis `DataExchangeGovernance` 1.0 ausstellt, zeigt erst eine Vertragsverhandlung (Phase d/e).
+- Erste Abfrage deutlich langsamer als die folgenden (wie bei `c2`): Aufwärmen der Java-Dienste.
+- `EDC_PARTICIPANT_ID` enthält bei Tractus-X EDC 0.12.0 die DID (`did:web:…:BPNL00000003AYRE`), die BPN steht in `TRACTUSX_EDC_PARTICIPANT_BPN`.
+
+**Nächstes:** `c3-customer-dtr` und `c5-supplier-dtr` (DTRs), danach Phase d (PURIS).
