@@ -23,6 +23,8 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | k8s-sidecar (Grafana) | 2.11.2 | Cluster | b1 |
 | kube-state-metrics | v2.20.0 | Cluster | b1 |
 | node-exporter | v1.12.1 | Cluster | b1 |
+| loki (Helm-Chart) | 7.3.0 | Cluster | b2 |
+| Loki | 3.6.11 (Image `grafana/loki:3.6.11`; `appVersion` des Charts nennt 3.6.12) | Cluster | b2 |
 
 ---
 
@@ -44,18 +46,19 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | b1 | Grafana: `grafana` | › Grafana | 200m | 200m | 512Mi | 512Mi | Guaranteed |
 | b1 | Grafana: `grafana-sc-dashboard`, `grafana-sc-datasources` (je) | › Grafana (`sidecar`) | 50m | 50m | 128Mi | 128Mi | Guaranteed |
 | b1 | Admission-Jobs `create`, `patch` (einmalig, beim Installieren) | › Prometheus Operator (`admissionWebhooks.patch`) | 50m | 50m | 64Mi | 64Mi | – |
+| b2 | Loki (SingleBinary): `loki` | `b2-loki/values.yaml` › Loki (`singleBinary`) | 500m | 500m | 1Gi | 1Gi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 1650m CPU, 3200Mi RAM.*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 1650m CPU, 3200Mi RAM; b2: 500m CPU, 1024Mi RAM.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `b1`):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `b2`):
 
 | | CPU | RAM |
 |---|---|---|
 | Zuteilbar (`Allocatable`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
-| Summe aller requests | 1850m (23 %) | 3340Mi (10 %) |
-| Rest | 6150m | ≈ 27,1 GiB |
+| Summe aller requests | 2350m (29 %) | 4364Mi (14 %) |
+| Rest | 5650m | ≈ 26,1 GiB |
 
-*Vor `b1`: requests 200m CPU, 140Mi RAM (nur k3s-eigene Pods).*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -325,6 +328,53 @@ Die CRDs `*.monitoring.coreos.com` danach prüfen (`kubectl get crd | grep monit
 **Hinweise:**
 - Revision 1 und 2 wurden nicht im Terminal mit `puris`, sondern über die Eingabezeile des Chat-Werkzeugs ausgeführt: dort lief Helm **v4.2.2** (Homebrew) über die Standard-kubeconfig `~/.kube/config` und die Heimnetz-Adresse der VM statt über den Tunnel. Ziel war derselbe Cluster (`puris-loadlab`). Die installierten Objekte sind mit der Ausgabe von Helm v4.3.0 identisch; eine Neuinstallation war daher nicht nötig. Künftig nur im Terminal nach `puris`.
 - Grafana nur zum Ansehen öffnen, während Messungen geschlossen halten.
+
+---
+
+## b2 – Loki (Logs speichern)
+
+**Datum:** 2026-10-06
+**Ziel:** Alle Logzeilen der Pods dauerhaft speichern (gesammelt von `b3-alloy`), damit abgeschlossene und fehlgeschlagene Transaktionen trotz Log-Rotation vollständig gezählt werden können.
+
+**YAML-Datei:** [`setup/b2-loki/values.yaml`](setup/b2-loki/values.yaml) (Abschnitte: chartweit, Loki/SingleBinary), Commit `ab97766`.
+
+**Befehle `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
+helm upgrade --install loki grafana/loki --version 7.3.0 -n logging --create-namespace -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b2-loki/values.yaml"
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1 --api-versions monitoring.coreos.com/v1/ServiceMonitor` → 10 Objekte, ein Container mit requests = limits.
+- `helm repo update` war nötig, weil für das bereits eingetragene Repository `prometheus-community` kein Zwischenspeicher vorlag; ohne ihn brach Helm das Herunterladen ab.
+
+**Prüfung `[Mac]`:**
+```bash
+helm list -n logging
+kubectl get pods -n logging -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[*].ready,QOS:.status.qosClass,RESTARTS:.status.containerStatuses[*].restartCount'
+kubectl get pvc,servicemonitor -n logging
+kubectl get --raw "/api/v1/namespaces/logging/services/http:loki:3100/proxy/ready"
+kubectl get --raw "/api/v1/namespaces/logging/services/http:loki:3100/proxy/loki/api/v1/status/buildinfo"
+```
+Ergebnis:
+- Release `loki`, Revision 1, `deployed` (Chart `loki-7.3.0`)
+- Pod `loki-0` bereit, `Guaranteed`, 0 Neustarts (500m CPU, 1Gi RAM)
+- Volume `storage-loki-0`: `Bound`, 20Gi, `local-path`; ServiceMonitor `loki` vorhanden
+- `/ready` → `ready`; Build-Info: Version `3.6.11`, Revision `f7a4aa99`, Image `grafana/loki:3.6.11`
+- Prometheus-Ziel `logging/loki`: `up`; `loki_build_info` vorhanden. `loki_distributor_lines_received_total` und `loki_discarded_samples_total` noch ohne Werte, da noch keine Logs geliefert werden (`b3-alloy` folgt).
+- Interne Adresse für Alloy und Grafana: `http://loki.logging.svc.cluster.local:3100`
+
+**Ressourcen:** siehe Ressourcenübersicht (b2).
+
+**Rückbau `[Mac]`:**
+```bash
+helm uninstall loki -n logging
+kubectl delete pvc storage-loki-0 -n logging
+kubectl delete namespace logging
+```
+Das Volume bleibt bei `helm uninstall` bewusst erhalten (`enableStatefulSetAutoDeletePVC: false`) und muss gesondert gelöscht werden.
+
+**Hinweise:**
+- Die Installation lief in einem Terminal-Tab mit `puris` (Helm v4.3.0, Tunnel). Ein vorheriger Versuch über die Eingabezeile des Chat-Werkzeugs scheiterte an der Heimnetz-Adresse der Standard-kubeconfig (`i/o timeout`); dabei wurde nichts installiert.
+- Die `appVersion` des Charts (3.6.12) weicht vom ausgelieferten Image (3.6.11) ab; maßgeblich ist das laufende Image.
 
 ---
 

@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; als Nächstes `b2-loki`, dann `b3-alloy`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; `b2-loki` installiert (offen: Datenquelle in Grafana); als Nächstes `b3-alloy`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -123,8 +123,8 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 
 - [x] Chart-Version festgelegt (fest, kein `latest`) – Chart 7.3.0, Loki 3.6.12, 2026-10-06
 - [x] `values.yaml` erstellt und mit `helm template` geprüft (10 Objekte, requests = limits) – 2026-10-06
-- [ ] Betriebsart, dauerhaftes Volume, Aufbewahrung mindestens über die gesamte Messphase
-- [ ] Aufnahmegrenzen so gesetzt, dass bei hoher Last keine Zeilen abgewiesen werden
+- [x] Betriebsart, dauerhaftes Volume, Aufbewahrung mindestens über die gesamte Messphase – SingleBinary, 20Gi `local-path`, 30 Tage; installiert 2026-10-06
+- [x] Aufnahmegrenzen so gesetzt, dass bei hoher Last keine Zeilen abgewiesen werden – 32/64 MB/s, je Stream 16/64 MB; Nachweis über `loki_discarded_samples_total` im Probelauf – 2026-10-06
 - [ ] Loki als Datenquelle in Grafana
 - [ ] Definition „Baustein fertig“ erfüllt
 

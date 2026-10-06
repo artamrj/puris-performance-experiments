@@ -89,6 +89,7 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - `setup/b1-monitoring/values.yaml` für kube-prometheus-stack 91.9.0 erstellt (Abschnitte: chartweit, Prometheus, Operator, kube-state-metrics, node-exporter, Grafana). Lokal mit `helm template` (Kubernetes 1.37.1) geprüft: 99 Objekte, kein Alertmanager; alle Container einschließlich Init-Container, Sidecars und Installations-Jobs mit requests = limits. Summe der laufenden Container: 1650m CPU, 3200Mi RAM.
 - `b1` Monitoring installiert (kube-prometheus-stack 91.9.0, Release `monitoring`, Revision 2) aus Commit `2ae8388`: 5 Pods bereit und `Guaranteed`, Volume 20Gi gebunden, 11/11 Prometheus-Ziele `up`, CPU-, RAM- und Drosselungsmetriken vorhanden, Remote-Write-Empfänger aktiv; Grafana-Anmeldung erfolgreich, Datenquelle Prometheus `OK`, Dashboard zeigt Werte (siehe `AUFBAU.md`, „b1“). `b1` damit abgeschlossen.
 - `setup/b2-loki/values.yaml` für Loki-Chart 7.3.0 (Loki 3.6.12, SingleBinary) erstellt und lokal mit `helm template` (Kubernetes 1.37.1, mit ServiceMonitor-API) geprüft: 10 Objekte, ein Container mit requests = limits (500m, 1Gi); im Standard aktive Zusatzdienste (Gateway, Canary, Caches mit 8 GiB bzw. 1 GiB RAM, Test, Regel-Sidecar) abgeschaltet; Nutzungsstatistik an Grafana Labs abgeschaltet.
+- `b2-loki` installiert (Release `loki`, Revision 1, Chart 7.3.0) aus Commit `ab97766`: Pod `loki-0` bereit und `Guaranteed`, Volume 20Gi gebunden, `/ready` → `ready`, Prometheus-Ziel `logging/loki` `up` (siehe `AUFBAU.md`, „b2“). Offen: Loki als Datenquelle in Grafana.
 - Automatische apt-Updates abgeschaltet: `apt-daily.timer` und `apt-daily-upgrade.timer` sind `disabled` und `inactive` (Ergänzung zu `a1` in `AUFBAU.md`). Damit ist die Beobachtung vom 2026-10-05 zu `unattended-upgrades` umgesetzt.
 - `CHECKLISTE.md` angelegt (Fortschritt je Etappe und Baustein mit Zielterminen, Stand 2026-10-06) und in `KONZEPT.md` (Abschnitte 2 und 7) verankert. Zwei neue offene Punkte in `KONZEPT.md`, Abschnitt 13: `b2-logs` besteht aus zwei Helm-Charts (Loki, Alloy); Puffer für k3s und Betriebssystem ist noch festzulegen.
 
@@ -151,4 +152,8 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 
 - Nach `b1` sind 1850m CPU (23 %) und 3340Mi RAM (10 %) des Knotens per requests vergeben. Kurz nach dem Start nutzte der Namespace `monitoring` ca. 0,25 CPU-Kerne; Prometheus 291 MiB, Grafana-Pod 355 MiB Arbeitsspeicher.
 
-**Nächstes:** `b2-loki`, danach `b3-alloy`.
+**Problem:** Installation von `b2-loki` über die Eingabezeile des Chat-Werkzeugs scheiterte mit `kubernetes cluster unreachable … 192.168.x.x:6443: i/o timeout` (Standard-kubeconfig zeigt auf die Heimnetz-Adresse, die gerade nicht erreichbar war). Nichts installiert. Danach im Terminal-Tab mit `puris` erfolgreich installiert. `helm repo add grafana …` und `helm repo update` aus dem ersten Versuch waren erfolgreich (gemeinsame Helm-Repository-Einstellungen).
+
+**Beobachtung:** Chart `loki` 7.3.0 nennt `appVersion` 3.6.12, liefert aber das Image `grafana/loki:3.6.11` aus; Loki meldet selbst Version 3.6.11. Dokumentiert wird die laufende Version.
+
+**Nächstes:** Loki als Datenquelle in Grafana (Änderung an `b1`), dann `b3-alloy`.

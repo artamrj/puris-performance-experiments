@@ -1,7 +1,8 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # Baustein:    b2-loki
 # Chart:       loki 7.3.0 (https://grafana.github.io/helm-charts)
-# Komponenten: Loki 3.6.12 im Modus SingleBinary (ein Prozess)
+# Komponenten: Loki 3.6.11 im Modus SingleBinary (ein Prozess)
+#              (Standard-Image dieser Chart-Version; `appVersion` des Charts nennt 3.6.12)
 # Zweck:       Speichert die Logzeilen aller Pods (gesammelt von b3-alloy).
 #              Aus den PURIS-Logs werden abgeschlossene und fehlgeschlagene
 #              Transaktionen pro Sekunde gezählt (KONZEPT.md, Abschnitt 6).
