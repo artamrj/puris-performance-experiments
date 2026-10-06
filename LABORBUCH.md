@@ -249,3 +249,19 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
   Begründung: NAS-Profil (`VPS-VARIANTE.md`, Abschnitt 2: Prüfungen von Java-Diensten mit weniger als einem Kern verlängern); mit 0,5 Kernen startet der Dienst langsamer als mit 1 Kern (Standard des Bundles).
 
 **Nächstes:** `c1` aus dem Commit installieren und prüfen (Pods, DID-Dokumente beider Firmen, BPN-Verzeichnis).
+
+## 2026-10-06 – `c1-identitaet` installiert
+
+**Gemacht:**
+- `c1` aus Commit `f753a2b` installiert (Release `identity`, Namespace `identity`); Helm-Repository `tractusx-dev` auf dem Mac eingetragen. Der Installationsbefehl lief zweimal (10:28:19 und 10:30:16 UTC) → Revision 2; Manifeste und Werte beider Revisionen sind identisch, kein Pod wurde dadurch neu erstellt.
+- Prüfung: beide Pods bereit und `Guaranteed`; `/actuator/health` → `UP`; DID-Dokumente aller drei BPNs mit `did:web:ssi-dim-wallet-service.identity:<BPN>` und Diensten ohne Port; Prometheus erfasst CPU, Drosselung und Speicher beider Container, Loki die Logs beider Pods (siehe `AUFBAU.md`, „c1“).
+- Summe der requests nach `c1`: 2225m CPU (31 % von 7000m), 5964Mi RAM (21 %).
+
+**Problem:** Der Wallet-Stub startete vor PostgreSQL (Image von PostgreSQL wurde 2 s später fertig geladen, Datenbank 10:29:13 UTC bereit) und beendete sich mit `Connection to wallet-postgres:5432 refused` (Exit-Code 1). Kubernetes startete den Container einmal neu; der zweite Start gelang. Kein Eingriff nötig.
+
+**Beobachtungen:**
+- Start des Wallet-Stubs mit 0,5 Kernen: „Started WalletStubApplication in 93.405 seconds“ (Java 21.0.10); Bereitschaftsprüfung 92 s nach dem Containerstart noch `connection refused`, bereit nach ca. 2 min. Mit der Standard-Lebendprüfung (Beginn nach 75 s, Neustart nach drei Fehlschlägen im Abstand von 15 s) wäre der Container vermutlich vor dem Ende des Starts neu gestartet worden; die Verlängerung auf 180 s war nötig.
+- Das BPN-Verzeichnis verlangt einen Token (`Authorization`-Header). Die Anfrage ohne Token zur Prüfung erzeugte im Log einen `ERROR` (`MissingRequestHeaderException`) – erwartet, kein Fehler des Aufbaus.
+- Verbrauch kurz nach dem Start: Wallet-Stub 17m CPU / 290Mi, PostgreSQL 30m / 58Mi.
+
+**Nächstes:** `c2-customer-edc` (EDC des Customers) vorbereiten.

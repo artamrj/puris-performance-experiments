@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` vorbereitet (`values.yaml` geprüft), als Nächstes Installation von `c1`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; als Nächstes `c2-customer-edc`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -156,7 +156,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Namespaces für Phase c und d festlegen (vor `c1`) – `identity`, `customer`, `supplier`; 2026-10-06
 
 **Bausteine:**
-- [ ] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt
+- [x] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `f753a2b` (Punkt 11: mit dem Commit dieser Dokumentation)
 - [ ] `c2-customer-edc` – `dataspace-connector-bundle` 1.3.0 (mit PostgreSQL und Vault); Definition „fertig“ erfüllt
 - [ ] `c3-customer-dtr` – `digital-twin-bundle` 1.3.0 (mit PostgreSQL); Definition „fertig“ erfüllt
 - [ ] `c4-supplier-edc` – `dataspace-connector-bundle` 1.3.0; Definition „fertig“ erfüllt

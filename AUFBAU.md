@@ -28,6 +28,9 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | alloy (Helm-Chart) | 1.13.0 | Cluster | b3 |
 | Grafana Alloy | v1.20.0 | Cluster | b3 |
 | config-reloader (Alloy) | v0.94.0 (mit Digest im Chart festgelegt) | Cluster | b3 |
+| identity-and-trust-bundle (Helm-Chart) | 1.1.3 (Sub-Charts `ssi-dim-wallet-stub` 0.1.17, `postgres` 0.11.0 von cloudpirates) | Cluster | c1 |
+| Wallet-Stub (`tractusx/ssi-dim-wallet-stub`) | 0.0.11 (Java 21.0.10) | Cluster | c1 |
+| PostgreSQL (Wallet-Stub) | 18.0 (Image `postgres:18.0`, mit Digest im Chart festgelegt) | Cluster | c1 |
 
 ---
 
@@ -52,20 +55,22 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | b2 | Loki (SingleBinary): `loki` | `b2-loki/values.yaml` › Loki (`singleBinary`) | 300m | 300m | 1Gi | 1Gi | Guaranteed |
 | b3 | Alloy: `alloy` | `b3-alloy/values.yaml` › Alloy | 200m | 200m | 256Mi | 256Mi | Guaranteed |
 | b3 | Alloy: `config-reloader` (Sidecar) | › config-reloader | 25m | 25m | 64Mi | 64Mi | Guaranteed |
+| c1 | Wallet-Stub: `ssi-dim-wallet-stub` (Heap nicht einstellbar, JVM-Standard 25 % des Limits) | `c1-identitaet/values.yaml` › Wallet-Stub | 500m | 500m | 1Gi | 1Gi | Guaranteed |
+| c1 | PostgreSQL: `postgresql` | › PostgreSQL | 100m | 100m | 256Mi | 256Mi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU).*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach dem Puffer für k3s und dem NAS-Profil für `b1`–`b3`):
+**Summe gegenüber dem Knoten** (Stand 2026-10-06, nach `c1`):
 
 | | CPU | RAM |
 |---|---|---|
 | Kapazität der VM (`Capacity`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
 | Puffer für Betriebssystem und k3s (`system-reserved`, a2) | 1000m | 3Gi |
 | Zuteilbar (`Allocatable`) | 7 (= 7000m) | 28661608Ki (≈ 27,3 GiB) |
-| Summe aller requests | 1625m (23 %) | 4684Mi (16 %) |
-| Rest | 5375m | ≈ 22,8 GiB |
+| Summe aller requests | 2225m (31 %) | 5964Mi (21 %) |
+| Rest | 4775m | ≈ 21,5 GiB |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -509,6 +514,53 @@ sudo rm -rf /var/lib/alloy               # [VM] Lesepositionen (hostPath) entfer
 **Hinweise:**
 - Die Lesepositionen liegen auf der VM (`/var/lib/alloy/data`, hostPath). Nach einem Neustart von Alloy wird dort weitergelesen; ohne sie würden alle Dateien erneut gelesen (doppelte Zeilen).
 - Alloy muss mit der Logmenge Schritt halten: Kubernetes rotiert Container-Logs ab 10 Mi und behält 5 Dateien je Container. Den Rückstand im Probelauf prüfen (gelesene gegen geschriebene Bytes).
+
+---
+
+## c1 – Identität (Wallet-Stub)
+
+**Datum:** 2026-10-06
+**Ziel:** Zentrale Identität des Datenraums bereitstellen: DIDs der beiden Firmen, Tokens für die EDCs (STS), Nachweise (Credential Service) und BPN-Verzeichnis – erreichbar über den Kubernetes-Dienstnamen, ohne Ingress.
+
+**YAML-Datei:** [`setup/c1-identitaet/values.yaml`](setup/c1-identitaet/values.yaml) (Abschnitte: Wallet-Stub, PostgreSQL), Commit `f753a2b`.
+
+**Befehle `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm repo add tractusx-dev https://eclipse-tractusx.github.io/charts/dev && helm repo update tractusx-dev
+helm upgrade --install identity tractusx-dev/identity-and-trust-bundle --version 1.1.3 -n identity --create-namespace -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c1-identitaet/values.yaml"
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → 10 Objekte (Deployment, StatefulSet, 3 Services, 3 ConfigMaps, 2 Secrets), alle im Namespace `identity`, kein Ingress; 2 Container mit requests = limits; `DID_HOST`/`STUB_URL` = `ssi-dim-wallet-service.identity`, Dienst auf Port 80, `APP_LOG_LEVEL` = `info`.
+- Kein Secret vorab nötig: Das Datenbank-Passwort ist der Standardwert des Charts (Ausnahme, siehe `KONZEPT.md`, Abschnitt 3).
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl wait --for=condition=Ready pod --all -n identity --timeout=360s
+kubectl get pods -n identity -o custom-columns='POD:.metadata.name,QOS:.status.qosClass,CPU_REQ:.spec.containers[*].resources.requests.cpu,CPU_LIM:.spec.containers[*].resources.limits.cpu,MEM_REQ:.spec.containers[*].resources.requests.memory,MEM_LIM:.spec.containers[*].resources.limits.memory,RESTARTS:.status.containerStatuses[*].restartCount'
+kubectl get --raw "/api/v1/namespaces/identity/services/http:ssi-dim-wallet-service:80/proxy/actuator/health"
+kubectl get --raw "/api/v1/namespaces/identity/services/http:ssi-dim-wallet-service:80/proxy/<BPN>/did.json"
+```
+Ergebnis:
+- Release `identity`, Revision 2, `deployed` (Chart `identity-and-trust-bundle-1.1.3`); Revision 1 = Installation um 10:28:19 UTC, Revision 2 = derselbe Befehl erneut um 10:30:16 UTC – Manifeste und Werte beider Revisionen identisch (`helm get manifest`/`helm get values`), kein Pod neu erstellt; Images `tractusx/ssi-dim-wallet-stub:0.0.11` (Java 21.0.10), `postgres:18.0@sha256:1ffc019d…`
+- Pods `ssi-dim-wallet-stub-…` und `wallet-postgres-0` bereit und `Guaranteed`; der Wallet-Stub wurde beim ersten Start einmal neu gestartet (Datenbank noch nicht bereit, siehe Hinweise), danach stabil
+- Wallet-Stub: „Started WalletStubApplication in 93.405 seconds“; bereit 10:31:15 UTC, knapp 3 min nach der Installation; `/actuator/health` → `UP`
+- DID-Dokumente unter `/<BPN>/did.json` für Customer `BPNL00000003AZQP`, Supplier `BPNL00000003AYRE` und Betreiber `BPNL00000003CRHK`: `id` = `did:web:ssi-dim-wallet-service.identity:<BPN>`, Dienste `CredentialService` (`http://ssi-dim-wallet-service.identity/api`) und `IssuerService` (`…/api/v1.0.0/dcp/<BPN>`), je ein Schlüssel
+- BPN-Verzeichnis `/api/v1/directory/bpn-directory` vorhanden, verlangt einen Token (`Authorization`-Header); Prüfung mit Token folgt mit den EDCs (`c2`, `c4`)
+- Prometheus: `container_cpu_usage_seconds_total`, `container_cpu_cfs_throttled_periods_total`, `container_memory_working_set_bytes` für beide Container vorhanden; Loki enthält die Logs beider Pods
+- Verbrauch kurz nach dem Start (`kubectl top`): Wallet-Stub 17m CPU / 290Mi, PostgreSQL 30m / 58Mi
+
+**Ressourcen:** siehe Ressourcenübersicht (c1).
+
+**Rückbau `[Mac]`:**
+```bash
+helm uninstall identity -n identity
+kubectl delete namespace identity
+```
+Kein Volume vorhanden (Datenbank ohne dauerhaftes Volume); die Wallets werden beim nächsten Start neu angelegt.
+
+**Hinweise:**
+- Der Wallet-Stub startet mit 0,5 Kernen in ca. 1,5–2 min. Die Lebendprüfung beginnt deshalb erst nach 180 s (Standard: 75 s); mit dem Standard wäre der Container vermutlich vor dem Ende des Starts neu gestartet worden (Bereitschaftsprüfung 92 s nach dem Start noch `connection refused`).
+- Startet der Wallet-Stub vor PostgreSQL, beendet er sich (`Connection to wallet-postgres:5432 refused`) und wird von Kubernetes neu gestartet; der Chart hat keine Startreihenfolge.
+- Der Namespace kommt im Chart aus `wallet.nameSpace`, nicht aus `-n`; beide müssen `identity` sein.
 
 ---
 
