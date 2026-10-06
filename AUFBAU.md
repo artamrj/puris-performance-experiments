@@ -362,6 +362,16 @@ Ergebnis:
 - Prometheus-Ziel `logging/loki`: `up`; `loki_build_info` vorhanden. `loki_distributor_lines_received_total` und `loki_discarded_samples_total` noch ohne Werte, da noch keine Logs geliefert werden (`b3-alloy` folgt).
 - Interne Adresse für Alloy und Grafana: `http://loki.logging.svc.cluster.local:3100`
 
+**Funktionstest `[Mac]`** (eine Testzeile schreiben und zurücklesen, wie in den Hinweisen des Charts):
+```bash
+kubectl port-forward -n logging svc/loki 3100:3100 &
+curl -s -w "%{http_code}\n" -H "Content-Type: application/json" -X POST "http://127.0.0.1:3100/loki/api/v1/push" \
+  --data-raw '{"streams":[{"stream":{"job":"b2-funktionstest"},"values":[["<Zeitstempel in ns>","Loki-Funktionstest b2 …"]]}]}'
+curl -s -G "http://127.0.0.1:3100/loki/api/v1/query_range" --data-urlencode 'query={job="b2-funktionstest"}'
+kill %1
+```
+Ergebnis (2026-10-06): Schreiben `HTTP 204`; Zurücklesen: 1 Stream `{job="b2-funktionstest"}` mit der geschriebenen Zeile `Loki-Funktionstest b2 2026-10-06T00:11:39Z`. In Prometheus danach `loki_distributor_lines_received_total` = 1, `loki_discarded_samples_total` ohne Werte (= 0). Die Testzeile trägt ein eigenes Label und wird bei Auswertungen nicht mitgezählt.
+
 **Ressourcen:** siehe Ressourcenübersicht (b2).
 
 **Rückbau `[Mac]`:**

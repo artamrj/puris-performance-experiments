@@ -154,6 +154,8 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 
 **Problem:** Installation von `b2-loki` über die Eingabezeile des Chat-Werkzeugs scheiterte mit `kubernetes cluster unreachable … 192.168.x.x:6443: i/o timeout` (Standard-kubeconfig zeigt auf die Heimnetz-Adresse, die gerade nicht erreichbar war). Nichts installiert. Danach im Terminal-Tab mit `puris` erfolgreich installiert. `helm repo add grafana …` und `helm repo update` aus dem ersten Versuch waren erfolgreich (gemeinsame Helm-Repository-Einstellungen).
 
+**Problem:** Funktionstest von Loki über den API-Proxy (`kubectl create --raw …/loki/api/v1/push -f …`) scheiterte mit `BadRequest`. Gelöst mit kurzzeitigem `kubectl port-forward` und `curl` mit `Content-Type: application/json` (wie in den Hinweisen des Charts): Testzeile mit `HTTP 204` angenommen und zurückgelesen; `loki_distributor_lines_received_total` = 1, keine abgewiesenen Zeilen.
+
 **Beobachtung:** Chart `loki` 7.3.0 nennt `appVersion` 3.6.12, liefert aber das Image `grafana/loki:3.6.11` aus; Loki meldet selbst Version 3.6.11. Dokumentiert wird die laufende Version.
 
 **Nächstes:** Loki als Datenquelle in Grafana (Änderung an `b1`), dann `b3-alloy`.
