@@ -216,3 +216,36 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 **Beobachtung:** Beim Upgrade von `b1` lief der alte Grafana-Pod kurz neben dem neuen weiter (Rollout); erst nach seinem Ende fiel die Summe der requests von 1925m auf 1625m.
 
 **Nächstes:** Phase c, beginnend mit `c1-identitaet` (Wallet-Stub).
+
+## 2026-10-06 – `c1-identitaet` vorbereitet
+
+**Ziel:** Wallet-Stub als ersten Baustein des Datenraums vorbereiten (Phase c).
+
+**Gemacht:**
+- Chart `identity-and-trust-bundle` 1.1.3 untersucht (Repository `tractusx-dev`): Sub-Chart `ssi-dim-wallet-stub` 0.1.17 (Wallet-Stub 0.0.11) mit Sub-Chart `postgres` 0.11.0 von cloudpirates (Image `postgres:18.0`, per Digest festgelegt); `centralidp` (Keycloak) ist im Chart vorhanden, aber standardmäßig aus.
+- `setup/c1-identitaet/values.yaml` erstellt und lokal mit `helm template` (Helm v4.3.0, Kubernetes 1.37.1) geprüft: 10 Objekte (Deployment, StatefulSet, 3 Services, 3 ConfigMaps, 2 Secrets), alle im Namespace `identity`, kein Ingress; 2 Container mit requests = limits (Wallet-Stub 500m/1Gi, PostgreSQL 100m/256Mi); `DID_HOST` und `STUB_URL` auf `ssi-dim-wallet-service.identity`, Dienst auf Port 80, `APP_LOG_LEVEL` = `info`.
+- `KONZEPT.md`, Abschnitt 3, ergänzt (Namespaces, Adresse des Wallet-Stubs, Ausnahmen bei PostgreSQL-Image und Zugangsdaten).
+
+**Beobachtungen am Chart:**
+- Die Vorlagen des Wallet-Stubs setzen den Namespace fest aus `wallet.nameSpace` (Standard des Bundles: `default`), nicht aus `-n`.
+- Der Chart schreibt das Datenbank-Passwort in die ConfigMap `ssi-dim-wallet-config` (`SPRING_DATASOURCE_PASSWORD`) und in die ConfigMap `wallet-postgres-configmap`; ein vorhandenes Secret kann nicht angegeben werden.
+- PostgreSQL ohne dauerhaftes Volume (`emptyDir`, Standard des Bundles); ohne Angabe hätte der Container keine CPU/RAM-Werte (QoS `BestEffort`).
+- Standard-Protokollierung des Sub-Charts: `debug`. Tokens laufen nach `TOKEN_EXPIRY_TIME` = 5 ab (Standard, unverändert).
+- Java-Heap des Wallet-Stubs ist im Chart nicht einstellbar (keine zusätzlichen Umgebungsvariablen); die JVM nimmt standardmäßig 25 % des Speicherlimits.
+- Die Identitäten im Bundle-Standard entsprechen den Umbrella-Werten 26.03.00 (Customer `BPNL00000003AZQP`, Supplier `BPNL00000003AYRE`, Betreiber `BPNL00000003CRHK`).
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Namespaces `identity` (`c1`), `customer` (`c2`, `c3`, `d1`), `supplier` (`c4`, `c5`, `d2`).
+  Begründung: Jede Firma in einem eigenen Namespace wie in einer echten Installation; lesbare Dienstnamen.
+- Wallet-Stub über `ssi-dim-wallet-service.identity`, Dienst auf Port 80; DIDs `did:web:ssi-dim-wallet-service.identity:<BPN>`.
+  Begründung: kein Ingress im Messweg; Port 80, damit die DIDs keinen Port enthalten.
+- Datenbank-Passwort des Wallet-Stubs bleibt der öffentlich bekannte Standardwert des Charts (Ausnahme von „Zugangsdaten nur als Secret“).
+  Begründung: Der Chart kann kein Secret verwenden; ein eigenes Passwort stünde im öffentlichen Repository. Die Datenbank ist nur im Cluster erreichbar und enthält nur Testdaten; der Umbrella-Chart arbeitet ebenso.
+- Protokollierung `info` statt `debug`.
+  Begründung: Debug-Ausgaben kosten CPU und erzeugen unter Last viele Logzeilen; der Wallet-Stub wird als Engpasskandidat gemessen.
+- PostgreSQL des Wallet-Stubs ohne dauerhaftes Volume (wie im Bundle).
+  Begründung: getestete Einstellung; der Wallet-Stub legt die Wallets bei jedem Start neu an. Ein Neustart der Datenbank während eines Messlaufs macht den Lauf ungültig.
+- Lebendprüfung des Wallet-Stubs beginnt nach 180 s statt 75 s (aus dem NAS-Profil abgeleitet, nicht einzeln abgefragt).
+  Begründung: NAS-Profil (`VPS-VARIANTE.md`, Abschnitt 2: Prüfungen von Java-Diensten mit weniger als einem Kern verlängern); mit 0,5 Kernen startet der Dienst langsamer als mit 1 Kern (Standard des Bundles).
+
+**Nächstes:** `c1` aus dem Commit installieren und prüfen (Pods, DID-Dokumente beider Firmen, BPN-Verzeichnis).

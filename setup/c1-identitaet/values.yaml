@@ -1,0 +1,88 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    c1-identitaet
+# Chart:       identity-and-trust-bundle 1.1.3 (https://eclipse-tractusx.github.io/charts/dev)
+#              mit Sub-Chart ssi-dim-wallet-stub 0.1.17
+#              und dessen Sub-Chart postgres 0.11.0 (cloudpirates)
+# Komponenten: Wallet-Stub 0.0.11 (Image tractusx/ssi-dim-wallet-stub:0.0.11)
+#              PostgreSQL 18.0 (Image postgres:18.0, im Chart per Digest festgelegt)
+#              (Versionen = Standard dieser Chart-Version)
+# Zweck:       Zentrale Identität des Datenraums: DIDs beider Firmen, Tokens für
+#              die EDCs (STS), Nachweise (Credential Service), BPN-Verzeichnis.
+#              Wird bei jeder Anfrage im Datenraum genutzt → Engpasskandidat,
+#              wird wie alle Komponenten gemessen (KONZEPT.md, Abschnitt 13).
+# Identitäten: Standardwerte des Bundles = getestete Werte des Umbrella-Charts
+#              26.03.00, daher hier nicht gesetzt: Customer BPNL00000003AZQP,
+#              Supplier BPNL00000003AYRE, Betreiber BPNL00000003CRHK.
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM nach dem NAS-Profil (VPS-VARIANTE.md, Abschnitt 2);
+#              nach dem ersten Probelauf mit dem gemessenen Verbrauch abgleichen.
+#
+# Ausnahme Zugangsdaten: Der Chart schreibt das Datenbank-Passwort in eine
+#              ConfigMap (SPRING_DATASOURCE_PASSWORD) und kann kein Secret
+#              verwenden. Es bleibt daher der öffentlich bekannte Standardwert
+#              des Charts – kein eigenes Passwort in dieser Datei. Die Datenbank
+#              ist nur im Cluster erreichbar und enthält nur Testdaten
+#              (Entscheidung 2026-10-06, LABORBUCH.md).
+#
+# Installation [Mac] (im Terminal vorher `puris`):
+#   helm repo add tractusx-dev https://eclipse-tractusx.github.io/charts/dev && helm repo update tractusx-dev
+#   helm upgrade --install identity tractusx-dev/identity-and-trust-bundle --version 1.1.3 \
+#     -n identity --create-namespace \
+#     -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c1-identitaet/values.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══ Wallet-Stub ══════════════════════════════════════════════════════════════
+ssi-dim-wallet-stub:
+  wallet:
+    # Die Vorlagen des Charts setzen den Namespace fest aus diesem Wert, nicht
+    # aus `-n` (Standard des Bundles: default). Muss gleich dem Namespace der
+    # Installation sein, sonst findet der Wallet-Stub seine Datenbank nicht.
+    nameSpace: identity
+
+    # Adresse und DIDs über den Kubernetes-Dienstnamen statt Ingress
+    # (Standard: ssi-dim-wallet-stub.tx.test über NGINX-Ingress). DIDs lauten
+    # damit did:web:ssi-dim-wallet-service.identity:<BPN>; die EDCs lösen sie
+    # über HTTP auf (KONZEPT.md, Abschnitt 3, „Netzwerk“).
+    didHost: "ssi-dim-wallet-service.identity"
+    stubUrl: "http://ssi-dim-wallet-service.identity"
+    ingress:
+      enabled: false
+
+    # Dienst auf Port 80 statt 8080 (Standard), damit die DIDs keinen Port
+    # enthalten; der Container lauscht weiter auf 8080.
+    service:
+      port: 80
+
+    # `info` statt `debug` (Standard des Sub-Charts): Debug-Ausgaben kosten
+    # CPU und erzeugen unter Last sehr viele Logzeilen (Loki/Alloy). Der
+    # Wallet-Stub wird als Engpasskandidat gemessen; seine Protokollierung soll
+    # das nicht verfälschen.
+    logLevel: "info"
+
+    # NAS-Profil (Standard des Bundles: requests 500m/1Gi, limits 1/2Gi).
+    # Java-Heap: im Chart nicht einstellbar (keine zusätzlichen Variablen);
+    # die JVM nimmt standardmäßig 25 % des Speicherlimits (≈ 256 MiB).
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 500m, memory: 1Gi }
+
+    # Mit 0,5 Kernen startet der Java-Dienst langsamer als mit 1 Kern (Standard
+    # des Bundles). Lebendprüfung später beginnen (Standard: 75 s), damit der
+    # Container beim Start nicht neu gestartet wird; Bereitschaftsprüfung
+    # unverändert.
+    livenessProbe:
+      initialDelaySeconds: 180
+
+
+# ═══ PostgreSQL (Datenbank des Wallet-Stubs) ══════════════════════════════════
+  postgresql:
+    # Ohne dauerhaftes Volume wie im Bundle (Standard): Der Wallet-Stub legt
+    # die Wallets bei jedem Start neu an. Ein Neustart der Datenbank während
+    # eines Messlaufs macht den Lauf ungültig (Gültigkeitskriterium „keine
+    # Neustarts“).
+    # NAS-Profil (Standard: keine Werte, QoS BestEffort).
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 100m, memory: 256Mi }

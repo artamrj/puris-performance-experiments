@@ -110,7 +110,8 @@ Was für den Versuch gebraucht wird – und nur das. Herleitung und Quellen in A
 | Lastgenerator | `k6-operator` 4.6.0 | k6-Operator 1.6.0 | `f1` | erzeugt die Last |
 
 - **Versionen passen zusammen:** PURIS 6.2.0 ist laut Changelog mit EDC 0.12.0 und DTR 0.11.0 getestet – genau den Versionen der Bundles. Ein neuerer EDC (0.13.0) wird deshalb **nicht** verwendet.
-- **PostgreSQL der Bundles:** `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung der Bundles nach der Bitnami-Umstellung 2025; ohne Updates – Einschränkung).
+- **PostgreSQL der Bundles:** `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung der Bundles nach der Bitnami-Umstellung 2025; ohne Updates – Einschränkung). **Ausnahme `c1`** (geprüft 2026-10-06): Der Wallet-Stub bringt über das Sub-Chart `cloudpirates/postgres` 0.11.0 das Image `postgres:18.0` mit (im Chart per Digest festgelegt). Die Images von `c2`–`c5` werden je Baustein am gerenderten Chart geprüft.
+- **Zugangsdaten des Wallet-Stubs (Ausnahme, 2026-10-06):** Der Chart schreibt das Datenbank-Passwort in eine ConfigMap und kann kein Secret verwenden; es bleibt der öffentlich bekannte Standardwert des Charts (nur im Cluster erreichbar, nur Testdaten). Alle anderen Zugangsdaten nur als Secret.
 - **Identitäten (Testwerte des Umbrella-Charts 26.03.00):** Customer `BPNL00000003AZQP`, Supplier `BPNL00000003AYRE`, Betreiber/Aussteller `BPNL00000003CRHK`. Der Wallet-Stub legt die Wallets beider Firmen beim Start an (`seeding.bpnList`).
 - **Von PURIS verlangt:** Policy-Profil `profile2509`, Nachweis Rahmenvertrag `DataExchangeGovernance` 1.0 (vom EDC geprüft), Zweck `cx.puris.base` 1.
 
@@ -132,7 +133,8 @@ Was für den Versuch gebraucht wird – und nur das. Herleitung und Quellen in A
 
 ### Netzwerk im Cluster: Dienstnamen statt Ingress
 
-- Alle Adressen und DIDs verwenden **Kubernetes-Dienstnamen** – wie die PURIS-Referenzumgebung (`did:web:wallet:<BPN>`). Beim Wallet-Stub werden dazu `didHost` und `stubUrl` auf seinen Dienstnamen gesetzt.
+- Alle Adressen und DIDs verwenden **Kubernetes-Dienstnamen** – wie die PURIS-Referenzumgebung (`did:web:wallet:<BPN>`). Beim Wallet-Stub werden dazu `didHost` und `stubUrl` auf seinen Dienstnamen gesetzt: `ssi-dim-wallet-service.identity`, Dienst auf Port 80, damit die DIDs keinen Port enthalten (`did:web:ssi-dim-wallet-service.identity:<BPN>`).
+- **Namespaces** (festgelegt 2026-10-06): `identity` (Wallet-Stub, `c1`), `customer` (EDC, DTR, PURIS des Customers: `c2`, `c3`, `d1`), `supplier` (EDC, DTR, PURIS des Suppliers: `c4`, `c5`, `d2`); Messinfrastruktur in `monitoring` und `logging`.
 - DID-Dokumente werden über HTTP abgerufen (`EDC_IAM_DID_WEB_USE_HTTPS=false`), wie im Umbrella-Chart und in der PURIS-Referenz.
 - Kein Ingress-Controller: Ein zusätzlicher Proxy läge in jeder Anfrage zwischen den Firmen und würde die Messung verändern; ingress-nginx ist zudem eingestellt.
 - Oberflächen (Grafana usw.) werden vom Mac nur per `kubectl port-forward` angesehen – nie im Lastweg.
