@@ -1,0 +1,116 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    b2-loki
+# Chart:       loki 7.3.0 (https://grafana.github.io/helm-charts)
+# Komponenten: Loki 3.6.12 im Modus SingleBinary (ein Prozess)
+# Zweck:       Speichert die Logzeilen aller Pods (gesammelt von b3-alloy).
+#              Aus den PURIS-Logs werden abgeschlossene und fehlgeschlagene
+#              Transaktionen pro Sekunde gezählt (KONZEPT.md, Abschnitt 6).
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM sind Startwerte; nach dem ersten Probelauf mit dem
+#              gemessenen Verbrauch abgleichen und Änderungen begründen.
+#
+# Installation [Mac] (im Terminal vorher `puris`):
+#   helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
+#   helm upgrade --install loki grafana/loki --version 7.3.0 -n logging --create-namespace \
+#     -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b2-loki/values.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══ Chartweite Einstellungen ═════════════════════════════════════════════════
+
+# Ein Loki-Prozess für alles (Standard: SimpleScalable mit je 3 Replikaten für
+# write/read/backend – für eine einzelne VM unnötig groß).
+deploymentMode: SingleBinary
+
+# Bestandteile des SimpleScalable-Modus abschalten (Standard: je 3 Replikate).
+write:
+  replicas: 0
+read:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Nicht benötigte Zusatzdienste (Standard: an).
+gateway:          # nginx vor Loki; Alloy und Grafana sprechen Loki direkt an
+  enabled: false
+lokiCanary:       # erzeugt eigene Testlogs – würde die Messdaten verfälschen
+  enabled: false
+test:             # Test-Pod nur für `helm test`
+  enabled: false
+chunksCache:      # memcached, Standard 8 GiB RAM – für dieses Experiment unnötig
+  enabled: false
+resultsCache:     # memcached, Standard 1 GiB RAM
+  enabled: false
+sidecar:
+  rules:          # Regeln/Alarme werden nicht genutzt
+    enabled: false
+
+# Eigene Metriken von Loki an Prometheus (b1), u. a. um zu belegen, dass keine
+# Logzeilen abgewiesen wurden (`loki_discarded_samples_total`). Standard: aus.
+monitoring:
+  serviceMonitor:
+    enabled: true
+
+
+# ═══ Loki (SingleBinary) ══════════════════════════════════════════════════════
+loki:
+  # Nur ein Mandant (Standard: an → jeder Aufruf bräuchte X-Scope-OrgID).
+  auth_enabled: false
+
+  # Eine Kopie genügt bei einem Prozess (Standard: 3).
+  commonConfig:
+    replication_factor: 1
+
+  # Ablage auf dem Volume der VM statt in einem Objektspeicher (Standard: s3).
+  storage:
+    type: filesystem
+
+  # Pflichtangabe (Standard: leer). TSDB-Index mit Schema v13, gültig ab dem
+  # Aufbautag; Tagesindex.
+  schemaConfig:
+    configs:
+      - from: "2026-10-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  limits_config:
+    # Logs über die gesamte Messphase aufbewahren (wie Prometheus: 30 Tage).
+    retention_period: 720h
+    # Aufnahmegrenzen deutlich über dem Standard (4 MB/s, Burst 6 MB; je Stream
+    # 3 MB/s), damit bei hoher Last keine Zeilen abgewiesen werden.
+    ingestion_rate_mb: 32
+    ingestion_burst_size_mb: 64
+    per_stream_rate_limit: 16MB
+    per_stream_rate_limit_burst: 64MB
+
+  # Aufräumen nach retention_period (Standard: keine Löschung).
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+  # Keine Nutzungsstatistik an Grafana Labs senden (Standard: an).
+  analytics:
+    reporting_enabled: false
+
+singleBinary:
+  replicas: 1
+
+  # Dauerhaftes Volume (Standard: 10Gi, StorageClass des Clusters).
+  # PVC beim Deinstallieren behalten (Standard: löschen), damit Logs eines
+  # Messzeitraums nicht versehentlich verloren gehen.
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: local-path
+    enableStatefulSetAutoDeletePVC: false
+
+  # Startwert. Wird Loki gedrosselt, verzögert sich nur die Aufnahme (Alloy
+  # liest die Dateien nach); verloren gehen dadurch keine Zeilen.
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: 500m, memory: 1Gi }
