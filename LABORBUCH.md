@@ -356,3 +356,15 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Die erste Katalogabfrage dauerte 5,4 s, die zweite 2,0 s (Aufwärmen der Java-Dienste; für die Aufwärmphase der Messläufe vormerken).
 
 **Nächstes:** `c3-customer-dtr` (DTR des Customers) oder zuerst `c4-supplier-edc`, um die erste Katalogabfrage zwischen beiden Firmen zu prüfen.
+
+## 2026-10-06 – `c4-supplier-edc` vorbereitet
+
+**Gemacht:**
+- `setup/c4-supplier-edc/values.yaml` aus `c2` abgeleitet; Werte des Suppliers aus dem Umbrella-Chart 26.03.00 (`tx-data-provider`): Teilnehmer `BPNL00000003AYRE`, Kontext `00000000-0000-0000-0000-000000000002`, DID `did:web:ssi-dim-wallet-service.identity:BPNL00000003AYRE`, STS-Client `BPNL00000003AYRE`, Management-API-Key `TEST2`, Datenbank-Passwort des Umbrella-Charts für den Supplier. Adressen `http://edc-controlplane.supplier:8084` und `http://edc-dataplane.supplier:8081/api/public`. Vault wie bei `c2` (Schlüssel aus Secret mit Wiederholung, Bereitschaftsprüfung per HTTP, `RollingUpdate`).
+- Lokal mit `helm template` (Helm v4.3.0, Kubernetes 1.37.1) geprüft: 21 Objekte, keine clusterweiten Objekte, kein Ingress; 4 Container mit requests = limits (Control Plane 500m/1Gi, Data Plane 400m/1Gi, PostgreSQL 200m/512Mi, Vault 100m/128Mi = 1200m CPU); kein `tx.test`, keine Werte des Customers.
+
+**Entscheidungen:**
+- Data Plane des Suppliers 400m/1Gi (NAS-Profil; leitet je Transaktion die Anfragen an DTR und Submodell weiter), Lebendprüfung ab 180 s (Customer-Data-Plane war mit 0,2 Kernen nach ca. 95 s bereit). Abgeleitet aus dem NAS-Profil, nicht einzeln abgefragt.
+- (vom Verfasser bestätigt) Schlüssel werden nur erzeugt, wenn noch keine vorhanden sind; Namespace und Secret per `kubectl apply`, sodass ein wiederholter Aufruf nichts verändert (Vorschlag aus dem Eintrag „`c2`: Schlüssel und Secret angelegt“).
+
+**Nächstes:** Schlüssel und Secret für `supplier`, Installation von `c4`, erste Katalogabfrage zwischen Customer und Supplier.
