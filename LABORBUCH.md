@@ -96,6 +96,7 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Recherche, welche Komponenten der Versuch braucht (Quellcode und Konfiguration PURIS 6.2.0, Umbrella 26.03.00, Charts der Bundles, Kubernetes-Blog) und Abschätzung des Rechenbedarfs; Ergebnis in `KONZEPT.md`, Abschnitt 3 („Benötigte Komponenten“, „Netzwerk im Cluster“) und Abschnitt 13.
 - Automatische apt-Updates abgeschaltet: `apt-daily.timer` und `apt-daily-upgrade.timer` sind `disabled` und `inactive` (Ergänzung zu `a1` in `AUFBAU.md`). Damit ist die Beobachtung vom 2026-10-05 zu `unattended-upgrades` umgesetzt.
 - `VPS-VARIANTE.md` angelegt: Planung einer zweiten Umgebung auf einem VPS mit dedizierten vCPU (Rollen: NAS-VM Entwicklung, VPS 1 Hauptmessungen, VPS 2 Nachbau-Test), Ressourcenprofil „VPS optimal“ (Schätzung: 20,6 Kerne / 36,2 GiB reserviert), Voraussetzungen der Reproduzierbarkeit, Zeitplan, Kosten. Status: Planung, Entscheidungen offen.
+- `VPS-VARIANTE.md` überarbeitet (Entscheidung siehe unten): NAS-VM als Hauptumgebung mit NAS-Profil (Vorschlag ≈ 6,7 von 7 zuteilbaren Kernen, ≈ 17 GiB), Steal Time als Gültigkeitskriterium, Nachbau-Test auf frischer NAS-VM (Pflicht) und optional auf einem VPS mit 8 dedizierten vCPU; Profil „VPS optimal“ nur noch als Anhang (Option B).
 - `CHECKLISTE.md` angelegt (Fortschritt je Etappe und Baustein mit Zielterminen, Stand 2026-10-06) und in `KONZEPT.md` (Abschnitte 2 und 7) verankert. Zwei neue offene Punkte in `KONZEPT.md`, Abschnitt 13: `b2-logs` besteht aus zwei Helm-Charts (Loki, Alloy); Puffer für k3s und Betriebssystem ist noch festzulegen.
 
 **Problem:** Erster Zugriffsversuch vom Mac mit `kubectl get nodes` scheiterte mit `dial tcp 127.0.0.1:6443: connect: connection refused`. Ursache: Der Tunnel (`ssh -N puris-vm`) lief im selben Terminal und wurde mit Ctrl+C beendet, bevor `kubectl` aufgerufen wurde. Gelöst, indem `puris` den Tunnel nun selbst im Hintergrund öffnet (`ssh -fN`), sodass ein Terminal genügt.
@@ -144,6 +145,8 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
   Begründung: kein zusätzlicher Proxy im gemessenen Weg; ingress-nginx seit März 2026 eingestellt; Vorbild ist die PURIS-Referenzumgebung (`did:web:wallet:<BPN>`).
 - EDC 0.12.0 und DTR 0.11.0 werden beibehalten, obwohl EDC 0.13.0 existiert.
   Begründung: Laut Changelog ist PURIS 6.2.0 mit genau diesen Versionen getestet.
+- **NAS-VM bleibt Hauptumgebung** (Aufbau, Probeläufe, Hauptmessungen) mit eigenem, kleinerem NAS-Profil; ein VPS ist nur eine Option (Nachbau-Test auf fremder Hardware, größere Skalierungen). Entscheidung des Nutzers.
+  Begründung: Der Nutzer möchte die NAS-VM im Mittelpunkt behalten. Das Experiment untersucht PURIS unter fest definierten Ressourcengrenzen; mit kleineren Grenzen tritt die Sättigung bei geringerer Last ein, Verlauf und Engpass bleiben messbar. Die Schwächen der NAS-VM (geteilte Threads, hybride CPU) werden über Steal Time gemessen und als Gültigkeitskriterium begrenzt.
 - Ziel: Abgabe der Bachelorarbeit am 2026-11-10 (statt zum Fristende 2026-12-11). Das Experiment soll bis 2026-11-01 abgeschlossen sein; Zieltermine und Entscheidungspunkte in `CHECKLISTE.md`.
   Begründung: Entscheidung des Verfassers; die offizielle Frist bleibt als Puffer.
 

@@ -72,6 +72,7 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 - **Was wir nicht brauchen:** Keycloak (`centralidp`, `sharedidp`), einen eigenen BDRS-Server, einen Ingress-Controller, Portal, BPDM und die Discovery-Dienste. PURIS wird nur über die REST-API mit API-Key bedient – ohne Weboberfläche.
 - Die Komponenten finden sich über **interne Kubernetes-Namen** (wie in der Referenzumgebung von PURIS) – ohne Ingress, damit kein zusätzlicher Proxy die Messung verändert.
 - Vollständige Liste mit Versionen und Gründen: [`KONZEPT.md`](KONZEPT.md), Abschnitt 3, „Benötigte Komponenten“.
+- **Gemessen wird auf der NAS-VM** – mit eigenen, kleineren CPU/RAM-Werten, die vollständig in die VM passen. Wie stark das NAS die VM ausbremst, wird bei jedem Lauf gemessen (Steal Time). Optional wird der Aufbau auf einem gemieteten Server nachgebaut, um die Reproduzierbarkeit zu zeigen ([`VPS-VARIANTE.md`](VPS-VARIANTE.md)).
 - Alles wird mit **Helm** installiert: **ein Baustein = ein Release = eine `values.yaml`** in `setup/<baustein>/`, darin je Komponente ein Abschnitt mit festen **CPU- und RAM-Werten** (Regeln in [`KONZEPT.md`](KONZEPT.md), Abschnitt 3).
 - Alle Versionen (k3s, Helm-Charts, PURIS-Chart) und alle CPU/RAM-Werte stehen in `AUFBAU.md` (Versions- und Ressourcenübersicht) und gehen in Kapitel 4.3 der Arbeit ein.
 

@@ -43,7 +43,7 @@ Der Aufbau **wächst schrittweise**: Es wird nicht alles im Voraus geplant, sond
 ├── KONZEPT.md             ← dieses Dokument
 ├── ANLEITUNG.md           ← was untersucht wird (einfache Sprache)
 ├── CHECKLISTE.md          ← Fortschritt je Etappe und Baustein (nur Haken, keine Befehle)
-├── VPS-VARIANTE.md        ← Planung: zweite Umgebung auf einem VPS (Hauptmessungen, Nachbau-Test)
+├── VPS-VARIANTE.md        ← NAS-Profil (Hauptumgebung) und Option VPS (Nachbau-Test, größere Skalierung)
 ├── README.md              ← Schnellstart
 ├── runs/                  ← ein Ordner pro Messlauf (ab erstem Probelauf)
 ├── setup/                 ← Bausteine des Aufbaus (siehe Abschnitt 3)
@@ -308,6 +308,7 @@ Die Bestandsabfrage von PURIS ist **asynchron** (Abschnitt 13): Der Endpunkt ant
 - **Sättigung** ist erreicht, wenn die abgeschlossenen Transaktionen pro Sekunde der Eingangslast nicht mehr folgen und sich ein Rückstau bildet.
 - **Logs über Loki statt `kubectl logs`:** Kubernetes rotiert Container-Logs standardmäßig ab 10 Mi je Datei, und `kubectl logs` liefert nur die neueste Datei. Bei hoher Last gingen Zeilen verloren; Loki sammelt alle Zeilen fortlaufend.
 - **Gültigkeit des Lastgenerators** je Lauf: k6 meldet `dropped_iterations = 0` (die geplante Rate wurde tatsächlich gesendet) und bleibt unter seinem CPU-Limit.
+- **Steal Time** je Lauf: Die NAS-VM teilt sich die Threads mit dem NAS. node-exporter misst, wie viel CPU-Zeit der Host der VM entzieht (`node_cpu_seconds_total{mode="steal"}`). Überschreitet sie den in der Vorstudie festgelegten Grenzwert, ist der Lauf ungültig und wird wiederholt.
 
 ### Inhalt eines Laufordners
 
@@ -403,7 +404,7 @@ Diese Arbeit **zeigt Wiederholbarkeit** und **ermöglicht Reproduzierbarkeit**.
 ### Vier Nachweise
 
 1. **Wiederholungen:** jede Laststufe dreimal; Streuung wird angegeben (z. B. Variationskoeffizient).
-2. **Nachbau-Test:** auf frischer VM mit den Skripten aus Etappe 2 neu aufbauen und eine Referenzmessung wiederholen. Liegt das Ergebnis innerhalb der Streuung, ist der Nachbau gelungen. Das Erfolgskriterium wird **vorher** festgelegt; Ablauf, Dauer und jeder manuelle Eingriff kommen ins Laborbuch.
+2. **Nachbau-Test:** auf frischer VM mit den Skripten aus Etappe 2 neu aufbauen und eine Referenzmessung wiederholen – Pflicht: frische VM auf dem NAS (gleiche Hardware, quantitativer Vergleich); optional zusätzlich ein VPS mit 8 dedizierten vCPU und demselben Profil (fremde Hardware, qualitativer Vergleich), siehe [`VPS-VARIANTE.md`](VPS-VARIANTE.md), Abschnitt 4. Liegt das Ergebnis innerhalb der Streuung, ist der Nachbau gelungen. Das Erfolgskriterium wird **vorher** festgelegt; Ablauf, Dauer und jeder manuelle Eingriff kommen ins Laborbuch.
 3. **Offenes Artefakt:** öffentliches Repository mit Tag; optional dauerhafte Archivierung mit DOI (Zenodo).
 4. **Vollständige Beschreibung:** Hardware, Versionen, Konfiguration, Lastprofil und Ablauf.
 
@@ -507,6 +508,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Kubernetes-Dienstnamen statt Ingress | Kein zusätzlicher Proxy im gemessenen Weg; ingress-nginx eingestellt; Vorbild ist die PURIS-Referenzumgebung. |
 | EDC 0.12.0 und DTR 0.11.0 (nicht neuer) | Mit genau diesen Versionen ist PURIS 6.2.0 getestet. |
 | Wallet-Stub zugleich als BPN-Verzeichnis | So in Umbrella-Chart und PURIS-Referenz; ein eigener BDRS-Server entfällt. |
+| NAS-VM bleibt Hauptumgebung mit eigenem NAS-Profil (≈ 6,7 von 7 zuteilbaren Kernen); VPS nur optional | Wunsch des Nutzers; das Experiment untersucht PURIS unter fest definierten Grenzen – mit kleineren Grenzen tritt die Sättigung früher ein, Verlauf und Engpass bleiben messbar. Die Schwächen der NAS-VM werden über Steal Time gemessen und begrenzt. |
 | k6 im Cluster über den k6-Operator (Helm) | Passt zu den Regeln (Helm, YAML, feste CPU/RAM); der Verbrauch von k6 ist in Prometheus sichtbar und liegt auf derselben Zeitachse wie alle anderen Messwerte. |
 | Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
 | Täglicher Batch-Abgleich von PURIS abgeschaltet | Er würde zu einer festen Uhrzeit alle Partnerdaten abfragen und Messungen stören. |
@@ -562,7 +564,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | **Summe Grundkonfiguration K0** | **14,6 Kerne** | **22,6 GiB** |
 | + Spielraum für eine Skalierungskonfiguration, + 15 % unverplant | ≈ 19 vCPU | ≈ 28 GiB |
 
-Folgerung: Die NAS-VM (8 vCPU) reicht für K0 nicht; sie bleibt Entwicklungs- und Funktionsumgebung (verkleinertes Profil). Für die Hauptmessungen ist eine VM mit mindestens 16 **dedizierten** vCPU nötig (Entscheidung offen, siehe „Noch offen“). Ausführliche Planung mit dem Profil „VPS optimal“ (20,6 Kerne / 36,2 GiB reserviert, empfohlen 32 dedizierte vCPU) in [`VPS-VARIANTE.md`](VPS-VARIANTE.md). Vergleichswerte: k3s-Server mindestens 2 Kerne/2 GB; GKE reserviert für Systemdienste höchstens 1 vCPU; k6 braucht ca. 1–5 MB je VU und sollte 20 % CPU frei lassen.
+Folgerung und Entscheidung (2026-10-06): Diese Schätzung beschreibt ein großzügiges Profil, das nicht in die NAS-VM passt. **Hauptumgebung bleibt die NAS-VM** mit einem kleineren **NAS-Profil** (≈ 6,7 von 7 zuteilbaren Kernen, ≈ 17 GiB); ein VPS ist optional (Nachbau-Test auf fremder Hardware, größere Skalierungen). NAS-Profil, Optionen und Profil „VPS optimal“ in [`VPS-VARIANTE.md`](VPS-VARIANTE.md). Vergleichswerte: k3s-Server mindestens 2 Kerne/2 GB; GKE reserviert für Systemdienste höchstens 1 vCPU; k6 braucht ca. 1–5 MB je VU und sollte 20 % CPU frei lassen.
 
 **k6 im Cluster oder auf der VM?** Im Cluster über den **k6-Operator** (Helm), ein Runner (`parallelism: 1`) mit festen CPU/RAM-Werten (requests = limits); k6-Metriken möglichst direkt an Prometheus. Nachweis, dass k6 nicht der Engpass war: `dropped_iterations = 0` und k6-CPU unter seinem Limit. Dass sich k6 den Knoten mit dem System unter Test teilt, bleibt eine Einschränkung und wird gemessen und berichtet.
 
@@ -597,6 +599,6 @@ Ablauf:
 - Identitätsangaben je Firma (BPN, DID, Wallet-Zugang) aus den Umbrella-Werten 26.03.00 übernehmen und mit dem Wallet-Stub prüfen.
 - Stellt der Wallet-Stub die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0)? Mit der ersten Katalogabfrage in Phase c prüfen – sonst scheitert die Vertragsverhandlung.
 - Wallet-Stub 0.0.11 (Bundle) statt 0.0.8 (PURIS-Referenz): neuere Patch-Version, im Funktionstest bestätigen.
-- Zweite, stärkere VM für die Hauptmessungen (mind. 16 dedizierte vCPU, siehe „Rechenbedarf“): Rolle, Anbieter, Größe und Erfolgskriterium des Nachbau-Tests festlegen – Planung und offene Entscheidungen in [`VPS-VARIANTE.md`](VPS-VARIANTE.md).
+- Option VPS (Nachbau auf 8 dedizierten vCPU mit NAS-Profil; größere Skalierungen nur bei Bedarf): durchführen ja/nein, Anbieter; Erfolgskriterien des Nachbau-Tests festlegen; Startwerte des NAS-Profils nach dem Probelauf bestätigen; Grenzwert für Steal Time in der Vorstudie – siehe [`VPS-VARIANTE.md`](VPS-VARIANTE.md), Abschnitt 10.
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.
