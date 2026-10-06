@@ -110,8 +110,9 @@ singleBinary:
     storageClass: local-path
     enableStatefulSetAutoDeletePVC: false
 
-  # Startwert. Wird Loki gedrosselt, verzögert sich nur die Aufnahme (Alloy
-  # liest die Dateien nach); verloren gehen dadurch keine Zeilen.
+  # Startwert nach dem NAS-Profil (VPS-VARIANTE.md, Abschnitt 2; vorher 500m).
+  # Gemessen im Leerlauf: ca. 15m. Wird Loki gedrosselt, verzögert sich nur die
+  # Aufnahme (Alloy liest die Dateien nach); verloren gehen dadurch keine Zeilen.
   resources:
-    requests: { cpu: 500m, memory: 1Gi }
-    limits:   { cpu: 500m, memory: 1Gi }
+    requests: { cpu: 300m, memory: 1Gi }
+    limits:   { cpu: 300m, memory: 1Gi }

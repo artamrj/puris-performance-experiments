@@ -115,6 +115,28 @@ Ergebnis: beide Timer `disabled` und `inactive` (Verknüpfungen in `/etc/systemd
 
 **Hinweis:** Updates werden nur noch von Hand eingespielt – einmal vor dem Einfrieren des Aufbaus (`setup-v1`), danach nicht mehr bis zum Ende der Messungen.
 
+**Ergänzung 2026-10-06 – Zeitsynchronisation prüfen `[VM]`:**
+Alle Zeitstempel (Laufordner, Prometheus, Loki) müssen auf einer gemeinsamen Zeitachse liegen.
+```bash
+timedatectl
+```
+Ergebnis: `System clock synchronized: yes`, `NTP service: active`, Zeitzone `Etc/UTC`. Keine Änderung nötig.
+
+**Ergänzung 2026-10-06 – Swap abschalten `[VM]`:**
+Vorher: Swap-Datei `/swap.img` (8G) aktiv, 0B belegt; Eintrag in `/etc/fstab`. Swap wird abgeschaltet und der Eintrag auskommentiert, damit Swap auch nach einem Neustart aus bleibt. Die Datei `/swap.img` bleibt erhalten.
+```bash
+sudo swapoff -a && sudo sed -i "s|^/swap.img|#/swap.img|" /etc/fstab && swapon --show && grep swap /etc/fstab
+```
+Ausgeführt vom Mac aus als `ssh -t puris-vm '<Befehl>'` (`-t`, damit `sudo` nach dem Passwort fragen kann).
+
+**Prüfung:**
+```bash
+swapon --show; free -h | grep -i swap; grep -n swap /etc/fstab
+```
+Ergebnis: `swapon --show` ohne Ausgabe; `Swap: 0B 0B 0B`; `/etc/fstab` Zeile 14: `#/swap.img none swap sw 0 0`.
+
+**Rückbau:** `sudo sed -i "s|^#/swap.img|/swap.img|" /etc/fstab && sudo swapon -a`
+
 ---
 
 ## a2 – k3s installieren

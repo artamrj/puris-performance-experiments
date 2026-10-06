@@ -37,9 +37,11 @@ alloy:
   # Startwert. Alloy muss mit der Logmenge Schritt halten: Kubernetes rotiert
   # Container-Logs ab 10 Mi und behält 5 Dateien je Container – ein Rückstand
   # darüber hinaus würde Zeilen kosten. Rückstand im Probelauf prüfen.
+  # NAS-Profil (VPS-VARIANTE.md, Abschnitt 2; vorher 300m); gemessen im
+  # Leerlauf: ca. 17m.
   resources:
-    requests: { cpu: 300m, memory: 256Mi }
-    limits:   { cpu: 300m, memory: 256Mi }
+    requests: { cpu: 200m, memory: 256Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
 
   # Konfiguration von Alloy (Sprache: Alloy-Konfiguration).
   configMap:
@@ -118,11 +120,11 @@ controller:
 
 # ═══ config-reloader (Sidecar) ════════════════════════════════════════════════
 # Lädt die Konfiguration bei Änderungen neu (Standard: nur requests 10m/50Mi,
-# keine limits).
+# keine limits). NAS-Profil (vorher 50m); gemessen im Leerlauf: ca. 1m.
 configReloader:
   resources:
-    requests: { cpu: 50m, memory: 64Mi }
-    limits:   { cpu: 50m, memory: 64Mi }
+    requests: { cpu: 25m, memory: 64Mi }
+    limits:   { cpu: 25m, memory: 64Mi }
 
 
 # ═══ Eigene Metriken an Prometheus (b1) ═══════════════════════════════════════

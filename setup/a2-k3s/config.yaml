@@ -1,0 +1,22 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    a2-k3s
+# Datei:       Konfiguration von k3s v1.37.1+k3s1 (/etc/rancher/k3s/config.yaml)
+# Zweck:       Puffer für das Betriebssystem und den Prozess `k3s` (API-Server,
+#              Datenspeicher, kubelet, containerd laufen außerhalb von Pods).
+#              Ohne Puffer ist `Allocatable` = `Capacity`, und Pods könnten die
+#              ganze VM verplanen (AUFBAU.md, Ressourcenübersicht).
+# Regeln:      KONZEPT.md, Abschnitt 3; Werte nach VPS-VARIANTE.md, Abschnitt 2
+#              (NAS-Profil). Die übrigen Optionen (`--disable traefik`,
+#              `--write-kubeconfig-mode 644`) stammen aus der Installation
+#              (AUFBAU.md, a2) und stehen in der systemd-Unit von k3s.
+#
+# Installation [VM] (Repository auf dem Stand des Commits):
+#   sudo install -m 644 setup/a2-k3s/config.yaml /etc/rancher/k3s/config.yaml
+#   sudo systemctl restart k3s
+# Laufende Pods bleiben beim Neustart erhalten (KillMode=process in der Unit).
+# ══════════════════════════════════════════════════════════════════════════════
+
+# 1 Kern und 3 GiB für Betriebssystem und k3s (Standard: kein Puffer).
+# Für Pods zuteilbar bleiben 7000m CPU und ca. 27,3 GiB RAM.
+kubelet-arg:
+  - "system-reserved=cpu=1000m,memory=3Gi"

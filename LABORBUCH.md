@@ -182,3 +182,21 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Umbrella-Mindestausstattung laut Doku: 4 Kerne, 6 GB („for a local development setup“). Geschätzter Bedarf der Grundkonfiguration mit festen Ressourcen: ca. 14,6 Kerne und 22,6 GiB – die NAS-VM (8 vCPU) reicht dafür nicht.
 
 **Nächstes:** Puffer für k3s und Betriebssystem (`system-reserved`) und Swap aus; dann `c1-identitaet` (Wallet-Stub) mit Dienstnamen.
+
+## 2026-10-06 – Vorbereitung für Phase c: Zeit, Swap
+
+**Ziel:** Die VM vor dem Datenraum vorbereiten: Zeitsynchronisation prüfen, Swap abschalten, Puffer für k3s und Betriebssystem setzen, `b1`–`b3` auf das NAS-Profil verkleinern (`VPS-VARIANTE.md`, Abschnitt 2).
+
+**Gemacht:**
+- Zeitsynchronisation geprüft: synchronisiert, NTP aktiv, Zeitzone UTC (siehe `AUFBAU.md`, „a1“).
+- Swap abgeschaltet und den Eintrag in `/etc/fstab` auskommentiert; vorher war `/swap.img` (8G) aktiv, aber nicht belegt (siehe `AUFBAU.md`, „a1“).
+- Ist-Stand vor der Verkleinerung erfasst (`kubectl top`, Leerlauf): Prometheus 27m CPU / 408Mi, Grafana 26m / 230Mi, Loki 15m / 65Mi, Alloy 17m / 50Mi, alle übrigen Container ≤ 5m. Knoten gesamt 344m CPU, 2362Mi RAM. Noch keine `config.yaml` für k3s vorhanden, also kein Puffer gesetzt.
+
+**Problem:** Der Befehl zum Abschalten von Swap wurde zweimal versehentlich im Terminal des Macs statt auf der VM ausgeführt (`sudo: swapoff: command not found`); nichts verändert (vom Mac aus geprüft: Swap unverändert an). Gelöst mit `ssh -t puris-vm '<Befehl>'`.
+
+**Entscheidung:** Swap bleibt während des gesamten Experiments aus; die Datei `/swap.img` bleibt für einen Rückbau erhalten.
+  Begründung: Auslagerung auf die Platte würde Antwortzeiten verfälschen; die festen Speichergrenzen (requests = limits) sollen ohne Auslagerung gelten.
+
+**Beobachtung:** Der Ist-Verbrauch von `b1`–`b3` im Leerlauf liegt weit unter den Werten des NAS-Profils (z. B. Prometheus 27m gegenüber 500m). Ob die Werte unter Last reichen, zeigt der Probelauf (Drosselung, abgewiesene Logzeilen).
+
+**Nächstes:** Puffer für k3s und Betriebssystem (`system-reserved=cpu=1000m,memory=3Gi` über `setup/a2-k3s/config.yaml`), dann `b1`–`b3` auf das NAS-Profil verkleinern.

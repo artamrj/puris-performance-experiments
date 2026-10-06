@@ -75,11 +75,12 @@ prometheus:
             requests:
               storage: 20Gi
 
-    # Startwert: großzügig, damit Prometheus selbst nie gedrosselt wird und
-    # keine Messpunkte verliert (Abfragen beim Export erzeugen Lastspitzen).
+    # Startwert nach dem NAS-Profil (VPS-VARIANTE.md, Abschnitt 2; vorher
+    # 1000m). Gemessen im Leerlauf: ca. 27m. Drosselung von Prometheus wird im
+    # Probelauf geprüft (Abfragen beim Export erzeugen Lastspitzen).
     resources:
-      requests: { cpu: 1000m, memory: 2Gi }
-      limits:   { cpu: 1000m, memory: 2Gi }
+      requests: { cpu: 500m, memory: 2Gi }
+      limits:   { cpu: 500m, memory: 2Gi }
 
 
 # ═══ Prometheus Operator ══════════════════════════════════════════════════════
@@ -106,18 +107,20 @@ prometheusOperator:
 
 # ═══ kube-state-metrics ═══════════════════════════════════════════════════════
 # Zustände der Kubernetes-Objekte (Pods, Neustarts, gesetzte CPU/RAM-Werte).
+# NAS-Profil (vorher 100m); gemessen im Leerlauf: ca. 1m.
 kube-state-metrics:
   resources:
-    requests: { cpu: 100m, memory: 128Mi }
-    limits:   { cpu: 100m, memory: 128Mi }
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 50m, memory: 128Mi }
 
 
 # ═══ node-exporter ════════════════════════════════════════════════════════════
 # Kennzahlen der ganzen VM – erfasst auch den Prozess `k3s` außerhalb der Pods.
+# NAS-Profil (vorher 100m); gemessen im Leerlauf: ca. 3m.
 prometheus-node-exporter:
   resources:
-    requests: { cpu: 100m, memory: 64Mi }
-    limits:   { cpu: 100m, memory: 64Mi }
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 50m, memory: 64Mi }
 
 
 # ═══ Grafana ══════════════════════════════════════════════════════════════════
@@ -140,15 +143,18 @@ grafana:
       access: proxy
       isDefault: false
 
+  # NAS-Profil (vorher 200m); gemessen im Leerlauf: ca. 26m. Grafana ist nur
+  # Ansicht und kann während der Messläufe abgeschaltet werden.
   resources:
-    requests: { cpu: 200m, memory: 512Mi }
-    limits:   { cpu: 200m, memory: 512Mi }
+    requests: { cpu: 100m, memory: 512Mi }
+    limits:   { cpu: 100m, memory: 512Mi }
 
   # Zwei Hilfscontainer (Dashboards und Datenquellen aus ConfigMaps laden).
+  # NAS-Profil (vorher je 50m); gemessen im Leerlauf: je ca. 1m.
   sidecar:
     resources:
-      requests: { cpu: 50m, memory: 128Mi }
-      limits:   { cpu: 50m, memory: 128Mi }
+      requests: { cpu: 25m, memory: 128Mi }
+      limits:   { cpu: 25m, memory: 128Mi }
 
   # Test-Pod nur für `helm test`; wird nicht benötigt (Standard: an).
   testFramework:

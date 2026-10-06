@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); als Nächstes Puffer für k3s, Swap, `b1`–`b3` auf das NAS-Profil, dann Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus; als Nächstes Puffer für k3s, `b1`–`b3` auf das NAS-Profil, dann Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -91,8 +91,8 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] Kubeconfig als eigene Datei auf dem Mac (Rechte `600`), Serveradresse = Tunnel – 2026-10-06
 - [x] Funktionen `puris` / `puris-stop` (Tunnel im Hintergrund), Zugriff vom Mac geprüft – 2026-10-06
 - [x] k9s von der VM entfernt, nur noch auf dem Mac – 2026-10-06
-- [ ] Zeitsynchronisation der VM prüfen (alle Zeitstempel in `meta.json`, Prometheus und Loki müssen auf einer Zeitachse liegen)
-- [ ] Swap-Status der VM prüfen und Entscheidung im Laborbuch festhalten (Auslagerung verfälscht Messwerte)
+- [x] Zeitsynchronisation der VM prüfen (alle Zeitstempel in `meta.json`, Prometheus und Loki müssen auf einer Zeitachse liegen) – synchronisiert, NTP aktiv, UTC; 2026-10-06
+- [x] Swap-Status der VM prüfen und Entscheidung im Laborbuch festhalten (Auslagerung verfälscht Messwerte) – war an (8G, unbelegt), jetzt aus, auch nach Neustart; 2026-10-06
 - [ ] Vor dem Einfrieren (`setup-v1`): Updates einmal von Hand einspielen, danach keine Updates mehr bis zum Ende der Messungen
 - [ ] Vor den Messungen: Festlegen, welche anderen Dienste des NAS während der Messungen ruhen, und das im Laborbuch vermerken (die VM teilt sich die Threads mit dem NAS)
 
