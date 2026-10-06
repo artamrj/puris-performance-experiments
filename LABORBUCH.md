@@ -462,3 +462,38 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Zugriff auf die DTRs über die EDCs (Assets) ist erst möglich, wenn PURIS sie anlegt (Phase d).
 
 **Nächstes:** Phase d – PURIS Customer (`d1`) und Supplier (`d2`).
+
+## 2026-10-07 – Phase d vorbereitet: `d1-puris-customer`, `d2-puris-supplier`
+
+**Gemacht:**
+- Chart `puris` 7.2.0 untersucht. `helm pull tractusx-dev/puris --version 7.2.0` scheiterte mit 404: Der Index verweist auf `…/releases/download/puris-7.2.0/puris-7.2.0.tgz`, ein GitHub-Release `puris-7.2.0` gibt es aber nicht (nur `puris-7.2.0-rc1` bis `-rc7` mit Paket). Der Git-Tag `puris-7.2.0` (Commit `d0027bb`) existiert; die Chart-Dateien sind dort dieselben wie am App-Tag `6.2.0`, zwischen `puris-7.2.0` und `-rc7` unterscheidet sich im Chart nur `Chart.yaml` (Versionsangaben; `rc7` würde das Image `6.2.0-rc7` installieren). Images `tractusx/app-puris-backend:6.2.0` und `…-frontend:6.2.0` sind auf Docker Hub vorhanden (15.09.2026).
+- `setup/d1-puris-customer/values.yaml` und `setup/d2-puris-supplier/values.yaml` erstellt; lokal mit `helm template` (Helm v4.3.0, Kubernetes 1.37.1, Chart aus dem Tag, Abhängigkeit `postgres` 0.18.3 mit `helm dependency build`) geprüft: je 14 Objekte, kein Ingress; 3 Container mit requests = limits (Frontend mit 0 Replikaten); Customer: Backend 600m/1536Mi, PostgreSQL 200m/512Mi; Supplier: Backend 400m/1536Mi, PostgreSQL 100m/512Mi. Alle Adressen über Dienstnamen mit Namespace; `PURIS_DTR_IDP_ENABLED=false`, Batch und Aufräumen aus, `DataExchangeGovernance` 1.0, `cx.puris.base`, `profile2509`; PostgreSQL-Image `postgres:18.0` mit Digest; keine Platzhalter (`your-…`, `idp.com`) mehr.
+- `KONZEPT.md`, Abschnitt 3, ergänzt (PURIS-Adressen, Chart-Quelle).
+
+**Beobachtungen am Chart:**
+- Das Frontend hat keinen Schalter; es entfällt nur mit `frontend.replicaCount: 0`.
+- `PURIS_BASEURL` stammt aus `frontend.puris.baseUrl`, nicht aus `backend.puris.baseurl`.
+- API-Key und Datenbank-Passwörter erzeugt der Chart als Zufallswerte, wenn sie leer bleiben, und übernimmt sie bei Aktualisierungen (`lookup`). Backend und Datenbank lesen Benutzer, Passwort und Datenbank aus demselben Secret `puris-postgresql-custom-user-credentials` (Sub-Chart `postgres`). Folge: Wird das Release entfernt und neu installiert, während das Datenbank-Volume bleibt, entsteht ein neues Passwort, das nicht zur Datenbank passt.
+- Standardprüfungen: Start bis ca. 4,5 min; Lebend- und Bereitschaftsprüfung alle 5 s mit 1 s Zeitlimit, Neustart bzw. Herausnahme aus dem Dienst nach einem einzigen Fehlschlag.
+- Täglicher Abgleich (09:00) und Aufräumen (04:00) sind standardmäßig an.
+- Standard-Adresse des Anmeldedienstes `https://idp.com/auth` (echte Internet-Domain).
+- Sub-Chart `postgres` 0.18.3: Standard-Image `postgres:18.3` mit Digest und `imagePullPolicy: Always`; PURIS überschreibt auf den Tag `18.0` ohne Digest.
+- Das Backend-Image setzt keinen Heap (Start `java ${JAVA_OPTS} -jar …`); `backend.env` erlaubt zusätzliche Umgebungsvariablen.
+- Die Logzeilen für die Auswertung stehen im Quellcode auf den Standard-Stufen: „Updated ReportedMaterialItemStocks for …“ (`log.info`, `ItemStockRequestApiService`), „Invalidating Contract data …“ (`log.warn`, `EdcAdapterService`).
+- Die Migrations-Hooks im Chart gelten nur für Chart-Version 3.0.x.
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Chart aus dem Git-Tag `puris-7.2.0` (Commit `d0027bb`), lokal auf dem Mac unter `~/.local/opt/puris-loadlab/charts/puris-7.2.0`, Commit vor der Installation geprüft.
+- Release `puris` je Firma; Backend `http://puris-backend.<namespace>:8081`.
+- API-Key und Datenbank-Passwort leer (Zufallswerte, nicht im Repository); Management-API-Key des eigenen EDC (`TEST1`/`TEST2`) als öffentlicher Testwert (Ausnahme wie bei den EDCs).
+- Kein Frontend-Pod (`replicaCount: 0`).
+- Täglicher Abgleich und Aufräumen aus.
+  Begründung: Hintergrundaufträge würden Partnerdaten abfragen bzw. löschen, das Aufräumen um 04:00 mitten in den nächtlichen Messläufen.
+- Prüfungen: Start bis ca. 17 min; Lebend- und Bereitschaftsprüfung alle 10 s, 5 s Zeitlimit, nach 6 Fehlschlägen.
+  Begründung: Mit dem Standard würde eine kurze Verzögerung unter Last PURIS neu starten oder aus dem Dienst nehmen; Anfragen von k6 schlügen fehl.
+- Anmeldedienst `http://keycloak.invalid/auth` (nicht auflösbar).
+- Firmendaten: BPNL aus dem Umbrella-Chart, BPNS/BPNA/Name/Adresse aus der PURIS-Referenz.
+- PostgreSQL `postgres:18.0` per Digest (wie `c1`), `imagePullPolicy: IfNotPresent`.
+- Abgeleitet aus dem NAS-Profil: Backend 600m/1536Mi (Customer) bzw. 400m/1536Mi (Supplier), PostgreSQL 200m bzw. 100m / 512Mi; `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`.
+
+**Nächstes:** Chart lokal holen, Commit, Installation von `d1` und `d2`, Prüfung (Health `UP`, Assets im EDC, Zwillinge im DTR).

@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); als Nächstes Phase d (PURIS). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); Phase d vorbereitet (`d1`/`d2` geprüft), als Nächstes Installation von PURIS. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -173,6 +173,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 ## 5 Phase d – PURIS (Chart `puris` 7.2.0 = PURIS 6.2.0)
 
 **Für beide Bausteine:**
+- [x] Chart-Quelle geklärt: Paket 7.2.0 im Helm-Repository nicht abrufbar (404) → Git-Tag `puris-7.2.0` (Commit `d0027bb`) – 2026-10-07
 - [ ] Täglicher Batch-Abgleich abgeschaltet (`PURIS_BATCH_PARTNERDATAUPDATE_ENABLED: "false"` über `backend.env`)
 - [ ] Adressen von EDC und DTR **der eigenen Firma** eingetragen
 - [ ] API-Key und Datenbank-Zugangsdaten nur als Secret
@@ -231,6 +232,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Prüfen, was sich ansammelt (Zeilenzahlen in PURIS- und EDC-Datenbanken vor und nach dem Probelauf)
 - [ ] Ablauf erprobt: Hintergrundaufträge beendet → Datenbanken auf S0 → PURIS- und EDC-Pods neu gestartet → Aufwärmphase
 - [ ] Prüfung nach dem Reset: Zeilenzahlen wie in S0, alle Pods `Ready`
+- [ ] PURIS beim Reset bzw. Neuaufbau nicht mit `helm uninstall` neu installieren, ohne das Datenbank-Volume zu löschen (neues Zufallspasswort passt sonst nicht zur Datenbank) – gefunden 2026-10-07
 - [ ] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`)
 - [ ] Vorläufige Entscheidung zu S0 (mit Verträgen) im Laborbuch bestätigt oder geändert
 

@@ -1,0 +1,157 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    d1-puris-customer
+# Chart:       puris 7.2.0 – aus dem Git-Tag `puris-7.2.0` (Commit d0027bb) von
+#              https://github.com/eclipse-tractusx/puris, Ordner charts/puris.
+#              Das Paket im Helm-Repository tractusx-dev ist nicht abrufbar (404,
+#              kein GitHub-Release `puris-7.2.0`; LABORBUCH.md, 2026-10-07).
+#              Sub-Chart: postgres 0.18.3 (cloudpirates, OCI)
+# Komponenten: PURIS-Backend 6.2.0 (tractusx/app-puris-backend:6.2.0);
+#              PostgreSQL 18.0 (postgres:18.0, per Digest festgelegt);
+#              Frontend ohne Pod (siehe unten)
+# Zweck:       PURIS des Customers (BPNL00000003AZQP) – Anwendung unter Test.
+#              Löst die Bestandsabfrage beim Supplier aus (asynchroner Endpunkt,
+#              KONZEPT.md, Abschnitt 13) und speichert die gemeldeten Bestände.
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM nach dem NAS-Profil (VPS-VARIANTE.md, Abschnitt 2);
+#              nach dem Probelauf abgleichen.
+#
+# Zugangsdaten: API-Key von PURIS und Datenbank-Passwort stehen NICHT in dieser
+#              Datei: Bleiben sie leer, erzeugt der Chart bei der Installation
+#              Zufallswerte (Secrets `secret-puris-backend`,
+#              `secret-puris-postgres-init`) und behält sie bei Aktualisierungen.
+#              Ausnahme: der Management-API-Key des eigenen EDC muss dem Wert
+#              in c2 entsprechen (öffentlicher Testwert des Umbrella-Charts).
+#
+# Installation [Mac] (im Terminal vorher `puris`; Chart vorher lokal holen,
+# siehe AUFBAU.md, d1/d2):
+#   helm upgrade --install puris "$HOME/.local/opt/puris-loadlab/charts/puris-7.2.0/charts/puris" \
+#     -n customer \
+#     -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/d1-puris-customer/values.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══ Frontend ═════════════════════════════════════════════════════════════════
+frontend:
+  # Kein Frontend-Pod (der Chart hat keinen Schalter; Standard: 1). Die
+  # Oberfläche wird nicht gebraucht – Einrichtung und Last laufen über die
+  # REST-API mit API-Key (Entscheidung 2026-10-06, KONZEPT.md, Abschnitt 3).
+  replicaCount: 0
+  # requests = limits, auch wenn kein Pod läuft (Standard: requests 200m/128Mi,
+  # limits 600m/128Mi).
+  resources:
+    requests: { cpu: 200m, memory: 128Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+  puris:
+    # Eigene Adresse des Backends über den Dienstnamen. Der Chart übergibt
+    # diesen Wert (nicht `backend.puris.baseurl`) als PURIS_BASEURL; PURIS
+    # trägt damit seine eigene API als Datenquelle in den EDC ein, die Data
+    # Plane der Firma ruft sie auf (Standard: your-backend-host-address.com).
+    baseUrl: "http://puris-backend.customer:8081"
+
+
+# ═══ Backend ══════════════════════════════════════════════════════════════════
+backend:
+  puris:
+    # Leer → Zufallswert im Secret (Standard: "test").
+    api:
+      key: ""
+
+    # Eigener EDC (c2) über Dienstnamen. Key = Management-API-Key von c2
+    # (Testwert des Umbrella-Charts, Ausnahme siehe Kopf).
+    edc:
+      controlplane:
+        management:
+          url: "http://edc-controlplane.customer:8081/management"
+        protocol:
+          url: "http://edc-controlplane.customer:8084/api/v1/dsp"
+        key: "TEST1"
+      dataplane:
+        public:
+          url: "http://edc-dataplane.customer:8081/api/public/"
+
+    # Eigene Firma: BPNL wie im EDC (Umbrella-Chart); Standort, Adresse und
+    # Name sind die Testdaten der PURIS-Referenz für den Customer
+    # (local/tractus-x-edc/config/customer/puris-backend.properties, Tag 6.2.0).
+    own:
+      bpnl: BPNL00000003AZQP
+      bpna: BPNA4444444444AA
+      bpns: BPNS4444444444XX
+      country: "USA"
+      site:
+        name: "Control Unit Creator Production Site"
+      streetnumber: "13th Street 47"
+      zipcodeandcity: "10011 New York"
+      name: "Control Unit Creator Inc."
+
+    # Eigener DTR (c3) ohne Anmeldung (Standard: https://localhost:4243/api/v3,
+    # Anmeldung an). Rahmenvertrag, Zweck und Profil entsprechen bereits dem
+    # Standard (DataExchangeGovernance 1.0, cx.puris.base 1, profile2509).
+    dtr:
+      url: "http://dtr.customer:8080/api/v3"
+      idp:
+        enabled: false
+
+    # Täglicher Abgleich (09:00) und dessen Aufräumen (04:00) aus (Standard:
+    # an). Sie würden Partnerdaten im Hintergrund abfragen bzw. löschen –
+    # auch während der nächtlichen Messläufe.
+    batch:
+      partnerdataupdate:
+        enabled: false
+        cleanup:
+          enabled: false
+
+  # Heap 75 % des Speicherlimits (JVM-Standard: 25 %; NAS-Profil). Das Image
+  # setzt selbst keinen Heap (Start mit `java ${JAVA_OPTS} -jar …`).
+  env:
+    JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75"
+
+  # NAS-Profil: Hintergrundaufträge, schreibt Bestände (Standard: requests
+  # 1000m/2048Mi, limits 3000m/2048Mi).
+  resources:
+    requests: { cpu: 600m, memory: 1536Mi }
+    limits:   { cpu: 600m, memory: 1536Mi }
+
+  # Start: bis zu 120 s + 30 × 30 s ≈ 17 min (Standard: 5 × 30 s, ≈ 4,5 min) –
+  # Java-Dienste mit weniger als einem Kern starten langsam (vgl. DTR).
+  startupProbe:
+    failureThreshold: 30
+  # Lebend- und Bereitschaftsprüfung: alle 10 s, 5 s Zeitlimit, erst nach 6
+  # Fehlschlägen (Standard: alle 5 s, 1 s, nach EINEM Fehlschlag). Sonst würde
+  # eine kurze Verzögerung unter Last (CPU-Drosselung) PURIS neu starten bzw.
+  # aus dem Dienst nehmen – Anfragen von k6 schlügen fehl, der Lauf wäre
+  # ungültig.
+  livenessProbe:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+
+# ═══ PostgreSQL (Datenbank von PURIS) ═════════════════════════════════════════
+# Passwörter: leer → Zufallswerte im Secret (siehe Kopf). Dauerhaftes Volume ist
+# Standard des Sub-Charts (StorageClass des Clusters = local-path).
+postgresql:
+  image:
+    # Per Digest festgelegt – dasselbe Image wie beim Wallet-Stub (c1)
+    # (Standard von PURIS: nur Tag 18.0, veränderlich).
+    tag: "18.0@sha256:1ffc019dae94eca6b09a49ca67d37398951346de3c3d0cfe23d8d4ca33da83fb"
+    # Mit Digest kein erneutes Laden bei jedem Start nötig (Standard des
+    # Sub-Charts: Always).
+    imagePullPolicy: IfNotPresent
+  # NAS-Profil (Standard: keine Werte, QoS BestEffort).
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 200m, memory: 512Mi }
+
+
+# ═══ Anmeldedienst (nur Oberfläche) ═══════════════════════════════════════════
+idp:
+  # Nicht auflösbare Adresse (Domain `.invalid`, RFC 2606) statt
+  # https://idp.com/auth (Standard, eine echte Internet-Domain): Anfragen mit
+  # API-Key brauchen keinen Anmeldedienst; es soll keine Verbindung nach außen
+  # möglich sein.
+  url: "http://keycloak.invalid/auth"
