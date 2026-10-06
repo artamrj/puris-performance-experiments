@@ -1,0 +1,178 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    c2-customer-edc
+# Chart:       dataspace-connector-bundle 1.3.0 (https://eclipse-tractusx.github.io/charts/dev)
+#              mit Sub-Charts tractusx-connector 0.12.0, postgresql 15.2.1
+#              (Bitnami), vault 0.27.0 (HashiCorp)
+# Komponenten: Tractus-X EDC 0.12.0 – Control Plane
+#              (tractusx/edc-controlplane-postgresql-hashicorp-vault:0.12.0)
+#              und Data Plane (tractusx/edc-dataplane-hashicorp-vault:0.12.0);
+#              PostgreSQL 15.4.0 (bitnamilegacy/postgresql:15.4.0-debian-11-r45);
+#              Vault 1.15.2 im Dev-Modus (hashicorp/vault:1.15.2)
+#              (Versionen = Standard dieser Chart-Version)
+# Zweck:       EDC des Customers (BPNL00000003AZQP): Vertragsverhandlung,
+#              Transfers und Datenkanal zum EDC des Suppliers (c4).
+# Werte:       Datenraum-Einstellungen aus dem Umbrella-Chart 26.03.00
+#              (`dataconsumerOne`), Adressen über Kubernetes-Dienstnamen statt
+#              `*.tx.test` (KONZEPT.md, Abschnitt 3, „Netzwerk“).
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM nach dem NAS-Profil (VPS-VARIANTE.md, Abschnitt 2);
+#              nach dem ersten Probelauf mit dem gemessenen Verbrauch abgleichen.
+#
+# Ausnahme Zugangsdaten: Der EDC-Chart setzt Management-API-Key, Datenbank-
+#              Passwort und Vault-Token als feste Umgebungsvariablen und kann
+#              kein Secret verwenden. Es bleiben die öffentlich bekannten
+#              Testwerte des Umbrella-Charts (nur im Cluster erreichbar, nur
+#              Testdaten; Entscheidung 2026-10-06, LABORBUCH.md).
+# Schlüssel:   Signaturschlüssel der Data Plane, Client-Secret und AES-Schlüssel
+#              (`aesKey`, `tokenEncryptionAesKey` wie im Umbrella-Chart)
+#              stehen NICHT in dieser Datei, sondern im Secret
+#              `edc-vault-secrets` (vorher lokal erzeugt, siehe AUFBAU.md, c2).
+#              Vault schreibt sie bei jedem Start in sich selbst (postStart).
+#
+# Installation [Mac] (im Terminal vorher `puris`; Secret vorher anlegen):
+#   helm upgrade --install edc tractusx-dev/dataspace-connector-bundle --version 1.3.0 \
+#     -n customer --create-namespace \
+#     -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/c2-customer-edc/values.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══ EDC (Control Plane und Data Plane) ═══════════════════════════════════════
+tractusx-connector:
+  # Kurze Namen statt `<Release>-tractusx-connector-…` (Standard): Dienste
+  # `edc-controlplane.customer` und `edc-dataplane.customer`; beim Supplier
+  # (c4) gleich im Namespace `supplier`.
+  fullnameOverride: edc
+
+  # Identität im Datenraum (DCP) über den Wallet-Stub (c1). Werte wie im
+  # Umbrella-Chart, Adressen über den Dienstnamen des Wallet-Stubs
+  # (Standard des Bundles: ssi-dim-wallet-stub.tx.test). Teilnehmer-BPN
+  # BPNL00000003AZQP und Client-ID sind bereits Standard des Bundles.
+  iatp:
+    id: did:web:ssi-dim-wallet-service.identity:BPNL00000003AZQP
+    trustedIssuers:
+      - did:web:ssi-dim-wallet-service.identity:BPNL00000003CRHK
+    sts:
+      dim:
+        url: http://ssi-dim-wallet-service.identity/api/sts
+      oauth:
+        token_url: http://ssi-dim-wallet-service.identity/oauth/token
+    didService:
+      selfRegistration:
+        id: did:web:ssi-dim-wallet-service.identity:BPNL00000003AZQP
+
+  controlplane:
+    env:
+      TX_EDC_IAM_IATP_CREDENTIALSERVICE_URL: http://ssi-dim-wallet-service.identity/api
+      EDC_IAM_DID_WEB_USE_HTTPS: false
+      # Heap 75 % des Speicherlimits (JVM-Standard: 25 %; NAS-Profil).
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75"
+    # BPN-Verzeichnis liefert der Wallet-Stub (kein eigener BDRS-Server).
+    bdrs:
+      server:
+        url: http://ssi-dim-wallet-service.identity/api/v1/directory
+    # Kein Ingress (Standard des Bundles: NGINX-Ingress mit *.tx.test).
+    ingresses: []
+    # DSP-Adresse, die der EDC dem Partner nennt – MIT Namespace. Ohne Ingress
+    # setzt der Chart sonst `http://edc-controlplane:8084` ohne Namespace; da
+    # der Supplier-EDC gleich heißt, würde er sich damit selbst aufrufen.
+    url:
+      protocol: "http://edc-controlplane.customer:8084"
+    # NAS-Profil (Standard des Bundles: requests 100m/256Mi, limits 1,5/1024Mi).
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: 500m, memory: 1Gi }
+    # Mit 0,5 Kernen startet der Java-Dienst langsamer; Lebendprüfung später
+    # beginnen (Standard: 30 s, Neustart nach 6 × 10 s), damit der Container
+    # beim Start nicht neu gestartet wird (vgl. Wallet-Stub, c1).
+    livenessProbe:
+      initialDelaySeconds: 180
+
+  dataplane:
+    env:
+      TX_EDC_IAM_IATP_CREDENTIALSERVICE_URL: http://ssi-dim-wallet-service.identity/api
+      EDC_IAM_DID_WEB_USE_HTTPS: false
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75"
+    ingresses: []
+    # Öffentliche Adresse der Data Plane – mit Namespace (Grund wie bei der
+    # Control Plane).
+    url:
+      public: "http://edc-dataplane.customer:8081/api/public"
+    # NAS-Profil: Data Plane des Customers ist im Ablauf kaum beteiligt
+    # (Standard des Bundles: requests 100m/256Mi, limits 1,5/1024Mi).
+    resources:
+      requests: { cpu: 200m, memory: 768Mi }
+      limits:   { cpu: 200m, memory: 768Mi }
+    # Mit 0,2 Kernen noch langsamerer Start als die Control Plane.
+    livenessProbe:
+      initialDelaySeconds: 300
+
+  # Testwert des Umbrella-Charts für den Customer (Ausnahme, siehe Kopf).
+  postgresql:
+    auth:
+      password: "dbpassworddataconsumerone"
+
+
+# ═══ PostgreSQL (Datenbank des EDC) ═══════════════════════════════════════════
+postgresql:
+  auth:
+    password: "dbpassworddataconsumerone"
+    postgresPassword: "dbpassworddataconsumerone"
+  primary:
+    # Dauerhaftes Volume (Standard des Bundles: aus). Assets, Verträge und
+    # Transferprozesse lassen sich nicht automatisch neu anlegen; ein Neustart
+    # der Datenbank darf den Datenraum nicht leeren. Grundlage für den
+    # Datenbank-Stand S0 (KONZEPT.md, Reset).
+    persistence:
+      enabled: true
+      storageClass: local-path
+      size: 2Gi
+    # NAS-Profil (Standard: resourcesPreset „nano“, requests ≠ limits).
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { cpu: 200m, memory: 512Mi }
+
+
+# ═══ Vault (Ablage der Schlüssel des EDC) ═════════════════════════════════════
+vault:
+  # Injector wird nicht gebraucht (Standard: an; legt einen clusterweiten
+  # Webhook und einen Pod ohne CPU/RAM-Werte an).
+  injector:
+    enabled: false
+  server:
+    # Keine clusterweite Rollenbindung (Standard: an; nur für die Kubernetes-
+    # Anmeldung an Vault nötig, die der EDC nicht nutzt). Sie hieße in beiden
+    # Firmen `edc-vault-server-binding` und würde die Installation von c4
+    # verhindern.
+    authDelegator:
+      enabled: false
+    # Secret `edc-vault-secrets` (lokal erzeugt, nicht im Repository) als
+    # Dateien einhängen: client-secret, aesKey, tokenEncryptionAesKey,
+    # tokenSignerPrivateKey, tokenSignerPublicKey.
+    volumes:
+      - name: edc-vault-secrets
+        secret:
+          secretName: edc-vault-secrets
+    volumeMounts:
+      - name: edc-vault-secrets
+        mountPath: /vault/userconfig/edc-vault-secrets
+        readOnly: true
+    # Vault im Dev-Modus hält alles nur im Speicher. Die Schlüssel werden
+    # deshalb bei JEDEM Start aus dem Secret geschrieben (Standard des Bundles:
+    # feste Testwerte für client-secret und aesKey; Signaturschlüssel der Data
+    # Plane und tokenEncryptionAesKey ergänzt im Umbrella-Chart erst der
+    # Wrapper `tx-data-provider`, und nur bei der Installation).
+    postStart:
+      - sh
+      - -c
+      - |-
+        {
+        sleep 5
+        for k in client-secret aesKey tokenEncryptionAesKey tokenSignerPrivateKey tokenSignerPublicKey; do
+          /bin/vault kv put "secret/$k" content=@"/vault/userconfig/edc-vault-secrets/$k"
+        done
+        }
+    # NAS-Profil (Standard: keine Werte, QoS BestEffort).
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits:   { cpu: 100m, memory: 128Mi }

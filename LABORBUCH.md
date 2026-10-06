@@ -265,3 +265,36 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Verbrauch kurz nach dem Start: Wallet-Stub 17m CPU / 290Mi, PostgreSQL 30m / 58Mi.
 
 **Nächstes:** `c2-customer-edc` (EDC des Customers) vorbereiten.
+
+## 2026-10-06 – `c2-customer-edc` vorbereitet
+
+**Gemacht:**
+- Chart `dataspace-connector-bundle` 1.3.0 untersucht: Sub-Charts `tractusx-connector` 0.12.0 (EDC 0.12.0, Control Plane und Data Plane), `postgresql` 15.2.1 (Bitnami, Image `bitnamilegacy/postgresql:15.4.0-debian-11-r45`), `vault` 0.27.0 (Vault 1.15.2, Dev-Modus). Werte des Customers aus dem Umbrella-Chart 26.03.00 (`dataconsumerOne`) und dem Wrapper-Chart `tx-data-provider` 0.5.0 verglichen.
+- `setup/c2-customer-edc/values.yaml` erstellt und lokal mit `helm template` (Helm v4.3.0, Kubernetes 1.37.1) geprüft: 21 Objekte, keine clusterweiten Objekte, kein Ingress; 4 Container mit requests = limits (Control Plane 500m/1Gi, Data Plane 200m/768Mi, PostgreSQL 200m/512Mi, Vault 100m/128Mi); alle Adressen über Dienstnamen, kein `tx.test` mehr.
+- `KONZEPT.md`, Abschnitt 3, ergänzt (EDC-Adressen, Ausnahme Zugangsdaten der EDCs, Schlüssel über Secret).
+
+**Beobachtungen am Chart:**
+- Das Bundle legt die Signaturschlüssel der Data Plane (`tokenSignerPrivateKey`, `tokenSignerPublicKey`) nicht in Vault an. Im Umbrella-Chart schreibt sie der Wrapper `tx-data-provider` mit einem Job nach der Installation (fester Test-Schlüssel aus dem öffentlichen Repository) – nur bei Installation/Upgrade, nicht nach einem Neustart von Vault (Dev-Modus, Daten nur im Speicher).
+- Der EDC-Chart setzt Management-API-Key, Datenbank-Passwort und Vault-Token als feste Umgebungsvariablen; ein Secret kann dafür nicht angegeben werden.
+- Ohne Ingress setzt der Chart die Adressen, die der EDC dem Partner nennt, ohne Namespace (`http://edc-controlplane:8084`, `http://edc-dataplane:8081/api/public`).
+- Mit den Standardwerten legt das Bundle zusätzlich einen Vault-Injector (Pod ohne CPU/RAM-Werte, clusterweiter Webhook) und eine clusterweite Rollenbindung `<Release>-vault-server-binding` an; PostgreSQL nutzt das Bitnami-Preset „nano“ (requests ≠ limits).
+- Der Wallet-Stub gibt `/oauth/token` für jedes Client-Secret aus (Test mit falschem Secret: HTTP 200); das Secret muss nur unter dem Alias in Vault liegen.
+- Java-Dienste ohne `JAVA_TOOL_OPTIONS`; Standard-Lebendprüfung der EDCs: Beginn nach 30 s, Neustart nach 6 × 10 s.
+- Vault je Teilnehmer: Im Umbrella-Chart 26.03.00 hat jeder Teilnehmer eine eigene Vault (`edc-dataconsumer-1-vault`, `edc-dataprovider-vault`, `edc-dataconsumer-2-vault`). Die lokale Referenzumgebung von PURIS 6.2.0 nutzt dagegen **eine gemeinsame** Vault für beide EDCs (`edc.vault.hashicorp.url=http://vault:8200` in den Einstellungen von Customer und Supplier, getrennt über unterschiedliche Aliase) sowie je einen gemeinsamen Keycloak und PostgreSQL-Server (`docs/architecture/07_deployment_view.md`, `local/docker-compose-infrastructure.yaml`, Tag `6.2.0`). Laut derselben Deployment View ist für eine Installation je Partner ein eigener Connector mit PostgreSQL bereitzustellen; Vault wird dort nicht genannt.
+- Changelog von PURIS (Tag `6.2.0`): Die Umstellung auf EDC 0.12.0 und DTR 0.11.0 steht im Eintrag zu Version 6.0.0, danach keine weitere Änderung dieser Versionen. Die lokale Referenzumgebung derselben Version nutzt die EDC-Images `0.13.0-rc1` (`local/tractus-x-edc/docker-compose.yaml`); die EDCs dort verwenden das Verzeichnis des Wallet-Stubs als BPN-Verzeichnis (`http://wallet:80/api/v1/directory`, BDRS-Server auskommentiert). Korrektur der Formulierung „laut Changelog mit EDC 0.12.0 getestet“ (Eintrag 2026-10-06, „Offene Punkte geklärt“) in `KONZEPT.md`, Abschnitt 3.
+- EDC 0.15.1 (Grundlage von Tractus-X EDC 0.12.0): Schlüssel werden über `VaultPrivateKeyResolver` aus Vault gelesen, die Anfrage an Vault erfolgt per HTTP (`HashicorpVault`); in diesen Klassen kein Zwischenspeicher. Wie oft je Transaktion gelesen wird, ist noch nicht geprüft (Probelauf: CPU von Vault).
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Release `edc` im Namespace `customer`, Kurzname `edc` (Dienste `edc-controlplane.customer`, `edc-dataplane.customer`); Supplier später gleich in `supplier`.
+  Begründung: kurze, für beide Firmen gleich aufgebaute Adressen.
+- Management-API-Key (`TEST1`), Datenbank-Passwort und Vault-Token (`root`) bleiben die öffentlichen Testwerte des Umbrella-Charts (Ausnahme wie bei `c1`).
+  Begründung: Der Chart kann dafür kein Secret verwenden; die Werte sind öffentlich bekannt, der EDC ist nur im Cluster erreichbar, es gibt nur Testdaten.
+- Eigene Schlüssel je Firma, lokal erzeugt, als Secret `edc-vault-secrets`; Vault schreibt sie bei jedem Start ein (`postStart`).
+  Begründung: kein privater Schlüssel im öffentlichen Repository; anders als im Umbrella-Chart überstehen die Schlüssel einen Neustart von Vault.
+- Vault im Dev-Modus wie im Bundle; Injector und Rollenbindung aus.
+  Begründung: werden nicht gebraucht; die Rollenbindung hieße in beiden Firmen gleich und würde die Installation von `c4` verhindern.
+- PostgreSQL des EDC mit dauerhaftem Volume (`local-path`, 2Gi).
+  Begründung: Assets, Verträge und Transferprozesse lassen sich nicht automatisch neu anlegen; Grundlage für den Datenbank-Stand S0.
+- Abgeleitet aus dem NAS-Profil (nicht einzeln abgefragt): `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`; Lebendprüfung ab 180 s (Control Plane, 0,5 Kerne) bzw. 300 s (Data Plane, 0,2 Kerne); DSP- und öffentliche Adresse mit Namespace (`http://edc-controlplane.customer:8084`, `http://edc-dataplane.customer:8081/api/public`); zusätzlich `tokenEncryptionAesKey` in Vault wie im Umbrella-Chart.
+
+**Nächstes:** Schlüssel erzeugen, Secret `edc-vault-secrets` anlegen, `c2` aus dem Commit installieren und prüfen.
