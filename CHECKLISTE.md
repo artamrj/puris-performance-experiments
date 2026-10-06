@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; als Nächstes `c3`/`c5` (DTRs). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) vorbereitet (`values.yaml` geprüft), als Nächstes Installation. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 

@@ -383,3 +383,31 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - `EDC_PARTICIPANT_ID` enthält bei Tractus-X EDC 0.12.0 die DID (`did:web:…:BPNL00000003AYRE`), die BPN steht in `TRACTUSX_EDC_PARTICIPANT_BPN`.
 
 **Nächstes:** `c3-customer-dtr` und `c5-supplier-dtr` (DTRs), danach Phase d (PURIS).
+
+## 2026-10-06 – `c3-customer-dtr` und `c5-supplier-dtr` vorbereitet
+
+**Gemacht:**
+- Chart `digital-twin-bundle` 1.3.0 untersucht: Sub-Charts `digital-twin-registry` 0.11.0 (DTR 0.11.0) und `postgresql` 15.2.1 (Bitnami, `bitnamilegacy/postgresql:15.4.0-debian-11-r45`).
+- `setup/c3-customer-dtr/values.yaml` und `setup/c5-supplier-dtr/values.yaml` erstellt; lokal mit `helm template` (Helm v4.3.0, Kubernetes 1.37.1) geprüft: je 13 Objekte, kein Ingress, keine clusterweiten Objekte, je 2 Container mit requests = limits (`c3`: DTR 100m/1Gi, PostgreSQL 50m/256Mi; `c5`: DTR 200m/1Gi, PostgreSQL 100m/256Mi); Datenbank-Adresse `jdbc:postgresql://dtr-postgresql:5432/dtr`; ohne Anmeldung (`--spring.profiles.active=local`).
+- `KONZEPT.md`, Abschnitt 3, ergänzt (DTR-Adressen).
+
+**Beobachtungen am Chart:**
+- Standard des Bundles für die Datenbank-Adresse enthält den Platzhalter `<release-name>` (`jdbc:postgresql://<release-name>-postgresql:5432/dtr`); er wird vom Chart nicht ersetzt.
+- Das Sub-Chart des DTR legt standardmäßig einen Ingress mit TLS an; das Bundle schaltet ihn nicht ab.
+- Der DTR-Container erhält nur zwei feste Umgebungsvariablen und Werte aus seinem Secret; Java-Einstellungen (`JAVA_TOOL_OPTIONS`) sind nicht möglich → Heap = JVM-Standard 25 % des Speicherlimits.
+- Lebendprüfung des DTR (Standard): Beginn nach 100 s, Neustart nach 3 × 3 s.
+- Die PostgreSQL des Bundles hat standardmäßig ein dauerhaftes Volume (10Gi), anders als beim EDC-Bundle.
+- Das Umbrella-Chart 26.03.00 hat für den Customer (`dataconsumerOne`) keinen DTR (`digital-twin-bundle.enabled: false`), nur für den Supplier (`tx-data-provider`); die PURIS-Referenz hat je Firma einen (`dtr-customer`, `dtr-supplier`).
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Release `dtr` mit Kurzname `dtr` je Firma (`http://dtr.customer:8080`, `http://dtr.supplier:8080`), Datenbank `dtr-postgresql`.
+- DTR mit 1Gi RAM statt 512Mi (`c3`) bzw. 768Mi (`c5`) laut NAS-Profil.
+  Begründung: Heap nicht einstellbar; mit 1Gi rund 256 MiB Heap. RAM ist reichlich vorhanden (39 % belegt); 1Gi ist der Standard des Charts.
+- Lebendprüfung ab 600 s (`c3`, 0,1 Kerne) bzw. 300 s (`c5`, 0,2 Kerne).
+  Begründung: Mit dem Standard (Neustart nach ca. 110 s) ist bei so wenig CPU eine Neustart-Schleife wahrscheinlich; die tatsächliche Startdauer wird gemessen.
+- Datenbank-Passwort: Testwerte des Bundles (Ausnahme wie bei den EDCs).
+- PostgreSQL des DTR: dauerhaftes Volume wie im Bundle; CPU nach NAS-Profil, RAM 256Mi statt 128Mi.
+  Begründung: PostgreSQL reserviert standardmäßig 128 MB gemeinsamen Speicher (`shared_buffers`).
+- Ingress aus; Anmeldung aus (wie im Bundle).
+
+**Nächstes:** Commit, Installation von `c3` und `c5`, Startdauer messen, Prüfung (API des DTR erreichbar, auch über den Dienstnamen).
