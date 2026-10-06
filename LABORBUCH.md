@@ -515,3 +515,19 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Die Startprüfung des Customer-Backends lief einmal in ihr Zeitlimit (Standard 1 s), bei erlaubten 30 Fehlschlägen ohne Folgen.
 
 **Nächstes:** Phase e – Testdaten (`e1`) über die REST-API, danach Funktionstest (`e2`, Meilenstein 1).
+
+## 2026-10-07 – Phase e begonnen: Ausgangszustand vor `e1`
+
+**Gemacht:**
+- Anfrageformate für Partner, Material, Material-Partner-Beziehung und Produktbestand aus der Integrationstest-Sammlung von PURIS entnommen (`local/bruno/puris-integration-test/Test_01-MAD`, Tag `6.2.0`) und mit dem Quellcode abgeglichen (Prüfmuster für `edcUrl` und BPNs in `PatternStore.java`: die EDC-Adressen über Dienstnamen sind zulässig).
+- Zugriff vom Mac auf beide PURIS-Backends über `kubectl port-forward` (18181 Customer, 18182 Supplier); API-Keys aus den Secrets nur in Shell-Variablen.
+- Ausgangszustand geprüft: In beiden PURIS keine Partner und keine Materialien (viermal `[]`). Dokumentation in `AUFBAU.md`, „e1 – Testdaten“.
+
+**Problem:** Die ersten Befehle liefen in einer Shell ohne `puris`. `kubectl` nutzte dadurch den Standard-Kontext aus `~/.kube/config` (ein nicht mehr vorhandener Cluster) statt der VM; die Port-Weiterleitungen öffneten keinen Port, die Secrets wurden nicht gelesen. Keine Wirkung auf den Cluster. Lösung: im selben Terminal zuerst `puris`.
+
+**Beobachtungen (aus dem Quellcode, noch nicht im Betrieb gesehen):**
+- `/catena/partners/all` blendet die eigene Firma aus (`PartnerController.java`, Z. 237–246); `[]` heißt also: noch kein Partner eingetragen.
+- Beim Eintragen eines Partners legt PURIS Policy und Contract Definition für diesen Partner im eigenen EDC an (`PartnerServiceImpl.java`, Z. 103–110).
+- Reihenfolge: Legt der Customer die Beziehung „Partner liefert“ an, holt PURIS im Hintergrund die Teileinformation (Catena-X-Nummer) vom DTR des Suppliers über die EDCs (`MaterialPartnerRelationServiceImpl.java`, Z. 80–84 und 313–335). Die Daten des Suppliers (Produkt, Beziehung „Partner kauft“, Zwilling im DTR) müssen daher zuerst angelegt sein. Diese Abfrage ist zugleich der erste Zugriff auf einen DTR über EDC-Assets.
+
+**Nächstes:** Testdaten als JSON-Dateien in `setup/e1-testdaten/` (nach Zustimmung), zuerst beim Supplier, dann beim Customer.

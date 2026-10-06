@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); als Nächstes Phase e (Testdaten, Funktionstest). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **Phase e begonnen** (Ausgangszustand geprüft: beide PURIS ohne Partner und Materialien); als Nächstes `e1` Testdaten (zuerst Supplier, dann Customer), danach `e2`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -24,7 +24,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 3 Phase b – Monitoring und Logs | erledigt (2026-10-06) | Di 06.–Sa 10.10. |
 | 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
-| 6 Phase e – Testdaten und Funktionstest | offen | Sa 17.–**So 18.10. (Meilenstein 1)** |
+| 6 Phase e – Testdaten und Funktionstest | begonnen (2026-10-07) | Sa 17.–**So 18.10. (Meilenstein 1)** |
 | 7 Phase f – Lastgenerator und Probelauf | offen | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |

@@ -1,0 +1,21 @@
+{
+  "name": "Semiconductor Supplier Inc.",
+  "edcUrl": "http://edc-controlplane.supplier:8084/api/v1/dsp",
+  "bpnl": "BPNL00000003AYRE",
+  "policyProfileVersion": "profile2509",
+  "addresses": [],
+  "sites": [
+    {
+      "bpns": "BPNS1234567890ZZ",
+      "name": "Semiconductor Supplier Inc. Production Site",
+      "addresses": [
+        {
+          "bpna": "BPNA1234567890AA",
+          "streetAndNumber": "Wall Street 101",
+          "zipCodeAndCity": "10001 New York",
+          "country": "USA"
+        }
+      ]
+    }
+  ]
+}

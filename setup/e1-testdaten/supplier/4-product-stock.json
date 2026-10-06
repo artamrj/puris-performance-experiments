@@ -1,0 +1,23 @@
+{
+  "material": {
+    "materialFlag": false,
+    "productFlag": true,
+    "materialNumberCustomer": "MNR-7307-AU340474.002",
+    "materialNumberSupplier": "MNR-8101-ID146955.001",
+    "materialNumberCx": "860fb504-b884-4009-9313-c6fb6cdc776b",
+    "name": "Semiconductor"
+  },
+  "quantity": 100.0,
+  "measurementUnit": "unit:piece",
+  "stockLocationBpns": "BPNS1234567890ZZ",
+  "stockLocationBpna": "BPNA1234567890AA",
+  "type": "PRODUCT",
+  "lastUpdatedOn": null,
+  "isBlocked": true,
+  "customerOrderNumber": "CNbr-2",
+  "customerOrderPositionNumber": "C-Pos-2",
+  "supplierOrderNumber": "SNbr-2",
+  "partner": {
+    "bpnl": "BPNL00000003AZQP"
+  }
+}

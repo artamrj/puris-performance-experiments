@@ -833,6 +833,26 @@ Volume und Secrets gemeinsam entfernen: Bei einer Neuinstallation mit altem Volu
 
 ---
 
+## e1 – Testdaten
+
+**Datum:** 2026-10-07 (in Arbeit)
+**Ziel:** Erfundene Testdaten in beiden PURIS über die REST-API anlegen (Partner, Material, Material-Partner-Beziehung, Bestand beim Supplier), damit eine Bestandsabfrage möglich ist.
+
+**Vorbereitung `[Mac]`** (im selben Terminal vorher `puris`; ohne `puris` spricht `kubectl` den Standard-Kontext aus `~/.kube/config` an, nicht die VM). Zugriff auf beide Backends über `kubectl port-forward` – nur zum Einrichten, nie für Last; API-Keys nur als Shell-Variablen, nie ausgegeben:
+```bash
+kubectl port-forward -n customer svc/puris-backend 18181:8081 >/dev/null 2>&1 & kubectl port-forward -n supplier svc/puris-backend 18182:8081 >/dev/null 2>&1 & sleep 3; lsof -nP -iTCP:18181 -iTCP:18182 -sTCP:LISTEN
+CK=$(kubectl get secret secret-puris-backend -n customer -o jsonpath='{.data.puris-api-key}' | base64 -d); SK=$(kubectl get secret secret-puris-backend -n supplier -o jsonpath='{.data.puris-api-key}' | base64 -d)
+```
+Ergebnis: beide Ports `LISTEN` (18181 Customer, 18182 Supplier).
+
+**Ausgangszustand `[Mac]`:**
+```bash
+for u in partners/all materials/all; do curl -s -H "X-API-KEY: $CK" "http://127.0.0.1:18181/catena/$u"; echo; done; for u in partners/all materials/all; do curl -s -H "X-API-KEY: $SK" "http://127.0.0.1:18182/catena/$u"; echo; done
+```
+Ergebnis: viermal `[]` – in beiden PURIS weder Partner noch Materialien. `/catena/partners/all` blendet die eigene Firma aus (`PartnerController.java`, Z. 237–246, Tag `6.2.0`).
+
+---
+
 ## Hilfswerkzeuge (optional, kein Teil des Experiments)
 
 ### k9s – Terminal-Oberfläche für Kubernetes

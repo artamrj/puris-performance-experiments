@@ -1,0 +1,21 @@
+{
+  "name": "Control Unit Creator Inc.",
+  "edcUrl": "http://edc-controlplane.customer:8084/api/v1/dsp",
+  "bpnl": "BPNL00000003AZQP",
+  "policyProfileVersion": "profile2509",
+  "addresses": [],
+  "sites": [
+    {
+      "bpns": "BPNS4444444444XX",
+      "name": "Control Unit Creator Production Site",
+      "addresses": [
+        {
+          "bpna": "BPNA4444444444AA",
+          "streetAndNumber": "13th Street 47",
+          "zipCodeAndCity": "10011 New York",
+          "country": "USA"
+        }
+      ]
+    }
+  ]
+}
