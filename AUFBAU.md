@@ -835,7 +835,7 @@ Volume und Secrets gemeinsam entfernen: Bei einer Neuinstallation mit altem Volu
 
 ## e1 – Testdaten
 
-**Datum:** 2026-10-07 (in Arbeit)
+**Datum:** 2026-10-07 (Anlage 23:18–23:25 UTC am 06.10.)
 **Ziel:** Erfundene Testdaten in beiden PURIS über die REST-API anlegen (Partner, Material, Material-Partner-Beziehung, Bestand beim Supplier), damit eine Bestandsabfrage möglich ist.
 
 **Vorbereitung `[Mac]`** (im selben Terminal vorher `puris`; ohne `puris` spricht `kubectl` den Standard-Kontext aus `~/.kube/config` an, nicht die VM). Zugriff auf beide Backends über `kubectl port-forward` – nur zum Einrichten, nie für Last; API-Keys nur als Shell-Variablen, nie ausgegeben:
@@ -850,6 +850,69 @@ Ergebnis: beide Ports `LISTEN` (18181 Customer, 18182 Supplier).
 for u in partners/all materials/all; do curl -s -H "X-API-KEY: $CK" "http://127.0.0.1:18181/catena/$u"; echo; done; for u in partners/all materials/all; do curl -s -H "X-API-KEY: $SK" "http://127.0.0.1:18182/catena/$u"; echo; done
 ```
 Ergebnis: viermal `[]` – in beiden PURIS weder Partner noch Materialien. `/catena/partners/all` blendet die eigene Firma aus (`PartnerController.java`, Z. 237–246, Tag `6.2.0`).
+
+**Testdaten (JSON-Dateien):** [`setup/e1-testdaten/`](setup/e1-testdaten/), Commit `1d63e8a`. Erfundene Testdaten der PURIS-Integrationstests (`local/bruno/puris-integration-test`, Tag `6.2.0`) mit den BPNL des Umbrella-Charts; Adressen der EDCs über Dienstnamen. Abweichung von der Vorlage: `lastUpdatedOn: null` im Bestand (PURIS setzt die aktuelle Zeit). Reihenfolge: zuerst Supplier, dann Customer (siehe `LABORBUCH.md`, 2026-10-07).
+
+| Datei | Endpunkt (`POST`) | Inhalt |
+|---|---|---|
+| `supplier/1-partner.json` | `/catena/partners` | Customer als Partner (BPNL00000003AZQP, EDC `http://edc-controlplane.customer:8084/api/v1/dsp`, `profile2509`) |
+| `supplier/2-material.json` | `/catena/materials` | Produkt „Semiconductor“, `MNR-8101-ID146955.001`, Catena-X-Nummer `860fb504-…` |
+| `supplier/3-relation.json` | `/catena/materialpartnerrelations` | Customer kauft das Produkt (Partnernummer `MNR-7307-AU340474.002`) |
+| `supplier/4-product-stock.json` | `/catena/stockView/product-stocks` | Bestand 100 Stück für den Customer |
+| `customer/1-partner.json` | `/catena/partners` | Supplier als Partner (BPNL00000003AYRE, EDC `http://edc-controlplane.supplier:8084/api/v1/dsp`, `profile2509`) |
+| `customer/2-material.json` | `/catena/materials` | Material „Semiconductor“, `MNR-7307-AU340474.002` |
+| `customer/3-relation.json` | `/catena/materialpartnerrelations` | Supplier liefert das Material (Partnernummer `MNR-8101-ID146955.001`) |
+
+**Supplier: Partner, Produkt, Beziehung `[Mac]`** (aus Commit `1d63e8a`; `$SK` aus der Vorbereitung):
+```bash
+E="$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/e1-testdaten"; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $SK" -H "Content-Type: application/json" -d @"$E/supplier/1-partner.json" http://127.0.0.1:18182/catena/partners; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $SK" -H "Content-Type: application/json" -d @"$E/supplier/2-material.json" http://127.0.0.1:18182/catena/materials; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $SK" -H "Content-Type: application/json" -d @"$E/supplier/3-relation.json" http://127.0.0.1:18182/catena/materialpartnerrelations; sleep 15; kubectl logs -n supplier deploy/puris-backend --since=3m | grep -E "ContractDef|ShellDescriptor|product AAS|ERROR|WARN"
+```
+Ergebnis (23:18:09 UTC am 06.10.):
+- Dreimal HTTP 200; Partner mit UUID, Produkt mit Catena-X-Nummer, Beziehung `partnerBuysMaterial: true`
+- Log: „Policy / ContractDef Registration successful for partner BPNL00000003AZQP“ (23:18:09)
+- Log: erster Eintrag des Zwillings in den DTR mit `java.net.SocketTimeoutException: timeout` nach ca. 11 s (23:18:20, „Failure in update for product twin …“); zweiter Versuch ohne Erfolg (23:18:27); dritter Versuch „Updated product ShellDescriptor at DTR for MNR-8101-ID146955.001 and 1 customer partners. Result: 204“ (23:18:33)
+
+**Prüfung DTR des Suppliers `[Mac]`:**
+```bash
+kubectl get --raw "/api/v1/namespaces/supplier/services/http:dtr:8080/proxy/api/v3/shell-descriptors"
+```
+Ergebnis: 1 Zwilling (`id` = UUID) mit 10 Submodell-Beschreibungen, u. a. `urn:samm:io.catenax.item_stock:2.0.0#ItemStock` und `…part_type_information:1.0.0`/`2.0.0`. `specificAssetIds` ohne BPN-Header leer.
+
+**Hinweis:** Ein zweiter Aufruf derselben drei Anfragen (23:18:54 UTC) ergab dreimal HTTP 409 („already exists“) und im Log „Could not create Partner BPNL00000003AZQP because BPNL already exists“ – ohne Änderung. Die Anfragen sind damit nicht idempotent (wichtig für `up.sh` in Etappe 2).
+
+**Supplier: Bestand `[Mac]`** (aus Commit `1d63e8a`):
+```bash
+E="$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/e1-testdaten"; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $SK" -H "Content-Type: application/json" -d @"$E/supplier/4-product-stock.json" http://127.0.0.1:18182/catena/stockView/product-stocks
+curl -s -H "X-API-KEY: $SK" "http://127.0.0.1:18182/catena/stockView/product-stocks?ownMaterialNumber=$(printf %s 'MNR-8101-ID146955.001' | base64)"
+```
+Ergebnis (23:24:48 UTC): HTTP 200; Abfrage liefert eine Bestandszeile: 100 `unit:piece`, Standort `BPNS1234567890ZZ`, Partner Customer, `lastUpdatedOn` von PURIS gesetzt.
+
+**Customer: Partner, Material, Beziehung `[Mac]`** (aus Commit `1d63e8a`):
+```bash
+E="$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/e1-testdaten"; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $CK" -H "Content-Type: application/json" -d @"$E/customer/1-partner.json" http://127.0.0.1:18181/catena/partners; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $CK" -H "Content-Type: application/json" -d @"$E/customer/2-material.json" http://127.0.0.1:18181/catena/materials; curl -s -w "  -> HTTP %{http_code}\n" -X POST -H "X-API-KEY: $CK" -H "Content-Type: application/json" -d @"$E/customer/3-relation.json" http://127.0.0.1:18181/catena/materialpartnerrelations
+kubectl logs -n customer deploy/puris-backend --since=5m | grep -v -E "^\s+at "
+```
+Ergebnis (23:24:55–23:24:57 UTC):
+- Dreimal HTTP 200; PURIS erzeugt für das eigene Material eine Catena-X-Nummer (`a042364b-…`, „Auto-generated CX Id“)
+- „Policy / ContractDef Registration successful for partner BPNL00000003AYRE“ (23:24:57)
+- **Erste Datenübertragung zwischen den Firmen** (Teileinformation im Hintergrund, 23:24:57–23:25:17): Vertragsverhandlung für den DTR des Suppliers („Contracted DTR with contractAgreementId …“, 23:25:03) → EDR für `DigitalTwinRegistryId@BPNL00000003AYRE` → Transfer beendet → Vertrag für das Teileinformations-Submodell („Contract Offer constraints can be fulfilled … (passed)“, 23:25:16) → EDR für `PartTypeInformationSubmodelApi@BPNL00000003AYRE` → „Successfully inserted Partner CX Id … -> 860fb504-b884-4009-9313-c6fb6cdc776b“ (23:25:17; gleich der Catena-X-Nummer beim Supplier). Drei Transferprozesse, zwei Vertragsverhandlungen, Dauer ca. 20 s.
+- Eintrag des Material-Zwillings in den DTR des Customers: viermal `SocketTimeoutException` nach ca. 10–12 s (23:25:28, 23:25:40, 23:25:52, 23:26:04), danach keine weiteren Versuche. Im DTR-Log ab 23:26:15 mehrfach „duplicate key value violates unique constraint "shell_ak_01"“ (Key `860fb504-…` existiert bereits): der erste Eintrag war gelungen, die Wiederholungen kamen verspätet an.
+
+**Prüfung DTR des Customers `[Mac]`:**
+```bash
+kubectl get --raw "/api/v1/namespaces/customer/services/http:dtr:8080/proxy/api/v3/shell-descriptors"
+```
+Ergebnis: 1 Zwilling, `id` = `860fb504-b884-4009-9313-c6fb6cdc776b`, 6 Submodell-Beschreibungen.
+
+**Prüfung CPU-Drosselung der DTRs `[Mac]`** (Prometheus über den API-Proxy, Zeitraum 10 min bis 23:28 UTC):
+```bash
+kubectl get --raw "/api/v1/namespaces/monitoring/services/http:monitoring-kube-prometheus-prometheus:9090/proxy/api/v1/query?query=<PromQL, URL-kodiert>"
+# Anteil gedrosselter Perioden: increase(container_cpu_cfs_throttled_periods_total{container=~".*registry.*"}[10m]) / increase(container_cpu_cfs_periods_total{container=~".*registry.*"}[10m])
+# Höchster Verbrauch: max_over_time(rate(container_cpu_usage_seconds_total{container=~".*registry.*"}[1m])[10m:15s])
+```
+Ergebnis: DTR Customer (Limit 100m) 38 % der Perioden gedrosselt, höchster Verbrauch 0,099 Kerne (am Limit); DTR Supplier (Limit 200m) 16 % gedrosselt, höchstens 0,111 Kerne.
+
+**Umfang der Testdaten** (für Kapitel 4.3): je Firma 1 Partner, 1 Material, 1 Material-Partner-Beziehung; beim Supplier 1 Bestandszeile (100 Stück); je DTR 1 Zwilling.
 
 ---
 

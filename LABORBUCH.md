@@ -531,3 +531,44 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Reihenfolge: Legt der Customer die Beziehung „Partner liefert“ an, holt PURIS im Hintergrund die Teileinformation (Catena-X-Nummer) vom DTR des Suppliers über die EDCs (`MaterialPartnerRelationServiceImpl.java`, Z. 80–84 und 313–335). Die Daten des Suppliers (Produkt, Beziehung „Partner kauft“, Zwilling im DTR) müssen daher zuerst angelegt sein. Diese Abfrage ist zugleich der erste Zugriff auf einen DTR über EDC-Assets.
 
 **Nächstes:** Testdaten als JSON-Dateien in `setup/e1-testdaten/` (nach Zustimmung), zuerst beim Supplier, dann beim Customer.
+
+## 2026-10-07 – `e1`: Daten des Suppliers angelegt, Zwilling im DTR
+
+**Gemacht:**
+- Testdaten als JSON-Dateien in `setup/e1-testdaten/` (Commit `1d63e8a`): Testdaten der PURIS-Integrationstests mit den BPNL des Umbrella-Charts, je Firma Partner, Material und Beziehung, beim Supplier ein Bestand.
+- Beim Supplier Partner (Customer), Produkt und Beziehung „Partner kauft“ über die REST-API angelegt (23:18:09 UTC am 06.10.): dreimal HTTP 200.
+- DTR des Suppliers direkt abgefragt: 1 Zwilling mit 10 Submodell-Beschreibungen, darunter Item Stock 2.0.0.
+
+**Problem:** Der erste Eintrag des Zwillings in den DTR brach nach ca. 11 s mit `SocketTimeoutException` ab (PURIS-Client); PURIS wiederholte selbst, der dritte Versuch meldete HTTP 204. Kein Eingriff nötig.
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Testdaten der PURIS-Integrationstests statt eigener erfundener Daten; Umfang 1 Material, 1 Partner je Firma, 1 Bestandszeile.
+  Begründung: erfundene, öffentlich dokumentierte Daten, passend zu Firmenname und Standort in `d1`/`d2`; für den Funktionstest genügt ein Material. Weitere Materialien bei Bedarf nach dem Probelauf.
+- Anlage aus committeten JSON-Dateien über `curl` und `kubectl port-forward` vom Mac (nur Einrichtung, keine Last).
+
+**Beobachtungen:**
+- Die DTR-Anfrage des Suppliers dauerte beim ersten Mal länger als das Zeitlimit des PURIS-Clients (ca. 10 s). Für die Messung relevant: Zeitüberschreitungen gegenüber dem DTR führen zu Wiederholungen bzw. Fehlern; DTR als Engpasskandidat beobachten.
+- Ein versehentlicher zweiter Aufruf derselben Anfragen (23:18:54 UTC) ergab HTTP 409 ohne Änderung; die Anfragen sind nicht idempotent – `up.sh` in Etappe 2 muss vorher prüfen, ob die Daten schon da sind.
+- `specificAssetIds` des Zwillings sind bei einer Abfrage ohne BPN-Header leer; ob der Customer sie sieht, zeigt der nächste Schritt (Teileinformation über EDC).
+
+**Nächstes:** Bestand beim Supplier (`supplier/4-product-stock.json`), danach Partner, Material und Beziehung beim Customer.
+
+## 2026-10-07 – `e1` abgeschlossen: erste Datenübertragung zwischen den Firmen, DTR gedrosselt
+
+**Gemacht:**
+- Beim Supplier den Bestand für den Customer angelegt (23:24:48 UTC am 06.10.): HTTP 200, 100 Stück, per Abfrage bestätigt.
+- Beim Customer Partner (Supplier), Material und Beziehung „Partner liefert“ angelegt (23:24:55–23:24:57 UTC): dreimal HTTP 200.
+- Dabei lief im Hintergrund die **erste Datenübertragung zwischen den Firmen**: Vertrag für den DTR des Suppliers, Suche des Zwillings, Vertrag und Abruf des Teileinformations-Submodells; die Catena-X-Nummer des Suppliers (`860fb504-…`) steht jetzt in der Beziehung des Customers. Drei Transferprozesse, zwei Vertragsverhandlungen, ca. 20 s.
+- Beide DTRs direkt abgefragt: je 1 Zwilling. CPU-Drosselung der DTRs in Prometheus geprüft. Dokumentation in `AUFBAU.md`, „e1 – Testdaten“.
+- Die Anfragen beim Supplier (Partner, Produkt, Beziehung) hatte der Verfasser selbst ausgeführt, Bestand und Customer wurden auf seinen Wunsch vom Assistenten im selben Verfahren ausgeführt (aus Commit `1d63e8a`).
+
+**Problem:** Der Eintrag des Material-Zwillings in den DTR des Customers scheiterte aus Sicht von PURIS viermal mit `SocketTimeoutException` (je ca. 10–12 s); PURIS gab danach auf. Der Zwilling ist trotzdem genau einmal im DTR – der erste Eintrag gelang, die Wiederholungen trafen verspätet ein und scheiterten im DTR mit „duplicate key … shell_ak_01“. Ursache: Der DTR des Customers ist mit 100m CPU am Limit (38 % der Perioden gedrosselt, Verbrauch bis 0,099 Kerne); auch der DTR des Suppliers (200m) ist gedrosselt (16 %). Gleiches Muster wie beim Zwilling des Suppliers (erster Versuch Zeitüberschreitung). Für den Funktionstest kein Eingriff nötig.
+
+**Beobachtungen:**
+- Die Nachweise des Wallet-Stubs genügen den Richtlinien von PURIS: Beide Vertragsverhandlungen mit `profile2509` gelangen; die Richtlinie enthält `FrameworkAgreement` = `DataExchangeGovernance:1.0` (`EdcRequestBodyBuilder.java`, Z. 259–261; im Pod `PURIS_FRAMEWORKAGREEMENT_CREDENTIAL=DataExchangeGovernance`, `…_VERSION=1.0`). Damit ist auch der Wallet-Stub 0.0.11 für diesen Ablauf bestätigt.
+- Der DTR des Suppliers ist über die EDC-Assets erreichbar (Customer → Supplier). Ein Zugriff auf den DTR des Customers über EDC kommt in diesem Ablauf nicht vor.
+- Der DTR antwortet mit wenig CPU so langsam, dass das Zeitlimit des PURIS-Clients (ca. 10 s) überschritten wird. Bei jeder Bestandsabfrage wird der DTR des Suppliers gelesen; mit 200m könnte er unter Last früh sättigen – dann zeigte die Messung vor allem die Ressourcenzuteilung. Die DTR-Werte des NAS-Profils sind vor dem Probelauf zu entscheiden (`VPS-VARIANTE.md`, Abschnitt 2).
+- DTR 0.11.0 behandelt `PUT /shell-descriptors/{id}` für einen fehlenden Zwilling als Neuanlage (`putAssetAdministrationShellDescriptorById` → `postAssetAdministrationShellDescriptor` im Stacktrace); daher meldete der Supplier-Zwilling beim dritten Versuch HTTP 204 ohne eigene Neuanlage.
+- Auch beim Customer waren alle vier Versuche `PUT`-Anfragen (`updateMaterialAtDtr`, `DtrAdapterService.java`, Z. 186–195); die Logzeile „Failed to register material at DTR“ stammt aus diesem Update-Pfad, nicht aus einer Neuanlage per `POST`.
+
+**Nächstes:** `e2` – Bestandsabfrage am Customer-PURIS auslösen.

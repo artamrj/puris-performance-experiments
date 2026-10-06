@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **Phase e begonnen** (Ausgangszustand geprüft: beide PURIS ohne Partner und Materialien); als Nächstes `e1` Testdaten (zuerst Supplier, dann Customer), danach `e2`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; **erste Datenübertragung zwischen den Firmen erfolgreich**: Verträge für DTR und Teileinformation, Zwilling über EDC gefunden); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); als Nächstes `e2` Funktionstest. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -24,7 +24,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 3 Phase b – Monitoring und Logs | erledigt (2026-10-06) | Di 06.–Sa 10.10. |
 | 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
-| 6 Phase e – Testdaten und Funktionstest | begonnen (2026-10-07) | Sa 17.–**So 18.10. (Meilenstein 1)** |
+| 6 Phase e – Testdaten und Funktionstest | `e1` erledigt (2026-10-07), `e2` offen | Sa 17.–**So 18.10. (Meilenstein 1)** |
 | 7 Phase f – Lastgenerator und Probelauf | offen | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
@@ -167,7 +167,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 **Prüfung des Datenraums:**
 - [x] Beide EDCs erhalten Identitätsnachweise vom Wallet-Stub – 2026-10-06 (Katalogabfragen in beide Richtungen, DSP v0.8 und 2025-1)
 - [x] Katalogabfrage Customer-EDC → Supplier-EDC erfolgreich – 2026-10-06, HTTP 200 (auch Supplier → Customer)
-- [ ] Beide DTRs erreichbar (über den EDC der jeweiligen Firma) *(2026-10-06: aus den EDC-Pods per Dienstnamen erreichbar; Zugriff über EDC-Assets erst, wenn PURIS sie anlegt – Phase d)*
+- [ ] Beide DTRs erreichbar (über den EDC der jeweiligen Firma) *(2026-10-06: aus den EDC-Pods per Dienstnamen erreichbar; 2026-10-07: DTR des Suppliers über EDC-Assets vom Customer aus erreicht (Vertrag, EDR, Zwilling gefunden); DTR des Customers über EDC kommt im Ablauf „Customer fragt Bestand ab“ nicht vor – entfällt-Entscheidung offen)*
 - [x] Summe der Ressourcen nach Phase c gegenüber `Allocatable` geprüft – 4875m CPU (69 %), 17740Mi RAM (63 %), 2026-10-06
 
 ## 5 Phase d – PURIS (Chart `puris` 7.2.0 = PURIS 6.2.0)
@@ -190,11 +190,12 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 ## 6 Phase e – Testdaten und Funktionstest
 
 ### `e1-testdaten`
-- [ ] Nur erfundene Testdaten (keine echten Firmen- oder Materialdaten)
-- [ ] In beiden PURIS: Partner, Material, Material-Partner-Beziehung angelegt
-- [ ] Beim Supplier einen Bestand für den Customer eingetragen
-- [ ] Anlage über die REST-API (nicht nur über die Oberfläche), damit Etappe 2 sie skripten kann
-- [ ] Umfang der Testdaten festgehalten (Anzahl Partner, Materialien, Bestandszeilen) – für Kapitel 4.3
+- [x] Nur erfundene Testdaten (keine echten Firmen- oder Materialdaten) – Testdaten der PURIS-Integrationstests, `setup/e1-testdaten/`, Commit `1d63e8a`; 2026-10-07
+- [x] In beiden PURIS: Partner, Material, Material-Partner-Beziehung angelegt – 2026-10-07, je HTTP 200; je DTR 1 Zwilling
+- [x] Beim Supplier einen Bestand für den Customer eingetragen – 100 Stück, 2026-10-07
+- [x] Anlage über die REST-API (nicht nur über die Oberfläche), damit Etappe 2 sie skripten kann – JSON-Dateien + `curl`, 2026-10-07
+- [x] Umfang der Testdaten festgehalten (Anzahl Partner, Materialien, Bestandszeilen) – für Kapitel 4.3 – je Firma 1 Partner, 1 Material, 1 Beziehung; 1 Bestandszeile; `AUFBAU.md`, e1; 2026-10-07
+- [ ] Anlage nicht idempotent (zweiter Aufruf → HTTP 409): in Etappe 2 vor dem Anlegen prüfen, ob die Daten schon da sind – gefunden 2026-10-07
 
 ### `e2-funktionstest`
 - [ ] Eine Abfrage von Hand am Backend des Customer-PURIS ausgelöst
@@ -256,11 +257,12 @@ Noch offen:
 - [ ] Startwerte des NAS-Profils nach dem Probelauf bestätigen oder anpassen (`VPS-VARIANTE.md`, Abschnitt 2)
 - [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [x] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden – weggelassen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
-- [ ] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c *(Katalogabfragen gelingen, 2026-10-06; `DataExchangeGovernance` erst mit Vertragsverhandlung in Phase d/e prüfbar)*
+- [x] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c *(Katalogabfragen gelingen, 2026-10-06)* – zwei Vertragsverhandlungen mit `profile2509` und `DataExchangeGovernance:1.0` erfolgreich, 2026-10-07
 - [x] PostgreSQL der Bundles nutzt `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung ohne Updates) – als Einschränkung vermerken – `KONZEPT.md` Abschnitt 3, `.context/belege_experiment_v1.md` (Limitationen); 2026-10-07
 - [x] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`) – nein: Tractus-X-Bundles setzen `authentication: false` (Quelle: Bundle-Werte, `KONZEPT.md` Abschnitt 13), 2026-10-06
 - [x] Identitätsangaben je Firma mit dem Wallet-Stub geprüft (Phase c) – 2026-10-06 (DIDs, Token, BPN-Verzeichnis; Katalogabfragen beider Firmen)
 - [ ] Wallet-Stub wird als Engpasskandidat mitgemessen (Prometheus-Abfragen enthalten ihn)
+- [ ] DTR-CPU des NAS-Profils entscheiden (Customer 100m: 38 % gedrosselt, am Limit; Supplier 200m: 16 %; Zeitlimit des PURIS-Clients ca. 10 s überschritten) – sonst misst die Sättigung vor allem die DTR-Zuteilung; vor dem Probelauf – gefunden 2026-10-07
 - [ ] Ablage der Rohdaten: kleine Dateien in Git, große auf Zenodo – Größe nach dem Probelauf abschätzen
 
 ## 10 Etappe 2 – Automatisieren

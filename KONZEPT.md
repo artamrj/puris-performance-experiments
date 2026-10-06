@@ -604,8 +604,9 @@ Ablauf:
 - Genaues Verfahren für die Dauer einer Transaktion (Log-Zeitstempel oder Transferprozesse der EDCs) – im Probelauf festlegen.
 - Wachsen die EDC-Tabellen über die Läufe? Zeilen vor und nach einem Probelauf zählen.
 - Identitätsangaben je Firma (BPN, DID, Wallet-Zugang) aus den Umbrella-Werten 26.03.00 übernehmen und mit dem Wallet-Stub prüfen.
-- Stellt der Wallet-Stub die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0)? Mit der ersten Katalogabfrage in Phase c prüfen – sonst scheitert die Vertragsverhandlung.
+- Stellt der Wallet-Stub die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0)? Mit der ersten Katalogabfrage in Phase c prüfen – sonst scheitert die Vertragsverhandlung. *(Geklärt 2026-10-07: Vertragsverhandlungen mit `profile2509` und `DataExchangeGovernance:1.0` gelingen, `LABORBUCH.md`.)*
 - Wallet-Stub 0.0.11 (Bundle) statt 0.0.8 (PURIS-Referenz): neuere Patch-Version, im Funktionstest bestätigen.
 - Option VPS (Nachbau auf 8 dedizierten vCPU mit NAS-Profil; größere Skalierungen nur bei Bedarf): durchführen ja/nein, Anbieter; Erfolgskriterien des Nachbau-Tests festlegen; Startwerte des NAS-Profils nach dem Probelauf bestätigen; Grenzwert für Steal Time in der Vorstudie – siehe [`VPS-VARIANTE.md`](VPS-VARIANTE.md), Abschnitt 10.
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.
+- DTR-CPU im NAS-Profil (Customer 100m, Supplier 200m): Beide DTRs sind schon beim Anlegen der Testdaten gedrosselt und überschreiten das Zeitlimit des PURIS-Clients (ca. 10 s). Da jede Bestandsabfrage den DTR des Suppliers liest, vor dem Probelauf entscheiden, ob die Werte erhöht werden (`VPS-VARIANTE.md`, Abschnitt 2; `LABORBUCH.md`, 2026-10-07).
