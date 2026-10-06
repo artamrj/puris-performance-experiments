@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); als Nächstes Phase e (Testdaten, Funktionstest). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); als Nächstes Phase e (Testdaten, Funktionstest). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -20,14 +20,14 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 |---|---|---|
 | 0 Projekt und Dokumentation | weitgehend erledigt | laufend |
 | 1 Versuchsrechner und Zugang | erledigt (Reste vor dem Einfrieren) | Reste bis Sa 24.10. |
-| 2 Phase a – Basis | erledigt (2026-10-05) | Puffer festlegen bis So 11.10. |
+| 2 Phase a – Basis | erledigt (2026-10-05; Puffer für k3s 2026-10-06) | – |
 | 3 Phase b – Monitoring und Logs | erledigt (2026-10-06) | Di 06.–Sa 10.10. |
-| 4 Phase c – Datenraum | offen | So 11.–Mi 14.10. |
-| 5 Phase d – PURIS | offen | Do 15.–Fr 16.10. |
+| 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
+| 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
 | 6 Phase e – Testdaten und Funktionstest | offen | Sa 17.–**So 18.10. (Meilenstein 1)** |
 | 7 Phase f – Lastgenerator und Probelauf | offen | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
-| 9 Offene Punkte klären | teilweise erledigt | bis Mi 21.10. |
+| 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
 | 10 Etappe 2 – Automatisieren | offen | Do 22.–Sa 24.10. (inkl. Neuaufbau mit Skripten) |
 | 11 Etappe 3 – Vorstudie und Einfrieren | offen | Vorstudie Nacht 24./25.10., **`setup-v1` So 25.10. (Meilenstein 2)** |
 | 12 Etappe 3 – Hauptmessungen | offen | Mo 26.–Do 29.10. (ca. 5 h je Konfiguration, nachts) |
@@ -257,7 +257,7 @@ Noch offen:
 - [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [x] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden – weggelassen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [ ] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c *(Katalogabfragen gelingen, 2026-10-06; `DataExchangeGovernance` erst mit Vertragsverhandlung in Phase d/e prüfbar)*
-- [ ] PostgreSQL der Bundles nutzt `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung ohne Updates) – als Einschränkung vermerken
+- [x] PostgreSQL der Bundles nutzt `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung ohne Updates) – als Einschränkung vermerken – `KONZEPT.md` Abschnitt 3, `.context/belege_experiment_v1.md` (Limitationen); 2026-10-07
 - [x] Braucht der DTR einen eigenen Anmeldedienst (Keycloak)? (`c3`/`c5`) – nein: Tractus-X-Bundles setzen `authentication: false` (Quelle: Bundle-Werte, `KONZEPT.md` Abschnitt 13), 2026-10-06
 - [x] Identitätsangaben je Firma mit dem Wallet-Stub geprüft (Phase c) – 2026-10-06 (DIDs, Token, BPN-Verzeichnis; Katalogabfragen beider Firmen)
 - [ ] Wallet-Stub wird als Engpasskandidat mitgemessen (Prometheus-Abfragen enthalten ihn)
@@ -359,6 +359,13 @@ Zuordnung nach `KONZEPT.md`, Abschnitt 10:
 - [ ] „Hausanschluss“-Bundles laut Tractus-X als Proof of Concept, nicht produktionsreif
 - [ ] Vault im Dev-Modus
 - [ ] k6 misst nur das Auslösen; Transaktionsdaten aus Logs und EDC
+- [ ] Bitnami-Legacy-Image für PostgreSQL von EDC und DTR (ohne Updates) – ergänzt 2026-10-07
+- [ ] Öffentliche Testwerte für Management-API-Keys, Vault-Token und Datenbank-Passwörter von Wallet-Stub, EDC und DTR (Charts ohne Secret-Option) – ergänzt 2026-10-07
+- [ ] Wallet-Stub als Testersatz: stellt Tokens für jedes Client-Secret aus – ergänzt 2026-10-07
+- [ ] Eine Vault je Firma (wie Umbrella), abweichend von der PURIS-Referenz (gemeinsame Vault) – ergänzt 2026-10-07
+- [ ] DTR: Heap vom Image vorgegeben (`-Xmx2048m`), langer Start mit wenig CPU (9,6 bzw. 21,5 min) – ergänzt 2026-10-07
+- [ ] PURIS-Chart aus dem Git-Tag statt aus dem Helm-Repository (Paket 7.2.0 nicht abrufbar) – ergänzt 2026-10-07
+- [ ] Prüfungen, Batch-Aufträge und Speicher gegenüber den Chart-Standards angepasst (Gültigkeit der Messläufe) – ergänzt 2026-10-07
 
 ## 16 Veröffentlichung des Artefakts
 

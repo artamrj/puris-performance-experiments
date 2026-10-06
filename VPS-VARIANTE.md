@@ -37,6 +37,8 @@ Vorschlag für die Startwerte, alle **requests = limits**. Endgültige Werte nac
 | k3s-eigene Pods | 0,2 Kerne | 0,14 GiB |
 | **Gesamt** | **6,73 von 7,0 Kernen (96 %)** | **17,0 von 27,3 GiB (62 %)** |
 
+**Stand der Umsetzung (2026-10-07):** Die Tabelle oben enthält die ursprünglichen Startwerte. Beim Aufbau geändert (Begründung in `LABORBUCH.md`, tatsächliche Werte in `AUFBAU.md`, Ressourcenübersicht): DTR je **3Gi** statt 512Mi/768Mi (Heap vom Image bis 2048 MB), PostgreSQL der DTRs je **256Mi** statt 128Mi/256Mi. CPU unverändert. Installiert nach Phase d: **6175m CPU (88 %), 21836Mi RAM (78 %)**; mit k6 (550m, 612Mi) geplant 6725m (96 %) und ca. 22,4 GiB (80 %).
+
 - **RAM reicht gut, CPU ist knapp, aber ausreichend.** Grafana kann während der Messläufe abgeschaltet werden (spart 0,15 Kerne); die Messdaten liegen in Prometheus und Loki.
 - Java-Dienste mit weniger als einem Kern starten langsam (Minuten) und sehen nur einen Prozessor; Start- und Bereitschaftsprüfungen werden entsprechend verlängert. Für alle Java-Dienste `-XX:MaxRAMPercentage=75`.
 - **Skalierungskonfigurationen:** Auf der NAS-VM ist kaum freie CPU übrig. K1/K2 entstehen daher durch **Umverteilung** (z. B. CPU vom Messsystem oder von wenig genutzten Komponenten zum Engpass) oder durch kleinere Grundwerte; größere Skalierungen nur mit Option B (Abschnitt 4).
