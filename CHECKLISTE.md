@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); als Nächstes Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); als Nächstes Puffer für k3s, Swap, `b1`–`b3` auf das NAS-Profil, dann Phase c. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -103,6 +103,7 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] `a3` Helm v4.3.0 (Prüfsumme kontrolliert) – 2026-10-05
 - [x] Zuteilbare Ressourcen des Knotens und k3s-eigene Pods in der Ressourcenübersicht – 2026-10-06
 - [ ] Puffer für den Prozess `k3s` und das Betriebssystem festlegen (CPU, RAM) und in der Ressourcenübersicht ausweisen – vor der Verteilung der Ressourcen in Phase c
+- [ ] `b1`–`b3` auf die Startwerte des NAS-Profils verkleinern (installiert: 2,5 Kerne, NAS-Profil: 1,43 Kerne) und Summe gegenüber `Allocatable` neu prüfen – vor `c1`, bis Sa 10.10. (`VPS-VARIANTE.md`, Abschnitt 2)
 
 ## 3 Phase b – Monitoring und Logs
 
