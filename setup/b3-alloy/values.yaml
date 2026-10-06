@@ -1,0 +1,132 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    b3-alloy
+# Chart:       alloy 1.13.0 (https://grafana.github.io/helm-charts)
+# Komponenten: Grafana Alloy v1.20.0 (DaemonSet, ein Pod je Knoten)
+#              + config-reloader (Sidecar)
+# Zweck:       Liest die Container-Logs aller Pods direkt von der Platte der VM
+#              (/var/log/pods) und liefert sie an Loki (b2-loki). Ersetzt das
+#              nicht mehr unterstützte Promtail.
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM sind Startwerte; nach dem ersten Probelauf mit dem
+#              gemessenen Verbrauch abgleichen und Änderungen begründen.
+#
+# Installation [Mac] (im Terminal vorher `puris`):
+#   helm upgrade --install alloy grafana/alloy --version 1.13.0 -n logging \
+#     -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/b3-alloy/values.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══ Alloy ════════════════════════════════════════════════════════════════════
+alloy:
+  # Keine Nutzungsstatistik an Grafana Labs senden (Standard: an).
+  enableReporting: false
+
+  # Lesepositionen auf der Platte der VM statt in /tmp des Containers
+  # (Standard): Nach einem Neustart liest Alloy dort weiter, wo es aufgehört
+  # hat – keine doppelten und keine fehlenden Zeilen.
+  storagePath: /var/lib/alloy/data
+
+  mounts:
+    # /var/log der VM einhängen: dort liegen die Container-Logs (Standard: aus).
+    varlog: true
+    extra:
+      - name: alloy-data
+        mountPath: /var/lib/alloy/data
+
+  # Startwert. Alloy muss mit der Logmenge Schritt halten: Kubernetes rotiert
+  # Container-Logs ab 10 Mi und behält 5 Dateien je Container – ein Rückstand
+  # darüber hinaus würde Zeilen kosten. Rückstand im Probelauf prüfen.
+  resources:
+    requests: { cpu: 300m, memory: 256Mi }
+    limits:   { cpu: 300m, memory: 256Mi }
+
+  # Konfiguration von Alloy (Sprache: Alloy-Konfiguration).
+  configMap:
+    content: |
+      // 1. Alle Pods des Clusters finden (ein Knoten).
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // 2. Kennzeichnung (Labels) und Pfad der Logdatei je Container.
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          target_label  = "__path__"
+          replacement   = "/var/log/pods/*$1/*.log"
+        }
+        // Nur diese Labels behalten: Die Pod-Erkennung liefert je Container-
+        // Port ein eigenes Ziel; ohne weitere Labels sind diese Ziele gleich
+        // und dieselbe Datei wird nicht doppelt gelesen.
+        rule {
+          action = "labelkeep"
+          regex  = "__path__|namespace|pod|container"
+        }
+      }
+
+      // 3. Logdateien auf der Platte der VM auflösen.
+      local.file_match "pod_logs" {
+        path_targets = discovery.relabel.pod_logs.output
+      }
+
+      // 4. Dateien fortlaufend lesen (folgt auch rotierten Dateien).
+      loki.source.file "pod_logs" {
+        targets    = local.file_match.pod_logs.targets
+        forward_to = [loki.process.pod_logs.receiver]
+      }
+
+      // 5. CRI-Format von containerd zerlegen: Zeitstempel der Zeile aus dem
+      //    Container-Log übernehmen (gleiche Zeitachse wie Prometheus).
+      loki.process "pod_logs" {
+        stage.cri {}
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      // 6. An Loki (b2-loki) senden.
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki.logging.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+
+# ═══ Lesepositionen (Volume auf der VM) ═══════════════════════════════════════
+controller:
+  volumes:
+    extra:
+      - name: alloy-data
+        hostPath:
+          path: /var/lib/alloy/data
+          type: DirectoryOrCreate
+
+
+# ═══ config-reloader (Sidecar) ════════════════════════════════════════════════
+# Lädt die Konfiguration bei Änderungen neu (Standard: nur requests 10m/50Mi,
+# keine limits).
+configReloader:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 50m, memory: 64Mi }
+
+
+# ═══ Eigene Metriken an Prometheus (b1) ═══════════════════════════════════════
+# Gelesene/gesendete/verworfene Zeilen von Alloy, u. a. für den Nachweis, dass
+# keine Zeilen verloren gehen (Standard: aus).
+serviceMonitor:
+  enabled: true

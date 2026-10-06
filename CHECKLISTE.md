@@ -130,7 +130,8 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 
 ### `b3-alloy` (Grafana Alloy)
 
-- [ ] Chart-Version festgelegt (fest, kein `latest`)
+- [x] Chart-Version festgelegt (fest, kein `latest`) – Chart 1.13.0, Alloy v1.20.0, 2026-10-06
+- [x] `values.yaml` erstellt und mit `helm template` geprüft (7 Objekte, requests = limits) – 2026-10-06
 - [ ] Sammelt die Logs aller Pods (mindestens PURIS und EDC), mit Kennzeichnung von Namespace und Pod; Zeitstempel aus dem Container-Log
 - [ ] Prüfung: LogQL-Abfrage findet Zeilen eines bekannten Pods; Zähltest – keine verlorenen Zeilen gegenüber der Quelle
 - [ ] Definition „Baustein fertig“ erfüllt
