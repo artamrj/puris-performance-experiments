@@ -298,3 +298,33 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Abgeleitet aus dem NAS-Profil (nicht einzeln abgefragt): `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`; Lebendprüfung ab 180 s (Control Plane, 0,5 Kerne) bzw. 300 s (Data Plane, 0,2 Kerne); DSP- und öffentliche Adresse mit Namespace (`http://edc-controlplane.customer:8084`, `http://edc-dataplane.customer:8081/api/public`); zusätzlich `tokenEncryptionAesKey` in Vault wie im Umbrella-Chart.
 
 **Nächstes:** Schlüssel erzeugen, Secret `edc-vault-secrets` anlegen, `c2` aus dem Commit installieren und prüfen.
+
+## 2026-10-06 – `c2`: Schlüssel und Secret angelegt
+
+**Gemacht:**
+- Schlüssel des Customer-EDC auf dem Mac erzeugt (Ordner außerhalb des Repositorys, nur für den eigenen Benutzer lesbar): RSA-Schlüsselpaar 2048 Bit (PEM) für die Signatur der Data Plane, je ein Zufallswert (32 Byte, Base64) für `client-secret`, `aesKey`, `tokenEncryptionAesKey`. Namespace `customer` und Secret `edc-vault-secrets` (5 Einträge) angelegt. Prüfung: Namen und Formate stimmen, Repository enthält keine Schlüssel.
+
+**Problem:** Der Befehl zum Erzeugen der Schlüssel und Anlegen des Secrets wurde ein zweites Mal ausgeführt. Er erzeugte die lokalen Schlüsseldateien neu und brach erst bei `kubectl create namespace` ab (`AlreadyExists`); das Secret im Cluster blieb unverändert. Lokale Dateien und Secret unterschieden sich danach in allen 5 Einträgen (Vergleich der SHA-256-Prüfsummen). `c2` war noch nicht installiert, die Schlüssel also noch nicht in Gebrauch. Gelöst: Secret aus den aktuellen lokalen Dateien neu geschrieben (`kubectl create secret … --dry-run=client -o yaml | kubectl apply -f -`); danach alle 5 Einträge gleich.
+
+**Entscheidung** (Vorschlag, vom Verfasser noch zu bestätigen): Für `c4` (und in Etappe 2) werden Schlüssel nur erzeugt, wenn noch keine vorhanden sind, und Namespace und Secret werden so angelegt, dass ein wiederholter Aufruf nichts verändert.
+  Begründung: Ein wiederholter Aufruf darf vorhandene Schlüssel nicht still ersetzen (Idempotenz, `KONZEPT.md`, Etappe 2).
+
+**Nächstes:** `c2` installieren und prüfen.
+
+## 2026-10-06 – `c2` installiert: Schlüssel in Vault unvollständig
+
+**Gemacht:**
+- `c2` aus Commit `8d62781` installiert (Release `edc`, Revision 1, Namespace `customer`). Alle 4 Pods nach 90 s bereit, `Guaranteed`, 0 Neustarts (Control Plane „Runtime edc-controlplane ready“ nach ca. 60 s, Data Plane nach ca. 95 s). Volume `data-edc-postgresql-0` gebunden (2Gi, `local-path`). Im laufenden Pod: DSP-Adresse `http://edc-controlplane.customer:8084/api/v1/dsp`, DID `did:web:ssi-dim-wallet-service.identity:BPNL00000003AZQP`, öffentliche Adresse der Data Plane `http://edc-dataplane.customer:8081/api/public`, `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`.
+
+**Problem:** In Vault liegen nur 4 von 5 Schlüsseln; `client-secret` fehlt (`vault kv list secret/`), obwohl die Datei im eingehängten Secret vorhanden ist. Ursache laut Vault-Log: Container gestartet 14:07:48 UTC, das Skript (`postStart`) schrieb nach 5 s Wartezeit (wie im Bundle) den ersten Schlüssel, während Vault noch eingerichtet wurde („post-unseal setup“ bis 14:08:02). Der erste Schreibversuch scheiterte, die übrigen gelangen; das Skript meldete den Fehler nicht. Ohne `client-secret` kann der EDC keinen Token beim Wallet-Stub anfordern.
+
+**Beobachtungen:**
+- Vault (100m CPU) verbraucht im Leerlauf ca. 50m (2-min-Mittel) – die Hälfte des Limits. Die Bereitschaftsprüfung des Charts startet alle 5 s das Programm `vault status` (Standard, ohne `readinessProbe.path`); um 14:09:31 lief sie einmal in die Zeitbegrenzung von 3 s.
+- Anteil gedrosselter CPU-Perioden in den ersten 10 Minuten (einschließlich Start): Vault 58 %, EDC (Control und Data Plane zusammen) 62 %, PostgreSQL 21 %. Verbrauch danach: Control Plane 42m / 162Mi, Data Plane 15m / 139Mi, PostgreSQL 42m / 40Mi, Vault 50m / 45Mi.
+- Startmeldungen `INFO: Cannot unwrap ThreadPoolExecutor for monitoring …` und `WARNING … OkHttpClient was already registered` in beiden EDC-Teilen; ohne Auswirkung auf den Start.
+
+**Entscheidung** (vom Verfasser bestätigt): `postStart` schreibt jeden Schlüssel so lange, bis es gelingt (höchstens 120 s, sonst Abbruch mit Fehler, damit Kubernetes den Container sichtbar neu startet); Bereitschaftsprüfung von Vault per HTTP (`/v1/sys/health?standbyok=true`, Option `readinessProbe.path` des Charts) statt per Programmaufruf. CPU von Vault bleibt vorerst 100m.
+  Begründung: Eine feste Wartezeit ist vom Startverhalten abhängig und meldet Fehler nicht; die Prüfung per Programmaufruf kostete im Leerlauf rund die Hälfte der CPU von Vault.
+- Umgesetzt in `setup/c2-customer-edc/values.yaml`; lokal mit `helm template` geprüft: weiterhin 21 Objekte, alle Container requests = limits; gegenüber Revision 1 ändert sich nur das StatefulSet `edc-vault`.
+
+**Nächstes:** Commit, `helm upgrade` von `c2`, Prüfung (5 Schlüssel, Verbrauch von Vault, Token beim Wallet-Stub).

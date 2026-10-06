@@ -162,16 +162,30 @@ vault:
     # feste Testwerte für client-secret und aesKey; Signaturschlüssel der Data
     # Plane und tokenEncryptionAesKey ergänzt im Umbrella-Chart erst der
     # Wrapper `tx-data-provider`, und nur bei der Installation).
+    # Jeder Schlüssel wird so lange geschrieben, bis es gelingt: Eine feste
+    # Wartezeit (Bundle: 5 s) reichte nicht – Vault war beim ersten Versuch
+    # noch nicht eingerichtet, `client-secret` fehlte (LABORBUCH.md,
+    # 2026-10-06). Nach 120 s ohne Erfolg Abbruch mit Fehler, damit Kubernetes
+    # den Container sichtbar neu startet statt still ohne Schlüssel zu laufen.
     postStart:
       - sh
       - -c
       - |-
         {
-        sleep 5
         for k in client-secret aesKey tokenEncryptionAesKey tokenSignerPrivateKey tokenSignerPublicKey; do
-          /bin/vault kv put "secret/$k" content=@"/vault/userconfig/edc-vault-secrets/$k"
+          n=0
+          until /bin/vault kv put "secret/$k" content=@"/vault/userconfig/edc-vault-secrets/$k" >/dev/null 2>&1; do
+            n=$((n+1)); [ "$n" -ge 120 ] && exit 1
+            sleep 1
+          done
         done
         }
+    # Bereitschaftsprüfung per HTTP statt per Programmaufruf (Standard: alle
+    # 5 s `vault status`; kostete im Leerlauf rund die Hälfte der 100m CPU und
+    # lief einmal in die Zeitbegrenzung). `path` ist eine Option des Charts;
+    # dieselbe Adresse nutzt seine (abgeschaltete) Lebendprüfung.
+    readinessProbe:
+      path: "/v1/sys/health?standbyok=true"
     # NAS-Profil (Standard: keine Werte, QoS BestEffort).
     resources:
       requests: { cpu: 100m, memory: 128Mi }
