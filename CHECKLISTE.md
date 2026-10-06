@@ -76,7 +76,7 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] `VPS-VARIANTE.md` – NAS-Profil (Hauptumgebung) und Option VPS, Steal Time, Nachbau-Optionen – 2026-10-06
 - [x] Offene Änderungen committen: `AUFBAU.md`, `KONZEPT.md`, `LABORBUCH.md`, `ANLEITUNG.md`, `CHECKLISTE.md`, `setup/b1-monitoring/values.yaml` – Commit `2ae8388`, 2026-10-06
 - [x] Lokale Commits pushen – `77e0323..2ae8388` nach `origin/main`, 2026-10-06
-- [ ] Danach im Thesis-Repository den Submodul-Verweis `6-experiment` aktualisieren
+- [x] Danach im Thesis-Repository den Submodul-Verweis `6-experiment` aktualisieren – Commit `703de48` (Stand `e8e5f88`), 2026-10-06; danach laufend (Thesis-Checkliste, Abschnitt 10)
 - [ ] `README.md` (Schnellstart) anlegen – in `KONZEPT.md`, Abschnitt 2, vorgesehen; spätestens in Etappe 2 (Abschnitt 10)
 - [ ] Laufend: Bei jeder Änderung an Struktur, Befehl oder Ablauf `KONZEPT.md` (und `README.md`) im selben Zug anpassen
 
