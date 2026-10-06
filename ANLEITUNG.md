@@ -31,7 +31,7 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 
  Messung – „Stoppuhr + Messgeräte“, läuft neben allem:
    Prometheus + Grafana (b1)   CPU, RAM und CPU-Drosselung aller Pods
-   Loki + Alloy (b2)           Logs → abgeschlossene und fehlgeschlagene Transaktionen
+   Loki + Alloy (b2, b3)       Logs → abgeschlossene und fehlgeschlagene Transaktionen
 ```
 
 **Eine Transaktion** = Der Customer fragt beim Supplier den Bestand eines Materials ab (Item-Stock-Exchange).
@@ -57,7 +57,7 @@ Es wird getestet, **wie viel Last PURIS aushält**: ab wann es langsam wird, ab 
 
 | Schritt | Was | Womit |
 |---|---|---|
-| **A. Monitoring** | Prometheus + Grafana installieren; Logs sammeln | `kube-prometheus-stack` (`b1-monitoring`), Loki + Alloy (`b2-logs`) |
+| **A. Monitoring** | Prometheus + Grafana installieren; Logs sammeln | `kube-prometheus-stack` (`b1-monitoring`), Loki (`b2-loki`) + Alloy (`b3-alloy`) |
 | **B. Datenraum** | zentral die Identität; **je Firma** ein eigener EDC und ein eigener DTR | Tractus-X-„Hausanschluss“-Bundles: `identity-and-trust-bundle` (`c1`), `dataspace-connector-bundle` und `digital-twin-bundle` je Firma (`c2`–`c5`) |
 | **C. PURIS 2×** | eine Instanz als **Customer**, eine als **Supplier** | Helm-Chart **`puris` 7.2.0** (= PURIS **6.2.0**), bringt PostgreSQL mit; Bausteine `d1-puris-customer`, `d2-puris-supplier` |
 | **D. Einrichten** | In beiden PURIS: Partner, Material und Beziehung anlegen; beim Supplier einen Bestand eintragen | PURIS-Oberfläche oder REST-API |

@@ -128,6 +128,9 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
   Begründung: Kubernetes rotiert Container-Logs standardmäßig ab 10 Mi, `kubectl logs` liefert nur die neueste Datei – bei hoher Last gingen die Logzeilen verloren, aus denen Durchsatz und Fehler bestimmt werden. Promtail ist seit 2026-03-02 ohne Unterstützung; Nachfolger ist Alloy.
 - In Etappe 2 beschreibt Helmfile alle Releases; kein GitOps-Controller im Cluster.
   Begründung: deklarativ mit festen Versionen, ohne zusätzlichen Controller, der Ressourcen verbraucht oder während Messungen eingreift.
+- Logs in **zwei Bausteinen** statt `b2-logs`: `b2-loki` (Loki) und `b3-alloy` (Grafana Alloy).
+  Begründung: Loki und Alloy sind zwei getrennte Helm-Charts; so gilt „ein Baustein = ein Release = eine `values.yaml`“ ohne Ausnahme.
+- Zeitplan: Abgabe der Arbeit am **Di 10.11.2026** (Experiment fertig bis So 01.11.2026, siehe `CHECKLISTE.md`).
 - Ziel: Abgabe der Bachelorarbeit am 2026-11-10 (statt zum Fristende 2026-12-11). Das Experiment soll bis 2026-11-01 abgeschlossen sein; Zieltermine und Entscheidungspunkte in `CHECKLISTE.md`.
   Begründung: Entscheidung des Verfassers; die offizielle Frist bleibt als Puffer.
 
@@ -147,4 +150,4 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 
 - Nach `b1` sind 1850m CPU (23 %) und 3340Mi RAM (10 %) des Knotens per requests vergeben. Kurz nach dem Start nutzte der Namespace `monitoring` ca. 0,25 CPU-Kerne; Prometheus 291 MiB, Grafana-Pod 355 MiB Arbeitsspeicher.
 
-**Nächstes:** `b2-logs` – vorher klären: Loki und Alloy sind zwei getrennte Helm-Charts (ein oder zwei Releases).
+**Nächstes:** `b2-loki`, danach `b3-alloy`.

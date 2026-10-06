@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; als Nächstes `b2-logs`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-06 – Etappe 1, Phase a abgeschlossen, `b1-monitoring` abgeschlossen; als Nächstes `b2-loki`, dann `b3-alloy`. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -117,13 +117,20 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] Versionsübersicht ergänzt (Chart, Prometheus, Operator, Grafana, kube-state-metrics, node-exporter) – 2026-10-06
 - [x] Definition „Baustein fertig“ erfüllt – 2026-10-06 (Punkt 11: mit dem Commit dieser Dokumentation)
 
-### `b2-logs` (Loki + Grafana Alloy)
+- [x] Aufteilung entschieden: zwei Bausteine `b2-loki` und `b3-alloy` (zwei Helm-Charts, ein Release je Baustein) – 2026-10-06
 
-- [ ] Vorab klären: Loki und Alloy sind zwei getrennte Helm-Charts → zwei Bausteine oder begründete Ausnahme von „ein Baustein = ein Release“ (`KONZEPT.md`, Abschnitt 13, „Noch offen“); Konzept vorher anpassen
-- [ ] Chart-Versionen festgelegt (fest, kein `latest`)
-- [ ] Loki: Betriebsart, dauerhaftes Volume, Aufbewahrung mindestens über die gesamte Messphase
-- [ ] Alloy: sammelt die Logs aller Pods (mindestens PURIS und EDC), mit Kennzeichnung von Namespace und Pod
+### `b2-loki` (Loki)
+
+- [ ] Chart-Version festgelegt (fest, kein `latest`)
+- [ ] Betriebsart, dauerhaftes Volume, Aufbewahrung mindestens über die gesamte Messphase
+- [ ] Aufnahmegrenzen so gesetzt, dass bei hoher Last keine Zeilen abgewiesen werden
 - [ ] Loki als Datenquelle in Grafana
+- [ ] Definition „Baustein fertig“ erfüllt
+
+### `b3-alloy` (Grafana Alloy)
+
+- [ ] Chart-Version festgelegt (fest, kein `latest`)
+- [ ] Sammelt die Logs aller Pods (mindestens PURIS und EDC), mit Kennzeichnung von Namespace und Pod; Zeitstempel aus dem Container-Log
 - [ ] Prüfung: LogQL-Abfrage findet Zeilen eines bekannten Pods; Zähltest – keine verlorenen Zeilen gegenüber der Quelle
 - [ ] Definition „Baustein fertig“ erfüllt
 
@@ -223,7 +230,7 @@ Geklärt (Details in `KONZEPT.md`, Abschnitt 13):
 - [x] Messgrößen: Durchsatz, Dauer und Fehler aus PURIS-Logs und EDC-Daten, nicht aus der k6-Antwortzeit – 2026-10-06
 
 Noch offen:
-- [ ] `b2-logs`: ein oder zwei Releases (Abschnitt 3)
+- [x] Logs: zwei Bausteine `b2-loki` und `b3-alloy` – 2026-10-06
 - [ ] Puffer für k3s und Betriebssystem (Abschnitt 2)
 - [ ] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf)
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf)

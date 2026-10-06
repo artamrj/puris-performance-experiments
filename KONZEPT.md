@@ -84,7 +84,7 @@ Dadurch ist die Reihenfolge sichtbar, `ls` sortiert automatisch richtig, und ein
 | Phase | Inhalt | Bausteine (Planung) |
 |---|---|---|
 | **a** – Basis | System, Kubernetes-Cluster und Werkzeuge | `a1-system`, `a2-k3s`, `a3-helm` |
-| **b** – Monitoring | Messinfrastruktur | `b1-monitoring` (kube-prometheus-stack: Prometheus, Grafana, Exporter), `b2-logs` (Loki + Grafana Alloy) |
+| **b** – Monitoring | Messinfrastruktur | `b1-monitoring` (kube-prometheus-stack: Prometheus, Grafana, Exporter), `b2-loki` (Loki: speichert die Logs), `b3-alloy` (Grafana Alloy: sammelt die Logs aller Pods) |
 | **c** – Datenraum | je Firma eigener EDC und DTR; zentral nur die Identität | `c1-identitaet` (`identity-and-trust-bundle`, Wallet-Stub), `c2-customer-edc`, `c3-customer-dtr`, `c4-supplier-edc`, `c5-supplier-dtr` (`dataspace-connector-bundle`, `digital-twin-bundle`) |
 | **d** – PURIS | Anwendung unter Test | `d1-puris-customer`, `d2-puris-supplier` |
 | **e** – Testdaten | Daten und Funktionsnachweis | `e1-testdaten`, `e2-funktionstest` |
@@ -257,8 +257,8 @@ Die Bestandsabfrage von PURIS ist **asynchron** (Abschnitt 13): Der Endpunkt ant
 |---|---|---|
 | **Eingangslast** | Auslösungen pro Sekunde (festgelegte Rate) | k6 (`constant-arrival-rate`) |
 | Antwortzeit der Auslösung | misst **nur** das Auslösen, **nicht** die Transaktion | k6 |
-| **Abgeschlossene Transaktionen/s** | eigentlicher Durchsatz | Log des Customer-PURIS über Loki (`b2-logs`): `Updated ReportedMaterialItemStocks for …` |
-| **Fehlgeschlagene Transaktionen/s** | eigentliche Fehlerrate (Fehler erscheinen **nicht** in der HTTP-Antwort) | Log des Customer-PURIS über Loki (`b2-logs`): `Error in ReportedMaterialItemStockRequest for …` |
+| **Abgeschlossene Transaktionen/s** | eigentlicher Durchsatz | Log des Customer-PURIS über Loki (`b2-loki`, gesammelt von `b3-alloy`): `Updated ReportedMaterialItemStocks for …` |
+| **Fehlgeschlagene Transaktionen/s** | eigentliche Fehlerrate (Fehler erscheinen **nicht** in der HTTP-Antwort) | Log des Customer-PURIS über Loki (`b2-loki`, gesammelt von `b3-alloy`): `Error in ReportedMaterialItemStockRequest for …` |
 | **Dauer einer Transaktion** | Ende-zu-Ende-Zeit | Zeitstempel der Transferprozesse in den EDCs bzw. der Log-Zeilen (genaues Verfahren wird im Probelauf festgelegt) |
 | CPU, RAM, CPU-Drosselung je Pod | Ressourcennutzung, Engpasskandidaten | Prometheus (cAdvisor) |
 
@@ -457,7 +457,7 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | CPU und RAM für jeden Container festgelegt (requests = limits) und in `AUFBAU.md` dokumentiert | Die Ressourcengrenzen bestimmen, wo Sättigung auftritt. Ohne feste Werte wären Läufe nicht vergleichbar; QoS `Guaranteed` verhindert ein Überbuchen des Knotens. |
 | Datenraum aus den Tractus-X-„Hausanschluss“-Bundles: je Firma eigener EDC (`dataspace-connector-bundle`) und DTR (`digital-twin-bundle`), zentral nur die Identität (`identity-and-trust-bundle`) | Entspricht dem offiziellen Bereitstellungsmodell von PURIS (EDC und DTR je Partner) und dem Datenaustausch-Profil des Umbrella-Charts 26.03.00; dieselben Bausteine wie im Umbrella-Chart. Jede Komponente einer Firma lässt sich für Skalierungskonfigurationen einzeln ändern. |
 | Identität über den Wallet-Stub (DCP ≥ 1.0), nicht über den IdentityHub | Mit dem Wallet-Stub ist PURIS 6.2.0 dokumentiert getestet. Der IdentityHub ist seit Tractus-X 25.12 die empfohlene Variante; er wird in der Arbeit als Einschränkung bzw. Ausblick genannt. |
-| Logs über Loki und Grafana Alloy (`b2-logs`) | Vollständige Logzeilen trotz Log-Rotation; Auswertung per LogQL auf derselben Zeitachse wie Prometheus. Promtail ist seit 2026-03-02 ohne Unterstützung (End of Life); Nachfolger ist Alloy. |
+| Logs über Loki (`b2-loki`) und Grafana Alloy (`b3-alloy`) – zwei Bausteine, da zwei getrennte Helm-Charts | Vollständige Logzeilen trotz Log-Rotation; Auswertung per LogQL auf derselben Zeitachse wie Prometheus. Promtail ist seit 2026-03-02 ohne Unterstützung (End of Life); Nachfolger ist Alloy. |
 | Helmfile in Etappe 2, kein GitOps-Controller | Deklarative Beschreibung aller Releases mit festen Versionen, ohne zusätzlichen Controller im Cluster, der Ressourcen verbraucht oder während Messungen eingreift. |
 | k6 im Cluster über den k6-Operator (Helm) | Passt zu den Regeln (Helm, YAML, feste CPU/RAM); der Verbrauch von k6 ist in Prometheus sichtbar und liegt auf derselben Zeitachse wie alle anderen Messwerte. |
 | Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
@@ -524,7 +524,6 @@ Ablauf:
 
 ### Noch offen
 
-- `b2-logs` umfasst Loki und Grafana Alloy – zwei getrennte Helm-Charts. Vor dem Aufbau entscheiden, ob daraus zwei Bausteine werden oder eine begründete Ausnahme von „ein Baustein = ein Helm-Release“ gilt; Abschnitt 3 entsprechend anpassen.
 - Puffer für den Prozess `k3s` und das Betriebssystem (`Allocatable` = `Capacity`, siehe `AUFBAU.md`, Ressourcenübersicht) festlegen, bevor die Ressourcen der Phasen c–f verteilt werden.
 - Parallele Aufträge für dasselbe Material löschen und schreiben dieselben Bestandszeilen: Treten dabei Fehler oder Doppelungen auf? Im Probelauf prüfen.
 - Genaues Verfahren für die Dauer einer Transaktion (Log-Zeitstempel oder Transferprozesse der EDCs) – im Probelauf festlegen.
