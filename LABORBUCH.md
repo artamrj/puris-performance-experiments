@@ -342,3 +342,17 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - Revision 3 (16:15:37 Ortszeit, 23 s nach Revision 2) entstand durch einen wiederholten Aufruf desselben Befehls vor dieser Änderung; Manifeste und Werte von Revision 2 und 3 sind identisch.
 
 **Nächstes:** Commit, `helm upgrade` (Revision 4), Prüfung.
+
+## 2026-10-06 – `c2` geprüft: Identität funktioniert
+
+**Gemacht:**
+- `c2` mit `RollingUpdate` aktualisiert (Revision 4, aus Commit `d438167`): Vault-Pod automatisch neu erstellt (14:18:57 UTC), EDC-Pods liefen unverändert weiter (0 Neustarts). Vault enthält alle 5 Schlüssel; Bereitschaftsprüfung per HTTP.
+- Funktionsprüfung: Katalogabfrage des Customer-EDC an sich selbst über seine DSP-Adresse – mit `dataspace-protocol-http` (v0.8, Partner als BPN, also über das BPN-Verzeichnis) HTTP 200 in 5,4 s (erster Aufruf), mit `dataspace-protocol-http:2025-1` (Partner als DID) HTTP 200 in 2,0 s; jeweils leerer Katalog (noch keine Assets). Keine Warnungen oder Fehler im Log der Control Plane. DSP-Versionen laut `/.well-known/dspace-version`: `v0.8` und `2025-1`.
+- Summe der requests nach `c2`: 3225m CPU (46 % von 7000m), 8396Mi RAM (29 %). Dokumentation in `AUFBAU.md`, „c2“.
+
+**Beobachtungen:**
+- Vault nach der Korrektur im Leerlauf: 0,011 Kerne (1-min-Mittel um 14:21 UTC), gedrosselte Perioden 1,3 %; vorher ca. 0,05 Kerne. Die Bereitschaftsprüfung per Programmaufruf war damit der wesentliche Verbrauch im Leerlauf.
+- Der Wallet-Stub protokolliert bei `info` keine einzelnen Anfragen; dass Token, Nachweise und DID-Auflösung funktionieren, zeigt mittelbar die erfolgreiche DSP-Anfrage.
+- Die erste Katalogabfrage dauerte 5,4 s, die zweite 2,0 s (Aufwärmen der Java-Dienste; für die Aufwärmphase der Messläufe vormerken).
+
+**Nächstes:** `c3-customer-dtr` (DTR des Customers) oder zuerst `c4-supplier-edc`, um die erste Katalogabfrage zwischen beiden Firmen zu prüfen.
