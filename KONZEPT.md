@@ -18,6 +18,9 @@ Was untersucht wird, erklärt [`ANLEITUNG.md`](ANLEITUNG.md). Dieses Dokument be
 
 Begründung für diese Reihenfolge: Beim manuellen Aufbau wird jeder Schritt verstanden und Fehler lassen sich einfacher finden. Automatisiert wird erst, was nachweislich funktioniert. Der spätere Neuaufbau mit den Skripten prüft zugleich, ob die Dokumentation vollständig war.
 
+**Geänderte Reihenfolge (2026-10-07):** Die Hauptmessung der Grundkonfiguration K0 auf der NAS-VM wird **vor** der vollständigen Automatisierung durchgeführt. Vor der Vorstudie werden nur Reset und Messlauf als Skripte umgesetzt (`lab reset`, `lab run`), damit die Messläufe unbeaufsichtigt auf der VM laufen. Der vollständige Neuaufbau mit den Skripten (Etappe 2) folgt danach und ist zugleich der Nachbau-Test (Abschnitt 8).
+Begründung: Etappe 1 war am 2026-10-07 abgeschlossen, elf Tage vor dem Plan; so liegen die Hauptdaten früh vor. Der Aufbau ist durch die committeten YAML-Dateien und `AUFBAU.md` vollständig beschrieben und wird mit `setup-v1` eingefroren; Etappe 2 verwendet dieselben Dateien (sonst neuer Tag `setup-v2`). Das entspricht dem Plan B der Checkliste (Entscheidungspunkt So 25.10.), nur vorgezogen.
+
 ### Jede Information hat genau einen Ort
 
 | Was | Wo | Wie |
@@ -478,6 +481,8 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 3. **Phasen c–e:** Datenraum, PURIS, Testdaten, bis **eine** Bestandsabfrage nachweisbar funktioniert.
 4. **Phase f:** k6 und ein erster Probelauf (`pilot`).
 
+*Reihenfolge seit 2026-10-07 (Abschnitt 1): vor Schritt 7 nur Reset und Messlauf als Skript (`lab reset`, `lab run`); dann 7 und 8 (Grundkonfiguration K0) auf der NAS-VM; danach 5 und 6 – der Neuaufbau mit den Skripten ist zugleich der Nachbau-Test (9).*
+
 **Etappe 2 – Automatisieren**
 5. Skripte (`lab`, `setup/`, `versions.env`) aus `AUFBAU.md` ableiten.
 6. Vollständiger Neuaufbau mit den Skripten; Abweichungen zu `AUFBAU.md` beheben.
@@ -520,6 +525,9 @@ Die Arbeit enthält nicht das Laborbuch, sondern eine **verdichtete, nachprüfba
 | Ergebnis einer Transaktion aus Logs und EDC-Daten, nicht aus der k6-Antwortzeit | Der PURIS-Endpunkt ist asynchron; k6 misst nur das Auslösen (Abschnitte 6 und 13). |
 | Täglicher Batch-Abgleich von PURIS abgeschaltet | Er würde zu einer festen Uhrzeit alle Partnerdaten abfragen und Messungen stören. |
 | Reset auf einen festen Datenbank-Stand S0 mit ausgehandelten Verträgen (vorläufig, wird in Etappe 1 geprüft) | Im Betrieb werden Verträge einmal ausgehandelt und dann wiederverwendet; gemessen wird der Dauerbetrieb, nicht die einmalige Aushandlung. |
+| Hauptmessung K0 auf der NAS-VM vor der vollständigen Automatisierung; vorher nur `lab reset` und `lab run` als Skript (2026-10-07) | Etappe 1 elf Tage vor dem Plan abgeschlossen; Hauptdaten liegen früh vor. Aufbau durch committete YAML-Dateien und `AUFBAU.md` vollständig beschrieben, mit `setup-v1` eingefroren; der spätere Neuaufbau mit den Skripten ist zugleich der Nachbau-Test (Abschnitt 1). |
+| 20 Materialien in den Testdaten; k6 löst je Stufe reihum für alle Materialien aus (2026-10-07) | Gleichzeitige Aufträge für dasselbe Material kollidieren (`ObjectOptimisticLockingFailureException`, im Probelauf 4 von 328 mit einem Material). Mit 20 Materialien trifft jedes Material nur 1/20 der Last; Kollisionen werden entsprechend seltener und bleiben als Fehler messbar. Anlage per Skript aus `setup/e1-testdaten/materialien.tsv`. |
+| Keine Systemupdates vor `setup-v1` (2026-10-07) | Ein Update kann einen Neustart erfordern; danach brauchen die DTRs 10–21 min zum Start, am Messtag ein unnötiges Risiko. Automatische Updates sind seit `a1` aus; der Paketstand wird im Laborbuch festgehalten. |
 | `helm`/`kubectl` vom Mac über SSH-Tunnel; Systembefehle und Messläufe auf der VM | YAML-Änderungen lassen sich ohne Commit, Push und Pull ausprobieren; k3s bleibt unverändert; Messläufe hängen nicht vom Mac ab. |
 
 ---
@@ -609,5 +617,5 @@ Ablauf:
 - Option VPS (Nachbau auf 8 dedizierten vCPU mit NAS-Profil; größere Skalierungen nur bei Bedarf): durchführen ja/nein, Anbieter; Erfolgskriterien des Nachbau-Tests festlegen; Startwerte des NAS-Profils nach dem Probelauf bestätigen; Grenzwert für Steal Time in der Vorstudie – siehe [`VPS-VARIANTE.md`](VPS-VARIANTE.md), Abschnitt 10.
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.
-- Anzahl der Materialien für die Hauptmessungen (Entscheidung 2026-10-07: mehrere statt eines, weil gleichzeitige Aufträge für dasselbe Material mit `ObjectOptimisticLockingFailureException` kollidieren): Anzahl festlegen, `e1` erweitern, k6-Skript verteilt die Auslösungen auf die Materialien, S0 danach neu sichern.
+- Anzahl der Materialien für die Hauptmessungen (Entscheidung 2026-10-07: mehrere statt eines, weil gleichzeitige Aufträge für dasselbe Material mit `ObjectOptimisticLockingFailureException` kollidieren): Anzahl festlegen, `e1` erweitern, k6-Skript verteilt die Auslösungen auf die Materialien, S0 danach neu sichern. *(Entschieden 2026-10-07: 20 Materialien, Abschnitt 12.)*
 - DTR-CPU im NAS-Profil (Customer 100m, Supplier 200m): Beide DTRs sind schon beim Anlegen der Testdaten gedrosselt und überschreiten das Zeitlimit des PURIS-Clients (ca. 10 s). Da jede Bestandsabfrage den DTR des Suppliers liest, vor dem Probelauf entscheiden, ob die Werte erhöht werden (`VPS-VARIANTE.md`, Abschnitt 2; `LABORBUCH.md`, 2026-10-07). *(Entschieden 2026-10-07: vorerst unverändert; der Probelauf zeigt, ob der DTR zuerst sättigt.)*

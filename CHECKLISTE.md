@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; DTR-CPU vorerst unverändert (Probelauf entscheidet); **`f1-k6` fertig, Probelauf gültig** (328 Auslösungen, 324 abgeschlossen, 4 Sperrkonflikte; `dropped_iterations` 0; bis 1/s keine Sättigung) – **Etappe 1 abgeschlossen**; entschieden: Pod-Logs in Git (`/logs/`), Sammelskript im Repository, **mehrere Materialien** für die Hauptmessungen; als Nächstes Anzahl der Materialien, `e1` erweitern, Reset erproben, S0 neu sichern. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; DTR-CPU vorerst unverändert (Probelauf entscheidet); **`f1-k6` fertig, Probelauf gültig** (328 Auslösungen, 324 abgeschlossen, 4 Sperrkonflikte; `dropped_iterations` 0; bis 1/s keine Sättigung) – **Etappe 1 abgeschlossen**; entschieden: Pod-Logs in Git (`/logs/`), Sammelskript im Repository, **mehrere Materialien** für die Hauptmessungen; als Nächstes Anzahl der Materialien, `e1` erweitern, Reset erproben, S0 neu sichern; **neu: VM der Betreuung verfügbar (24 vCPU, 48 GB RAM, 500 GB), Rolle offen**. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -93,7 +93,7 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] k9s von der VM entfernt, nur noch auf dem Mac – 2026-10-06
 - [x] Zeitsynchronisation der VM prüfen (alle Zeitstempel in `meta.json`, Prometheus und Loki müssen auf einer Zeitachse liegen) – synchronisiert, NTP aktiv, UTC; 2026-10-06
 - [x] Swap-Status der VM prüfen und Entscheidung im Laborbuch festhalten (Auslagerung verfälscht Messwerte) – war an (8G, unbelegt), jetzt aus, auch nach Neustart; 2026-10-06
-- [ ] Vor dem Einfrieren (`setup-v1`): Updates einmal von Hand einspielen, danach keine Updates mehr bis zum Ende der Messungen
+- [x] Vor dem Einfrieren (`setup-v1`): Updates einmal von Hand einspielen, danach keine Updates mehr bis zum Ende der Messungen – entfällt (Entscheidung 2026-10-07: keine Updates vor `setup-v1`, Neustart-Risiko am Messtag; Paketstand im Laborbuch)
 - [ ] Vor den Messungen: Festlegen, welche anderen Dienste des NAS während der Messungen ruhen, und das im Laborbuch vermerken (die VM teilt sich die Threads mit dem NAS)
 
 ## 2 Phase a – Basis
@@ -195,7 +195,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Beim Supplier einen Bestand für den Customer eingetragen – 100 Stück, 2026-10-07
 - [x] Anlage über die REST-API (nicht nur über die Oberfläche), damit Etappe 2 sie skripten kann – JSON-Dateien + `curl`, 2026-10-07
 - [x] Umfang der Testdaten festgehalten (Anzahl Partner, Materialien, Bestandszeilen) – für Kapitel 4.3 – je Firma 1 Partner, 1 Material, 1 Beziehung; 1 Bestandszeile; `AUFBAU.md`, e1; 2026-10-07
-- [ ] Anlage nicht idempotent (zweiter Aufruf → HTTP 409): in Etappe 2 vor dem Anlegen prüfen, ob die Daten schon da sind – gefunden 2026-10-07
+- [ ] Anlage nicht idempotent (zweiter Aufruf → HTTP 409): in Etappe 2 vor dem Anlegen prüfen, ob die Daten schon da sind – gefunden 2026-10-07 *(für Materialien, Beziehungen und Bestände in `materialien-anlegen.sh` umgesetzt, 2026-10-07; Partner noch nicht)*
 
 ### `e2-funktionstest`
 - [x] Eine Abfrage von Hand am Backend des Customer-PURIS ausgelöst – zwei Abfragen, 2026-10-07
@@ -235,19 +235,19 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] `.gitignore` (`logs/`) schließt `runs/*/cluster/logs/` aus: auf `/logs/` (nur Wurzel) einschränken oder Ordner umbenennen – entscheiden; gefunden 2026-10-07 – auf `/logs/` eingeschränkt, 2026-10-07
 - [x] Sammelskript des Probelaufs (Entwurf, Python) ins Repository übernehmen – Grundlage für `./lab run` (Abschnitt 10) – `experiments/collect/collect_run.py`, 2026-10-07
 - [x] Anzahl der Materialien für die Hauptmessungen entscheiden (ein Material: Sperrkonflikte gehören zum Ergebnis; mehrere: realistischer) – gefunden 2026-10-07 – entschieden 2026-10-07: mehrere
-- [ ] Anzahl der Materialien festlegen (für Kapitel 4.3 begründen)
+- [x] Anzahl der Materialien festlegen (für Kapitel 4.3 begründen) – 20, 2026-10-07 (`KONZEPT.md`, Abschnitt 12; `setup/e1-testdaten/materialien.tsv`)
 - [ ] `e1` erweitern: weitere Materialien je Firma (Material/Produkt, Beziehung, Bestand) als JSON-Dateien, aus dem Commit anlegen
-- [ ] k6-Skript: Auslösungen auf die Materialien verteilen (z. B. reihum), Kennzeichnung je Material
+- [ ] k6-Skript: Auslösungen auf die Materialien verteilen (z. B. reihum), Kennzeichnung je Material *(2026-10-07: `MATERIAL_NUMBERS` reihum je Stufe, `STAGE_LABELS`; Material steht im PURIS-Log; Prüfung im Testlauf offen)*
 - [ ] S0 nach der Erweiterung neu sichern (bisherige Sicherung behalten)
 
 ## 8 Reset
 
-- [ ] Prüfen, was sich ansammelt (Zeilenzahlen in PURIS- und EDC-Datenbanken vor und nach dem Probelauf)
+- [x] Prüfen, was sich ansammelt (Zeilenzahlen in PURIS- und EDC-Datenbanken vor und nach dem Probelauf) – 2026-10-07: nur die EDC-Datenbanken wachsen; Wallet-Stub, DTRs, PURIS gleich (`LABORBUCH.md`)
 - [ ] Ablauf erprobt: Hintergrundaufträge beendet → Datenbanken auf S0 → PURIS- und EDC-Pods neu gestartet → Aufwärmphase
 - [ ] Prüfung nach dem Reset: Zeilenzahlen wie in S0, alle Pods `Ready`
 - [ ] PURIS beim Reset bzw. Neuaufbau nicht mit `helm uninstall` neu installieren, ohne das Datenbank-Volume zu löschen (neues Zufallspasswort passt sonst nicht zur Datenbank) – gefunden 2026-10-07
-- [ ] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`)
-- [ ] Wallet-Stub-Datenbank liegt auf `emptyDir` (Neustart leert sie): beim Reset wiederherstellen oder Wallet-Pod nie neu starten – entscheiden; gefunden 2026-10-07
+- [ ] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`) *(2026-10-07: `./lab reset` geschrieben, noch nicht erprobt)*
+- [x] Wallet-Stub-Datenbank liegt auf `emptyDir` (Neustart leert sie): beim Reset wiederherstellen oder Wallet-Pod nie neu starten – entscheiden; gefunden 2026-10-07 – entschieden 2026-10-07: nie neu starten, nicht zurücksetzen, Zeilen bei jedem Reset prüfen (Daten ändern sich im Lauf nicht)
 - [ ] Wiederherstellung von S0 mit `pg_restore` erproben (Sicherungen: `~/puris-loadlab-state/s0/` auf der VM)
 - [ ] Vorläufige Entscheidung zu S0 (mit Verträgen) im Laborbuch bestätigt oder geändert
 
@@ -265,9 +265,13 @@ Noch offen:
 - [x] Puffer für k3s und Betriebssystem (Abschnitt 2) – 2026-10-06
 - [x] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf) – Fehler (`ObjectOptimisticLockingFailureException`, 4 von 328), keine Doppelungen; 2026-10-07
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf) *(Kandidat: EDC-Datenbank `created_at`/`state_time_stamp`; siehe Abschnitt 7)*
-- [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset) *(2026-10-07: ja – je Transaktion 2 Transferprozess-Einträge je EDC; Wirkung im Probelauf prüfen)*
+- [x] Wachsen die EDC-Tabellen über die Läufe? (Reset) – ja: `edc_transfer_process`, `edc_jti_validation`, beim Supplier auch `edc_data_plane`, `edc_policy_monitor`; der Reset setzt beide EDC-Datenbanken zurück – 2026-10-07
 - [x] Hauptumgebung festgelegt: NAS-VM mit eigenem NAS-Profil; VPS nur optional – 2026-10-06 (Entscheidung des Nutzers, `VPS-VARIANTE.md`)
-- [ ] Option VPS durchführen? (A: Nachbau-Test auf 8 dedizierten vCPU mit NAS-Profil, ≈ 5–10 €; B: größere Skalierung nur bei Bedarf) – bis So 18.10., `VPS-VARIANTE.md` Abschnitt 4 und 10
+- [ ] Option VPS durchführen? (A: Nachbau-Test auf 8 dedizierten vCPU mit NAS-Profil, ≈ 5–10 €; B: größere Skalierung nur bei Bedarf) – bis So 18.10., `VPS-VARIANTE.md` Abschnitt 4 und 10 *(seit 2026-10-07: VM der Betreuung könnte A und B ersetzen, siehe nächste Punkte)*
+- [x] Zusätzliche VM von der Betreuung erhalten: 24 vCPU, 48 GB RAM, 500 GB Speicher – 2026-10-07 (Aussage des Verfassers; `LABORBUCH.md`)
+- [ ] VM der Betreuung prüfen: CPU-Modell (`lscpu`), dedizierte oder geteilte vCPU (Steal Time), Betriebssystem, Root-Rechte, Zugang vom Mac, Abruf der Images, Verfügbarkeit bis nach der Abgabe
+- [ ] Rolle der VM der Betreuung festlegen (Vorschlag: NAS-VM bleibt Hauptumgebung; VM der Betreuung für den Neuaufbau mit den Skripten = Nachbau-Test auf fremder Hardware und für Skalierungskonfigurationen mit echtem Zuwachs, K0 dort als Bezug) – dann `KONZEPT.md` und `VPS-VARIANTE.md` anpassen
+- [x] Reihenfolge entscheiden: Hauptmessung K0 auf der NAS-VM **vor** der vollständigen Automatisierung (nur `reset`/`run` als Skript, Plan-B-Umfang aus „Entscheidungspunkte“ vorgezogen) – vor dem Einfrieren; dann `KONZEPT.md`, Abschnitt 1, anpassen – entschieden 2026-10-07: ja; `KONZEPT.md` Abschnitte 1, 11, 12
 - [ ] Startwerte des NAS-Profils nach dem Probelauf bestätigen oder anpassen (`VPS-VARIANTE.md`, Abschnitt 2) *(Probelauf bis 1/s: alle Komponenten weit unter dem Limit, aber zeitweise Drosselung bei kleinen Limits; Aussage über Sättigung erst mit der Vorstudie)*
 - [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [x] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden – weggelassen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
@@ -313,7 +317,7 @@ Noch offen:
 - [ ] Erfolgskriterium des Nachbau-Tests **vorher** festgelegt
 - [ ] Gesamtdauer der Hauptmessungen geschätzt (ca. 5 h je Konfiguration laut `ANLEITUNG.md`)
 - [ ] Alle Entscheidungen mit Begründung im Laborbuch
-- [ ] Updates einmal eingespielt (Abschnitt 1)
+- [x] Updates einmal eingespielt (Abschnitt 1) – entfällt (Entscheidung 2026-10-07, Abschnitt 1)
 - [ ] **Aufbau eingefroren:** Git-Tag `setup-v1` gesetzt und gepusht
 
 ## 12 Etappe 3 – Hauptmessungen

@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# ══════════════════════════════════════════════════════════════════════════════
+# lab – Einstiegspunkt des Experiments (KONZEPT.md, Abschnitt 4).
+#
+# Stand 2026-10-07: nur der vorgezogene Teil (KONZEPT.md, Abschnitt 1) –
+# Reset und Messlauf; status/up/down/refresh folgen mit Etappe 2.
+#
+#   ./lab snapshot <name>     Datenbank-Stand sichern (alle 7 Datenbanken) nach
+#                             $STATE_DIR/<name>; bricht ab, wenn es ihn schon gibt
+#   ./lab reset <name>        Ausgangszustand herstellen: PURIS und EDC beider
+#                             Firmen anhalten, ihre Datenbanken auf <name>
+#                             zurücksetzen, Zeilen aller 7 Datenbanken prüfen,
+#                             EDC und PURIS wieder starten
+#   ./lab run <plan> <rep>    Messlauf nach experiments/plans/<plan>.env:
+#                             Reset → k6-TestRun → Abarbeiten abwarten →
+#                             Sammeln nach runs/<Zeit>_<plan>_rep-<rep>/
+#                             (nur auf der VM, nur bei sauberem Git-Stand)
+#
+# Läuft dort, wo kubectl den Versuchscluster erreicht (Mac mit `puris` oder VM);
+# `run` nur auf der VM (KONZEPT.md, Abschnitt 5).
+# ══════════════════════════════════════════════════════════════════════════════
+set -euo pipefail
+cd "$(dirname "$0")"
+# shellcheck source=lib/db.sh
+. lib/db.sh
+
+die() { echo "Abbruch: $*" >&2; exit 1; }
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+log() { echo "[$(date -u +%H:%M:%S)] $*"; }
+
+# Deployments, die der Reset anhält und neu startet (je Firma).
+APPS_EDC="edc-controlplane edc-dataplane"
+APPS_PURIS="puris-backend"
+
+cmd_snapshot() {
+  local name="${1:?Name fehlt, z. B. s0-v2}" d="$STATE_DIR/${1:-}" n
+  [ ! -e "$d" ] || die "$d existiert bereits (Stände nie überschreiben)"
+  mkdir -p "$d"
+  for n in $(db_names); do
+    db_cmd "$n" pg_dump "-Fc" > "$d/$n.dump"
+    db_counts "$n" > "$d/$n.zeilen.txt"
+    log "$n: $(du -h "$d/$n.dump" | cut -f1), $(wc -l < "$d/$n.zeilen.txt") Tabellen, $(awk '{s+=$2} END {print s}' "$d/$n.zeilen.txt") Zeilen"
+  done
+  now > "$d/zeitpunkt.txt"
+  git rev-parse HEAD > "$d/commit.txt"
+  (cd "$d" && sha256sum ./*.dump ./*.zeilen.txt > SHA256SUMS)
+  chmod -R go-rwx "$STATE_DIR"
+  log "Stand $name gesichert: $d"
+}
+
+# Zeilen aller 7 Datenbanken gegen den Stand vergleichen; gibt Abweichungen aus.
+check_counts() {
+  local d="$1" n diffs="" out
+  for n in $(db_names); do
+    out="$(diff <(sort "$d/$n.zeilen.txt") <(db_counts "$n" | sort) | grep '^[<>]' || true)"
+    [ -z "$out" ] || diffs+="$n: $(echo "$out" | tr '\n' ' ')"$'\n'
+  done
+  printf %s "$diffs"
+}
+
+pods_gone() {
+  local ns="$1" app
+  for app in $APPS_EDC $APPS_PURIS; do
+    kubectl get pods -n "$ns" --no-headers 2>/dev/null | grep -q "^$app-" && return 1
+  done
+  return 0
+}
+
+cmd_reset() {
+  local name="${1:?Name des Stands fehlt, z. B. s0-v2}" d="$STATE_DIR/${1:-}" t0 ns n i diffs after
+  [ -d "$d" ] || die "Stand $d fehlt"
+  (cd "$d" && sha256sum -c --quiet SHA256SUMS) || die "Prüfsummen von $d stimmen nicht"
+  t0=$(date +%s)
+  log "Reset auf $name"
+  # 1. kein laufender Lastgenerator
+  if kubectl get testrun -n k6 -o jsonpath='{range .items[*]}{.status.stage}{"\n"}{end}' | grep -qv '^finished$'; then
+    die "ein TestRun ist noch nicht beendet"
+  fi
+  # 2. PURIS und EDC beider Firmen anhalten (Hintergrundaufträge enden mit)
+  for ns in customer supplier; do
+    # shellcheck disable=SC2086
+    kubectl scale deploy $APPS_PURIS $APPS_EDC -n "$ns" --replicas=0 >/dev/null
+  done
+  for i in $(seq 1 60); do pods_gone customer && pods_gone supplier && break; sleep 5; done
+  pods_gone customer && pods_gone supplier || die "Pods nach 300 s nicht beendet"
+  log "PURIS und EDC angehalten"
+  # 3. Datenbanken zurücksetzen (eine Transaktion je Datenbank)
+  for n in $RESET_DBS; do
+    db_cmd "$n" pg_restore "--clean --if-exists --single-transaction --exit-on-error" < "$d/$n.dump"
+  done
+  # 4. Zeilen aller 7 Datenbanken = Stand
+  diffs="$(check_counts "$d")"
+  [ -z "$diffs" ] || die "Zeilen weichen vom Stand ab:"$'\n'"$diffs"
+  log "Datenbanken auf $name, Zeilen aller 7 Datenbanken gleich"
+  # 5. erst EDC, dann PURIS starten (PURIS spricht beim Start den EDC an)
+  for ns in customer supplier; do
+    # shellcheck disable=SC2086
+    kubectl scale deploy $APPS_EDC -n "$ns" --replicas=1 >/dev/null
+  done
+  for ns in customer supplier; do for n in $APPS_EDC; do
+    kubectl rollout status "deploy/$n" -n "$ns" --timeout=900s >/dev/null
+  done; done
+  log "EDC bereit"
+  for ns in customer supplier; do
+    kubectl scale deploy $APPS_PURIS -n "$ns" --replicas=1 >/dev/null
+  done
+  for ns in customer supplier; do
+    kubectl rollout status "deploy/$APPS_PURIS" -n "$ns" --timeout=900s >/dev/null
+  done
+  log "PURIS bereit"
+  # 6. Zeilen nach dem Start (Schreibzugriffe beim Start werden festgehalten)
+  after="$(check_counts "$d")"
+  jq -n --arg state "$name" --arg start "$(date -u -r "$t0" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$t0" +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg end "$(now)" --argjson dur "$(( $(date +%s) - t0 ))" --arg after "$after" \
+    '{state: $state, start_utc: $start, end_utc: $end, duration_s: $dur, counts_equal_after_restore: true,
+      counts_diff_after_start: ($after | split("\n") | map(select(. != "")))}' > "$STATE_DIR/last-reset.json"
+  log "Reset fertig nach $(( $(date +%s) - t0 )) s${after:+; nach dem Start abweichend: $after}"
+}
+
+cmd_run() {
+  local plan="${1:?Plan fehlt, z. B. vorstudie}" rep="${2:?Wiederholung fehlt, z. B. 1}"
+  local pf="experiments/plans/$plan.env" commit tag stamp run_id run_dir name tmp t_apply n_stages total key
+  [ -r /etc/rancher/k3s/k3s.yaml ] || die "Messläufe nur auf der VM (KONZEPT.md, Abschnitt 5)"
+  [ -r "$pf" ] || die "$pf fehlt"
+  [ -z "$(git status --porcelain)" ] || die "Git-Stand nicht sauber (KONZEPT.md, Abschnitt 6)"
+  set -a; # shellcheck disable=SC1090
+  . "$pf"; set +a
+  export PLAN="$plan" REP="$rep"
+  commit=$(git rev-parse HEAD); tag=$(git describe --tags --exact-match 2>/dev/null || true)
+  stamp=$(date -u +%Y-%m-%d_%H%M); run_id="${stamp}_${plan}_rep-${rep}"; run_dir="runs/$run_id"
+  [ ! -e "$run_dir" ] || die "$run_dir existiert bereits"
+  name=$(echo "${plan}-r${rep}-$(date -u +%H%M)" | tr 'A-Z_' 'a-z-')
+  tmp=$(mktemp -d)
+  log "Lauf $run_id (Plan $plan, Commit ${commit:0:7}${tag:+, Tag $tag})"
+
+  cmd_reset "$STATE"
+  cp "$STATE_DIR/last-reset.json" "$tmp/reset.json"
+
+  # Skript als ConfigMap aus dem Commit; alte TestRuns entfernen (Daten gesammelt)
+  kubectl delete testrun --all -n k6 --wait=true >/dev/null
+  kubectl create configmap k6-stock-trigger -n k6 --from-file=stock-trigger.js=experiments/k6/stock-trigger.js \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  python3 experiments/k6/render_testrun.py "$name" "$run_id" > "$tmp/testrun.json"
+  t_apply=$(now)
+  kubectl apply -f "$tmp/testrun.json" >/dev/null
+  n_stages=$(echo "$RATES" | tr ',' '\n' | wc -l)
+  total=$(( n_stages * STAGE_DURATION + 10 ))
+  log "TestRun $name gestartet, $n_stages Stufen à $STAGE_DURATION min (Ende spätestens nach $total min)"
+  kubectl wait --for=jsonpath='{.status.stage}'=finished "testrun/$name" -n k6 --timeout="${total}m" >/dev/null
+  log "TestRun beendet; warte auf offene Transaktionen und sammle"
+
+  python3 experiments/collect/collect_run.py "$run_dir" "$name" "$run_id" "$t_apply" "$commit" "$tag" "$tmp"
+  mkdir -p "$run_dir/db"
+  for n in $(db_names); do db_counts "$n" > "$run_dir/db/$n.zeilen-nach-lauf.txt"; done
+
+  # Geheimnisse: API-Key darf nicht im Laufordner stehen (Wert wird nie ausgegeben)
+  key=$(kubectl get secret secret-puris-backend -n customer -o jsonpath='{.data.puris-api-key}' | base64 -d)
+  if grep -rqF -- "$key" "$run_dir" || find "$run_dir" -name '*.gz' -exec zgrep -qF -- "$key" {} \; -print | grep -q .; then
+    die "API-Key im Laufordner gefunden – Lauf nicht verwenden, Dateien prüfen"
+  fi
+  unset key
+
+  (cd "$run_dir" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+  rm -rf "$tmp"
+  log "Fertig: $run_dir ($(du -sh "$run_dir" | cut -f1)); Gültigkeit: $(jq -c .validity "$run_dir/meta.json")"
+}
+
+case "${1:-}" in
+  snapshot) shift; cmd_snapshot "$@" ;;
+  reset)    shift; cmd_reset "$@" ;;
+  run)      shift; cmd_run "$@" ;;
+  *) sed -n '2,21p' "$0"; exit 2 ;;
+esac

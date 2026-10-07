@@ -700,3 +700,47 @@ Begründung: Rohdaten dürfen nicht verändert werden; die Prüfsummen müssen z
 **Nächstes:** Nach dem Commit prüfen, dass die Dateien im Commit gleich `SHA256SUMS` sind.
 
 **Prüfung:** Nach Commit `a4bb002` sind alle 25 Dateien des Laufordners im Commit gleich `SHA256SUMS`; frischer Klon: 25 × `OK`.
+
+## 2026-10-07 – Zusätzliche VM der Betreuung
+
+**Beobachtung:** Die Betreuung stellt eine weitere VM bereit: 24 vCPU, 48 GB RAM, 500 GB Speicher (Angabe des Verfassers). Noch nicht geprüft: CPU-Modell, dedizierte oder geteilte vCPU, Betriebssystem, Zugang.
+
+**Offen:** Rolle der VM (Hauptumgebung bleibt bisher die NAS-VM, Entscheidung 2026-10-06). Größe entspricht etwa dem Profil „VPS optimal“ (`VPS-VARIANTE.md`, Anhang: ca. 24 vCPU / 42 GiB). Entscheidung folgt; bis dahin gilt `KONZEPT.md` unverändert.
+
+## 2026-10-07 – Plan für die Messungen auf der NAS-VM, drei Entscheidungen
+
+**Entscheidungen** (Vorschläge des Assistenten, vom Verfasser angenommen; Begründungen in `KONZEPT.md`, Abschnitte 1 und 12):
+- **Reihenfolge:** Hauptmessung K0 auf der NAS-VM vor der vollständigen Automatisierung; vorher nur `lab reset` und `lab run` als Skript. Der Neuaufbau mit den Skripten (Etappe 2) folgt danach und ist zugleich der Nachbau-Test.
+- **20 Materialien** in den Testdaten (Material 01 aus `e1` und 19 weitere nach festem Muster, `setup/e1-testdaten/materialien.tsv`); k6 löst je Stufe reihum für alle Materialien aus.
+- **Keine Systemupdates vor `setup-v1`.** Stand: Ubuntu 26.04.1 LTS, Kernel `7.0.0-38-generic`, 719 Pakete installiert; Paketlisten zuletzt am 2026-10-05 aktualisiert (dabei 0 Aktualisierungen offen), `apt-daily.timer`/`apt-daily-upgrade.timer` inaktiv.
+
+**Beobachtung (Zustand vor dem Weiterarbeiten, 09:52 UTC):** Knoten `Ready`, alle Pods laufen. Zwei Neustarts, beide bekannt bzw. vor S0: Wallet-Stub (erster Start, siehe 2026-10-06) und PURIS-Backend des Customers 47 s nach der Installation (2026-10-06, 22:23:55 UTC; Liquibase scheitert beim Start, Datenbank noch nicht bereit) – vor `e1` und vor S0, ohne Folgen. Repository auf der VM noch auf Stand `e6313b2` (vor Messläufen von der VM aus aktualisieren).
+
+**Nächstes:** 19 Materialien anlegen (Skript `materialien-anlegen.sh` aus dem Commit), Funktionstest je Material, S0 neu sichern, Reset erproben.
+
+## 2026-10-07 – Reset vorbereitet: Was verändert ein Messlauf?
+
+**Gemacht:** Zeilen aller Tabellen der 7 Datenbanken nach dem Probelauf mit S0 verglichen (gleiche Abfrage wie beim Sichern, 10:00 UTC).
+
+**Beobachtung:**
+
+| Datenbank | S0 | nach dem Probelauf | geänderte Tabellen |
+|---|---|---|---|
+| Wallet-Stub | 38 | 38 | – |
+| EDC Customer | 84 | 1396 | `edc_transfer_process` 8 → 664, `edc_jti_validation` 18 → 674 |
+| DTR Customer | 83 | 83 | – |
+| EDC Supplier | 109 | 3389 | `edc_transfer_process`, `edc_data_plane`, `edc_policy_monitor` je 8 → 664; `edc_jti_validation` 27 → 1339 |
+| DTR Supplier | 103 | 103 | – |
+| PURIS Customer | 135 | 135 | – (Bestandszeile ersetzt, gleiche Zahl) |
+| PURIS Supplier | 128 | 128 | – |
+
+**Entscheidung** (im angenommenen Plan des Tages enthalten): Der Reset setzt nur die Datenbanken zurück, die ein Lauf verändert – EDC beider Firmen und PURIS beider Firmen (PURIS ersetzt die Bestandszeile mit neuen Werten) – und startet nur deren Pods neu (EDC Control Plane und Data Plane, PURIS-Backend). Wallet-Stub und DTRs werden weder zurückgesetzt noch neu gestartet, ihre Zeilen aber bei jedem Reset gegen den Stand geprüft.
+Begründung: Ihre Daten ändern sich im Lauf nicht; ein Neustart der DTRs dauert 10–21 min (`c3`/`c5`), und die Datenbank des Wallet-Stubs liegt auf `emptyDir` (ein Neustart leert sie). Damit ist auch die offene Frage zum Wallet-Stub beantwortet: nie neu starten, nur prüfen.
+
+**Umsetzung:** `./lab reset <Stand>` (neu, `lib/db.sh`): EDC und PURIS beider Firmen auf 0 Replikate → `pg_restore --clean --if-exists --single-transaction` der 4 Datenbanken → Zeilen aller 7 Datenbanken gleich dem Stand, sonst Abbruch → erst EDC, dann PURIS starten → Zeilen nach dem Start festhalten. Dazu `./lab snapshot <Name>` (Stand sichern) und `./lab run <Plan> <Wiederholung>` (Reset, TestRun aus dem Plan, Abarbeiten abwarten, Sammeln, Prüfsummen). Noch nicht erprobt.
+
+**Sammelskript verallgemeinert** (`experiments/collect/collect_run.py`), Gründe:
+- Die Auslösung („Trigger Reported MaterialStockUpdate“) enthält keine Kennung der Transaktion. Jede Transaktion schreibt aber in ihrem eigenen Pool-Thread die Kennungen ihrer zwei EDC-Transfers („Terminated transfer process with id …“) und am Ende „Updated …“; die Erstellungszeit der Transfers steht in der EDC-Datenbank. Damit lässt sich die Dauer je Transaktion in der Auswertung rekonstruieren – dafür werden **alle** Logzeilen der PURIS-Backends aus Loki gesichert (komprimiert), nicht nur die gefilterten.
+- `kubectl logs` liefert bei Log-Rotation nur die neueste Datei; daher Loki statt Pod-Logs (außer k6-Runner).
+- Kein Export über die Management-API der EDCs mehr (braucht Port-Forward; die Datenbank enthält die Zeiten).
+- Neu: Threads je Container (`container_threads`, sichtbar für den Thread-Pool ohne Obergrenze von PURIS; im Leerlauf 34 Threads im Customer-Backend), CPU des Knotens je Modus, Gültigkeit je Lauf in `meta.json`.

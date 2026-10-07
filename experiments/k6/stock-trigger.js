@@ -8,24 +8,39 @@
 // Laststufen: je Stufe ein Szenario `constant-arrival-rate`, nacheinander
 // gestartet und mit `stage`/`rate` gekennzeichnet (Zuordnung in der Auswertung).
 //
+// Materialien (Entscheidung 2026-10-07): Die Auslösungen einer Stufe gehen
+// reihum an alle Materialien (Iteration i → Material i mod Anzahl), damit
+// gleichzeitige Aufträge selten dasselbe Material treffen. Welches Material
+// abgefragt wurde, steht in den PURIS-Logs; kein eigenes k6-Tag (hält die Zahl
+// der Zeitreihen in Prometheus klein).
+//
 // Umgebungsvariablen (im TestRun gesetzt):
-//   BASE_URL         Backend des Customer-PURIS, z. B. http://puris-backend.customer:8081
-//   MATERIAL_NUMBER  eigene Materialnummer des Customers (Klartext)
-//   RATES            Auslösungen je Sekunde je Stufe, kommagetrennt, z. B. "0.1,0.2,0.5,1"
-//   STAGE_DURATION   Dauer je Stufe in Minuten, z. B. "3"
-//   PURIS_API_KEY    API-Key (nur im Runner, aus einem Secret)
+//   BASE_URL          Backend des Customer-PURIS, z. B. http://puris-backend.customer:8081
+//   MATERIAL_NUMBERS  eigene Materialnummern des Customers (Klartext), kommagetrennt
+//                     (Probelauf: MATERIAL_NUMBER mit genau einer Nummer, weiter gültig)
+//   RATES             Auslösungen je Sekunde je Stufe, kommagetrennt, z. B. "0.1,0.2,0.5,1"
+//   STAGE_LABELS      optional: Namen der Stufen, kommagetrennt, z. B. "warmup,baseline,s1,s2"
+//                     (Standard: s1, s2, …)
+//   STAGE_DURATION    Dauer je Stufe in Minuten, z. B. "3"
+//   PURIS_API_KEY     API-Key (nur im Runner, aus einem Secret)
 
 import http from 'k6/http';
 import { check } from 'k6';
 import encoding from 'k6/encoding';
+import exec from 'k6/execution';
 
+const list = (v) => (v || '').split(',').map((x) => x.trim()).filter((x) => x !== '');
 const BASE_URL = __ENV.BASE_URL;
-const MATERIAL_NUMBER = __ENV.MATERIAL_NUMBER;
-const RATES = (__ENV.RATES || '').split(',').map((r) => Number(r.trim()));
+const MATERIALS = list(__ENV.MATERIAL_NUMBERS || __ENV.MATERIAL_NUMBER);
+const RATES = list(__ENV.RATES).map(Number);
+const LABELS = __ENV.STAGE_LABELS ? list(__ENV.STAGE_LABELS) : RATES.map((_, i) => `s${i + 1}`);
 const STAGE_MINUTES = Number(__ENV.STAGE_DURATION);
 
-if (!BASE_URL || !MATERIAL_NUMBER || RATES.length === 0 || RATES.some((r) => !(r > 0)) || !(STAGE_MINUTES > 0)) {
-  throw new Error('BASE_URL, MATERIAL_NUMBER, RATES und STAGE_DURATION müssen gesetzt sein');
+if (!BASE_URL || MATERIALS.length === 0 || RATES.length === 0 || RATES.some((r) => !(r > 0)) || !(STAGE_MINUTES > 0)) {
+  throw new Error('BASE_URL, MATERIAL_NUMBERS, RATES und STAGE_DURATION müssen gesetzt sein');
+}
+if (LABELS.length !== RATES.length || new Set(LABELS).size !== LABELS.length) {
+  throw new Error('STAGE_LABELS: genau ein eindeutiger Name je Rate');
 }
 
 // Rate je Minute muss ganzzahlig sein (k6 erwartet eine ganze Zahl je timeUnit).
@@ -38,7 +53,7 @@ RATES.forEach((rate, i) => {
   // Ein Aufruf dauert ca. 0,1 s; großzügig vorab angelegte VUs, damit
   // dropped_iterations = 0 erreichbar ist.
   const vus = Math.max(2, Math.ceil(rate * 2));
-  scenarios[`s${i + 1}`] = {
+  scenarios[LABELS[i]] = {
     executor: 'constant-arrival-rate',
     rate: perMinute,
     timeUnit: '1m',
@@ -47,7 +62,7 @@ RATES.forEach((rate, i) => {
     preAllocatedVUs: vus,
     maxVUs: vus * 5,
     gracefulStop: '5s',
-    tags: { stage: `s${i + 1}`, rate: String(rate) },
+    tags: { stage: LABELS[i], rate: String(rate) },
   };
 });
 
@@ -57,9 +72,11 @@ export const options = {
   summaryTrendStats: ['min', 'med', 'p(95)', 'p(99)', 'max'],
 };
 
-const url = `${BASE_URL}/catena/stockView/update-reported-material-stocks?ownMaterialNumber=${encodeURIComponent(encoding.b64encode(MATERIAL_NUMBER))}`;
+const urls = MATERIALS.map((m) => `${BASE_URL}/catena/stockView/update-reported-material-stocks?ownMaterialNumber=${encodeURIComponent(encoding.b64encode(m))}`);
 
 export default function () {
+  // Reihum je Stufe: iterationInTest zählt die Iterationen des Szenarios über alle VUs.
+  const url = urls[exec.scenario.iterationInTest % urls.length];
   const res = http.get(url, { headers: { 'X-API-KEY': __ENV.PURIS_API_KEY } });
   check(res, { 'HTTP 200': (r) => r.status === 200 });
 }
