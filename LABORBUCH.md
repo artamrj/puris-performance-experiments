@@ -1100,3 +1100,20 @@ Gesamt: 3068 Iterationen von k6, 2858 Auslösungen im PURIS-Log, 1755 abgeschlos
 - **Erholungsstufe 0,2/s: keine einzige abgeschlossene Transaktion**, Control Plane weiter am Limit, Threads bleiben bei ca. 380. Das System bleibt nach dem Kippen auch unter geringer Last gekippt (in Vorstudie 2 erholte es sich erst ohne Last). Muster passt zu einem metastabilen Ausfall – zentral für F2 und Kapitel 6.2.
 - Im Kipp-Zustand fehlen Auslösungen im PURIS-Log (3068 von k6 gegenüber 2858 im Log) – später klären.
 - Der Ablauf von `lab` lief über 2 h vollständig durch (alle Stufen, Abarbeiten, Sammeln).
+
+## 2026-10-08 – Entscheidungen vor K0: Messplan, S0, Einfrieren; Richtigstellung zu Vorstudie 3
+
+**Gemacht:** Laufordner der Vorstudie 3 nachgeprüft (nur lesend, auf dem Mac). Messplan `experiments/plans/k0.env` angelegt. TestRun lokal mit `render_testrun.py` aus `k0.env` erzeugt und mit `runs/2026-10-07_2025_vorstudie3_rep-1/testrun.json` verglichen: bis auf Name und `testid` gleich (20 Materialien, gleiche Images, Ressourcen und Stufen). Tests lokal: 36 von 36 bestanden. Zustand der VM (nur lesend, 2026-10-07, 23:28 UTC): Commit `2dff5d9`, `./lab status`: Sperre frei, PURIS und EDC 6/6 bereit, keine Last.
+
+**Entscheidungen** (Verfasser; Zustimmung im Chat am 2026-10-08 zu den Vorschlägen des Assistenten):
+- **Messplan K0** = Stufen der Vorstudie 3 unverändert, Erholungsstufe 10 min; dazu `PLAN_KIND="main"`, `STATE="s0-v2"`, `MATERIALS_N="20"` (bisher stand in `meta.json` `materials_n: null`; gemessen wurde auch dort mit allen 20 Materialien). Begründung: Die Generalprobe lief mit genau diesem Ablauf vollständig und gültig durch; die Stufen liegen dicht um den Kipppunkt; K0 bleibt mit Vorstudie 3 vergleichbar. `KONZEPT.md`, Abschnitte 6 und 12.
+- **S0 mit ausgehandelten Verträgen bestätigt** (`KONZEPT.md`, Abschnitt 12, bisher „vorläufig“). Begründung: Gemessen wird der Dauerbetrieb; die Wiederverwendung des gespeicherten Vertrags ist in `e2` belegt, der Reset stellt alle 7 Datenbanken zeilengleich her.
+- **Einfrieren:** Tag `setup-v1` auf den Commit mit `k0.env`; die VM bleibt während der Messreihe K0 auf diesem Commit (`lab` trägt den Tag nur bei exaktem Treffer in `meta.json` ein; Vorstudie 3: `tag: null`).
+
+**Folge:** Überlagerung und Plan für K1 gibt es noch nicht; sie sind nicht Teil von `setup-v1`. Für K1 gilt die Regel aus `KONZEPT.md`, Abschnitt 6 (neuer Tag `setup-v2` mit Laborbuch-Eintrag).
+
+**Richtigstellung** zum Eintrag „Vorstudie 3 (Generalprobe für K0)“: Die fehlenden Auslösungen liegen nicht im gekippten Zustand, sondern im Übergang. Geplante Auslösungen minus Auslösezeilen im PURIS-Log je Stufe: s5 26, s6 67, s7 114; alle anderen Stufen 0 bis −1. k6: `http_req_failed` 0 von 3068 (alle Anfragen mit 2xx beantwortet). `loki_discarded_samples_total` ohne Zeitreihe (Loki legt den Zähler erst bei der ersten Verwerfung an). Logmenge des Customer-PURIS je Stufe: s5 und s6 je 0,42 MB, s7 3,79 MB, s8 3,95 MB. Ein Verlust in Alloy/Loki ist damit unwahrscheinlich: Die Lücke tritt bei geringer Logmenge auf und fehlt bei der größten. Ursache offen (Quellcode PURIS 6.2.0 prüfen). Folge für die Auswertung: Verfahren A der Dauer und `drain.open_at_end` beruhen auf den Auslösezeilen; das Sättigungskriterium bezieht sich auf die geplante Rate und ist nicht betroffen.
+
+**Beobachtung** (Vorstudie 3, Prometheus, ohne die erste Minute je Stufe): CPU des DTR des Customers in allen Stufen ca. 0,002 Kerne; DTR des Suppliers steigt mit der Last von 0,004 (`warmup1`) auf 0,016 Kerne (`s4`) und fällt nach dem Kippen auf 0,002–0,003. Das stützt indirekt, dass im untersuchten Ablauf nur der DTR des Suppliers abgefragt wird (kein Logbeleg; DTR-Logs werden nicht gesammelt).
+
+**Offen vor dem Start von K0:** Tag `setup-v1` (Verfasser); Bestätigung des Verfassers, dass die anderen Dienste des NAS ruhen.
