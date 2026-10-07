@@ -1038,3 +1038,28 @@ Begründung: Vor der Hauptmessung soll der ganze Ablauf einmal vollständig gepr
 Begründung: Ursache ist die Umgebung, nicht der Sammler; so nutzen `kubectl` und `helm` dieselbe Kubeconfig.
 
 **Laufordner** `runs/2026-10-07_1906_smoke_rep-1/` (gescheiterter Versuch: ohne `meta.json` und `SHA256SUMS`; 1,9M, 28 Dateien) auf den Mac kopiert. Geprüft: keine IP-Adressen; die API-Keys beider PURIS sind nicht enthalten (die Prüfung in `lab` kommt nach dem Sammeln und lief deshalb nicht). Wird nach `KONZEPT.md` wie jeder Versuch committet und geht nicht in die Auswertung ein.
+
+## 2026-10-07 – Helm-Stand der Läufe mit leerem `helm.txt` nachträglich belegt
+
+**Anlass:** `cluster/helm.txt` ist in den Läufen `2026-10-07_1032_smoke_rep-1`, `2026-10-07_1115_vorstudie_rep-1` und `2026-10-07_1500_vorstudie2_rep-1` leer (Eintrag „Robustheit von `lab` auf der VM geprüft“). Die Laufordner bleiben unverändert (Rohdaten); der Stand wird hier belegt.
+
+**Gemacht:** `helm list -A` auf der VM mit `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` (2026-10-07, ca. 19:55 UTC, nur lesend) und Vergleich mit `runs/2026-10-07_0100_pilot_rep-1/cluster/helm.txt` (Probelauf, 01:01 UTC).
+
+**Ergebnis:** Beide Listen sind gleich – dieselben 12 Releases, dieselben Revisionen, alle `deployed`:
+
+| Release | Namespace | Revision | letzte Änderung (UTC) |
+|---|---|---|---|
+| `gateway-api-crd` | kube-system | 1 | 2026-10-05 11:52 |
+| `monitoring` | monitoring | 4 | 2026-10-06 10:08 |
+| `loki` | logging | 2 | 2026-10-06 10:09 |
+| `alloy` | logging | 2 | 2026-10-06 10:09 |
+| `identity` | identity | 2 | 2026-10-06 10:30 |
+| `edc` | customer | 6 | 2026-10-06 14:19 |
+| `edc` | supplier | 1 | 2026-10-06 14:27 |
+| `dtr` | customer | 1 | 2026-10-06 14:52 |
+| `dtr` | supplier | 1 | 2026-10-06 14:52 |
+| `puris` | customer | 1 | 2026-10-06 22:23 |
+| `puris` | supplier | 1 | 2026-10-06 22:23 |
+| `k6-operator` | k6-operator | 1 | 2026-10-07 00:49 |
+
+**Schluss:** Jede Änderung über Helm (Upgrade, Rollback) erzeugt eine neue Revision. Da die letzte Änderung (00:49 UTC) vor dem Probelauf liegt und die Revisionen seitdem gleich sind, galt dieser Helm-Stand für alle drei Läufe mit leerem `helm.txt`. Änderungen ohne Helm in dieser Zeit: Skalieren der Deployments durch `lab` (Reset) und die Anmerkung `restartedAt` am Deployment `edc-controlplane` des Suppliers (14:07 UTC, Eintrag „Vorstudie 2, erster Versuch“) – beide ohne Wirkung auf die Konfiguration.
