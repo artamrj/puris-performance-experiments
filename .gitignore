@@ -9,8 +9,9 @@ kubeconfig*
 *.pem
 *.key
 
-# Raw terminal logs (may contain IPs, tokens, passwords)
-logs/
+# Raw terminal logs (may contain IPs, tokens, passwords) – top-level folder only;
+# run folders keep their pod logs (runs/*/cluster/logs/*.txt, KONZEPT.md section 6)
+/logs/
 
 # Temporary files
 tmp/

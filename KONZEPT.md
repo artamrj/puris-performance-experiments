@@ -105,7 +105,7 @@ Was für den Versuch gebraucht wird – und nur das. Herleitung und Quellen in A
 | EDC (Control Plane, Data Plane) + PostgreSQL + Vault – je Firma | `dataspace-connector-bundle` 1.3.0 (`tractusx-connector` 0.12.0) | Tractus-X EDC 0.12.0 | `c2`, `c4` | Vertragsverhandlung, Transfers, Datenkanal zwischen den Firmen |
 | DTR + PostgreSQL – je Firma | `digital-twin-bundle` 1.3.0 (`digital-twin-registry` 0.11.0) | DTR 0.11.0 | `c3`, `c5` | Verzeichnis der digitalen Zwillinge (abgefragt wird der DTR des Suppliers) |
 | PURIS-Backend + PostgreSQL – je Firma | `puris` 7.2.0 | PURIS 6.2.0 | `d1`, `d2` | Anwendung unter Test |
-| Testdaten | – (REST-API von PURIS) | – | `e1` | Partner, Material, Material-Partner-Beziehung, Bestand |
+| Testdaten | – (REST-API von PURIS) | – | `e1` | Partner, Material, Material-Partner-Beziehung, Bestand; für die Hauptmessungen **mehrere Materialien** (Entscheidung 2026-10-07, Anzahl offen) |
 | Monitoring und Logs | `kube-prometheus-stack` 91.9.0, `loki` 7.3.0, `alloy` 1.13.0 | – | `b1`–`b3` | Messung (vorhanden) |
 | Lastgenerator | `k6-operator` 4.6.0 | k6-Operator 1.6.0, k6 2.2.0 (Runner-Image) | `f1` | erzeugt die Last; Tests im Namespace `k6` |
 
@@ -609,4 +609,5 @@ Ablauf:
 - Option VPS (Nachbau auf 8 dedizierten vCPU mit NAS-Profil; größere Skalierungen nur bei Bedarf): durchführen ja/nein, Anbieter; Erfolgskriterien des Nachbau-Tests festlegen; Startwerte des NAS-Profils nach dem Probelauf bestätigen; Grenzwert für Steal Time in der Vorstudie – siehe [`VPS-VARIANTE.md`](VPS-VARIANTE.md), Abschnitt 10.
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.
+- Anzahl der Materialien für die Hauptmessungen (Entscheidung 2026-10-07: mehrere statt eines, weil gleichzeitige Aufträge für dasselbe Material mit `ObjectOptimisticLockingFailureException` kollidieren): Anzahl festlegen, `e1` erweitern, k6-Skript verteilt die Auslösungen auf die Materialien, S0 danach neu sichern.
 - DTR-CPU im NAS-Profil (Customer 100m, Supplier 200m): Beide DTRs sind schon beim Anlegen der Testdaten gedrosselt und überschreiten das Zeitlimit des PURIS-Clients (ca. 10 s). Da jede Bestandsabfrage den DTR des Suppliers liest, vor dem Probelauf entscheiden, ob die Werte erhöht werden (`VPS-VARIANTE.md`, Abschnitt 2; `LABORBUCH.md`, 2026-10-07). *(Entschieden 2026-10-07: vorerst unverändert; der Probelauf zeigt, ob der DTR zuerst sättigt.)*

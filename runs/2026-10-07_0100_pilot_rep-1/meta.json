@@ -1,0 +1,104 @@
+{
+ "run": "2026-10-07_0100_pilot_rep-1",
+ "kind": "pilot",
+ "git_commit": "5ab5857",
+ "tag": null,
+ "testrun": "setup/f1-k6/testrun-pilot.yaml",
+ "script": "experiments/k6/stock-trigger.js",
+ "plan": {
+  "rates_per_s": [
+   0.1,
+   0.2,
+   0.5,
+   1.0
+  ],
+  "stage_minutes": 3
+ },
+ "times_utc": {
+  "apply": "2026-10-07T01:00:53Z",
+  "runner_start": "2026-10-07T01:01:00Z",
+  "runner_end": "2026-10-07T01:13:06Z",
+  "first_trigger": "2026-10-07T01:01:05Z",
+  "collection_window": [
+   "2026-10-07T00:58:53Z",
+   "2026-10-07T01:15:06Z"
+  ]
+ },
+ "stages": [
+  {
+   "stage": "s1",
+   "rate_per_s": 0.1,
+   "start_utc": "2026-10-07T01:01:05Z",
+   "end_utc": "2026-10-07T01:04:05Z",
+   "planned": 18,
+   "triggered_log": 19,
+   "completed_log": 18,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0
+  },
+  {
+   "stage": "s2",
+   "rate_per_s": 0.2,
+   "start_utc": "2026-10-07T01:04:05Z",
+   "end_utc": "2026-10-07T01:07:05Z",
+   "planned": 36,
+   "triggered_log": 37,
+   "completed_log": 36,
+   "error_warn_lines": 1,
+   "invalidating_contract": 0
+  },
+  {
+   "stage": "s3",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-07T01:07:05Z",
+   "end_utc": "2026-10-07T01:10:05Z",
+   "planned": 90,
+   "triggered_log": 91,
+   "completed_log": 90,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0
+  },
+  {
+   "stage": "s4",
+   "rate_per_s": 1.0,
+   "start_utc": "2026-10-07T01:10:05Z",
+   "end_utc": "2026-10-07T01:13:05Z",
+   "planned": 180,
+   "triggered_log": 180,
+   "completed_log": 177,
+   "error_warn_lines": 3,
+   "invalidating_contract": 0
+  }
+ ],
+ "totals": {
+  "triggered_log": 328,
+  "completed_log": 324,
+  "error_warn_lines_customer": 4,
+  "error_warn_lines_supplier": 0,
+  "invalidating_contract": 0,
+  "k6_iterations": 328,
+  "k6_dropped_iterations": 0,
+  "k6_http_req_failed_rate": 0
+ },
+ "node": {
+  "name": "puris-loadlab",
+  "capacity": {
+   "cpu": "8",
+   "ephemeral-storage": "101859844096",
+   "hugepages-1Gi": "0",
+   "hugepages-2Mi": "0",
+   "memory": "31807336Ki",
+   "pods": "110"
+  },
+  "allocatable": {
+   "cpu": "7",
+   "ephemeral-storage": "96766851816",
+   "hugepages-1Gi": "0",
+   "hugepages-2Mi": "0",
+   "memory": "28661608Ki",
+   "pods": "110"
+  },
+  "kernel": "7.0.0-38-generic",
+  "kubelet": "v1.37.1+k3s1"
+ }
+}

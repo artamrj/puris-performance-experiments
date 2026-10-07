@@ -1080,6 +1080,55 @@ kubectl delete crd testruns.k6.io privateloadzones.k6.io
 - Ohne Angabe nutzt der Operator `grafana/k6:latest` (Initializer) und `latest-starter` (Starter); jeder `TestRun` gibt deshalb alle Images fest an.
 - Der Initializer erhält nur `spec.initializer.env`; die Variablen des Messplans (Raten, Dauer) stehen deshalb dort und beim Runner.
 
+### Probelauf (`pilot`)
+
+**Datum:** 2026-10-07 (Last 01:01:05–01:13:05 UTC); aus Commit `5ab5857`.
+**Ziel:** Messkette prüfen (k6 → PURIS → Loki/EDC → Prometheus); Laufordner wie ein Messlauf.
+**Laufordner:** `runs/2026-10-07_0100_pilot_rep-1/` (2,6M; Prüfsummen in `SHA256SUMS`).
+
+**Start und Ende `[Mac]`:**
+```bash
+kubectl apply -f setup/f1-k6/testrun-pilot.yaml
+kubectl wait --for=jsonpath='{.status.stage}'=finished testrun/pilot -n k6 --timeout=1500s
+```
+Ergebnis: Initializer, Starter und Runner `Succeeded`, alle `Guaranteed`, 0 Neustarts; Runner 01:01:00–01:13:06 UTC.
+
+**Sammeln `[Mac]`** (Entwurf als Python-Skript in der Sitzung, Vorlage für `./lab run`; Port-Forwards auf die Management-API beider EDCs wie in e2). Inhalt des Laufordners und Quelle:
+
+| Datei | Quelle |
+|---|---|
+| `meta.json` | Commit, Messplan, Zeiten (UTC), Stufen mit Zählungen, Knoten (`kubectl get nodes`) |
+| `k6-summary.json` | Zeile `K6_SUMMARY_JSON` im Runner-Log (`handleSummary`) |
+| `prometheus/*.csv` | `query_range` (Schritt 15 s, Fenster Apply − 2 min bis Ende + 2 min): `cpu_cores` (`rate(container_cpu_usage_seconds_total[1m])`), `memory_working_set_bytes`, `cpu_throttled_ratio` (gedrosselte / alle CFS-Perioden), `node_steal_ratio`, `k6_iterations_rate`, `k6_dropped_iterations_total`, `k6_http_req_duration` (p50/p95/p99/max), `loki_discarded_samples_total`, `container_restarts` – je Namespace/Pod/Container |
+| `loki/*.tsv` | LogQL auf `{namespace="customer", pod=~"puris-backend.*"}`: „Trigger Reported MaterialStockUpdate“, „Updated ReportedMaterialItemStocks“, `ERROR`/`WARN`, „Invalidating Contract data“; Supplier: `ERROR`/`WARN` |
+| `edc/*-transferprocesses.json` | Management-API `POST /management/v3/transferprocesses/request` (Schlüssel mit `auth`/`token`/`secret`/`password`/`key` maskiert) |
+| `edc/*-transfer-times.csv` | EDC-Datenbank: `select transferprocess_id, type, state, asset_id, contract_id, correlation_id, created_at, state_time_stamp, updated_at from edc_transfer_process` (die API liefert kein `createdAt`) |
+| `cluster/pods.txt`, `cluster/helm.txt`, `cluster/logs/*.txt` | `kubectl get pods -A -o wide`, `helm list -A`, Logs Runner und beide PURIS-Backends ab Fensterbeginn |
+
+Ergebnis:
+
+| Stufe | Rate | geplant | ausgelöst (Log) | abgeschlossen (Log) | Fehler (Log) | Transfer Customer: Median / p95 (DTR; Item Stock) |
+|---|---|---|---|---|---|---|
+| s1 | 0,1/s | 18 | 19 | 18 | 0 | 2,35 / 3,07 s; 1,71 / 3,10 s |
+| s2 | 0,2/s | 36 | 37 | 36 | 1 | 2,08 / 2,79 s; 1,56 / 2,94 s |
+| s3 | 0,5/s | 90 | 91 | 90 | 0 | 2,05 / 3,27 s; 1,84 / 3,20 s |
+| s4 | 1/s | 180 | 180 | 177 | 3 | 2,10 / 3,10 s; 1,93 / 2,73 s |
+| **gesamt** | | 324 | **328** | **324** | **4** | |
+
+(Stufengrenzen aus dem ersten Trigger + 3 min; daher Verschiebung um eine Auslösung zwischen s1/s2 und s3/s4. k6 zählt 328 Iterationen.)
+
+- **Gültigkeit:** `dropped_iterations` 0; k6-Runner höchstens 0,005 Kerne (Limit 0,5) und 12Mi; keine Neustarts; Loki ohne verworfene Zeilen; Steal Time höchstens 1,12 % (Mittel 0,67 %); `http_req_failed` 0, Checks 328/328.
+- **Auslösung (k6):** `http_req_duration` Median 7,0 ms, p95 13,0 ms, max 30,2 ms.
+- **Fehler:** 4 × „Error in ReportedMaterialItemStockRequest“ mit `ObjectOptimisticLockingFailureException` (Bestandszeile gleichzeitig von einem anderen Auftrag geändert/gelöscht); der Datenaustausch lief vorher vollständig. Bestand danach genau 1 Zeile (keine Doppelung). „Invalidating Contract data“: 0. Supplier: keine Fehler.
+- **EDC:** je EDC +656 Transferprozesse (= 2 je Auslösung), Verhandlungen unverändert 3.
+- **CPU im Lastzeitraum (höchstes 1-min-Mittel / Limit):** EDC Control Plane Customer 0,186 / 0,5; Supplier 0,131 / 0,5; PURIS-Backend Customer 0,079 / 0,6; Wallet-Stub 0,093 / 0,5; DTR Supplier 0,065 / 0,2. Höchste Drosselung (1-min-Fenster): PostgreSQL Wallet und PURIS Supplier 65 %, DTR Supplier 58 %, PostgreSQL PURIS Customer 49 %.
+
+**Hinweise:**
+- `.gitignore` schloss jeden Ordner `logs/` aus – auch `runs/*/cluster/logs/` (Struktur aus `KONZEPT.md`, Abschnitt 6). Geändert 2026-10-07: Regel auf `/logs/` (nur Wurzel) eingeschränkt.
+- Sammelskript: [`experiments/collect/collect_run.py`](experiments/collect/collect_run.py) (Entwurf; enthält zusätzlich den Export der EDC-Datenbank und die Prüfsummen, die im Probelauf getrennt ausgeführt wurden).
+- `cluster/pods.txt` enthält Pod-IP-Adressen des Clusters (10.42.x.x, nur intern).
+- Der API-Key kommt im Laufordner nicht vor (geprüft mit `grep -F`, ohne Ausgabe des Werts).
+
 ---
 
 ## Hilfswerkzeuge (optional, kein Teil des Experiments)

@@ -1,0 +1,5 @@
+timestamp_ns	pod	line
+1791335049539326062	puris-backend-6f46958fb-ftcbt	2026-10-07T01:04:09.537Z ERROR 1 --- [pool-2-thread-5] e.t.p.b.s.l.s.ItemStockRequestApiService : Error in ReportedMaterialItemStockRequest for MNR-7307-AU340474.002 and partner BPNL00000003AYRE
+1791335441066121199	puris-backend-6f46958fb-ftcbt	2026-10-07T01:10:41.065Z ERROR 1 --- [pool-2-thread-8] e.t.p.b.s.l.s.ItemStockRequestApiService : Error in ReportedMaterialItemStockRequest for MNR-7307-AU340474.002 and partner BPNL00000003AYRE
+1791335554765048789	puris-backend-6f46958fb-ftcbt	2026-10-07T01:12:34.763Z ERROR 1 --- [pool-2-thread-6] e.t.p.b.s.l.s.ItemStockRequestApiService : Error in ReportedMaterialItemStockRequest for MNR-7307-AU340474.002 and partner BPNL00000003AYRE
+1791335579439152012	puris-backend-6f46958fb-ftcbt	2026-10-07T01:12:59.438Z ERROR 1 --- [pool-2-thread-9] e.t.p.b.s.l.s.ItemStockRequestApiService : Error in ReportedMaterialItemStockRequest for MNR-7307-AU340474.002 and partner BPNL00000003AYRE

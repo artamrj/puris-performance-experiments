@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; DTR-CPU vorerst unverändert (Probelauf entscheidet); **`f1-k6` installiert** (Operator aus Commit `8b7677a`, `Guaranteed`; Namespace `k6`, Secret, ConfigMap; 6225m CPU = 89 %); Korrektur `testrun-pilot.yaml` (Feld `cleanup`) noch zu committen; als Nächstes Probelauf. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; DTR-CPU vorerst unverändert (Probelauf entscheidet); **`f1-k6` fertig, Probelauf gültig** (328 Auslösungen, 324 abgeschlossen, 4 Sperrkonflikte; `dropped_iterations` 0; bis 1/s keine Sättigung) – **Etappe 1 abgeschlossen**; entschieden: Pod-Logs in Git (`/logs/`), Sammelskript im Repository, **mehrere Materialien** für die Hauptmessungen; als Nächstes Anzahl der Materialien, `e1` erweitern, Reset erproben, S0 neu sichern. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -25,7 +25,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
 | 6 Phase e – Testdaten und Funktionstest | erledigt (2026-10-07; Meilenstein 1 erreicht, S0 gesichert) | Sa 17.–**So 18.10. (Meilenstein 1)** |
-| 7 Phase f – Lastgenerator und Probelauf | begonnen (2026-10-07: Operator installiert, Probelauf offen) | Mo 19.–Di 20.10. |
+| 7 Phase f – Lastgenerator und Probelauf | erledigt (2026-10-07; Etappe 1 abgeschlossen) | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
 | 10 Etappe 2 – Automatisieren | offen | Do 22.–Sa 24.10. (inkl. Neuaufbau mit Skripten) |
@@ -215,23 +215,30 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Ressourcen für Operator **und** Runner (requests = limits); ein Runner (`parallelism: 1`) – Operator 50m/100Mi, Runner 500m/512Mi, dazu Initializer und Starter fest; in den Dateien, `helm template` geprüft; 2026-10-07
 - [x] k6-Skript in `experiments/k6/`: `constant-arrival-rate`, Aufruf direkt am Backend (nicht über das Frontend), Materialnummer in Base64, API-Key aus Secret – `experiments/k6/stock-trigger.js`, Syntax geprüft; 2026-10-07
 - [x] Laststufen als Szenarien mit Kennzeichnung je Stufe (für die Zuordnung in der Auswertung) – ein Szenario je Stufe, Tags `stage`/`rate`; 2026-10-07
-- [ ] Genug vorab angelegte VUs, damit `dropped_iterations = 0` erreichbar ist
-- [ ] k6-Metriken per Remote Write in Prometheus
+- [x] Genug vorab angelegte VUs, damit `dropped_iterations = 0` erreichbar ist – Probelauf: 0; 2026-10-07
+- [x] k6-Metriken per Remote Write in Prometheus – `k6_*` mit `testid`/`stage`; 2026-10-07
 - [x] `TestRun` als YAML-Datei im Baustein-Ordner – `setup/f1-k6/testrun-pilot.yaml`; 2026-10-07
 - [x] Namespace `k6` anlegen und API-Key aus `customer` als Secret `puris-api-key` kopieren (je Aufbau; in Etappe 2 skripten) – gefunden 2026-10-07 – angelegt 2026-10-07 (`AUFBAU.md`, f1); Skripten folgt in Etappe 2 (Abschnitt 10)
-- [ ] Starter-Image ohne Angabe `latest-starter`, Initializer `grafana/k6:latest` – in jedem TestRun fest angeben (erledigt für `testrun-pilot.yaml`) – gefunden 2026-10-07
+- [ ] Starter-Image ohne Angabe `latest-starter`, Initializer `grafana/k6:latest` – in jedem TestRun fest angeben (erledigt für `testrun-pilot.yaml`; für weitere TestRuns/Messpläne offen) – gefunden 2026-10-07
 - [x] Operator installiert, Pod `Guaranteed`, CRDs vorhanden; Summe der requests 6225m (89 %) – 2026-10-07
-- [ ] `testrun-pilot.yaml`: leeres Feld `cleanup` von der CRD abgelehnt, entfernt – Korrektur committen, dann aus dem Commit anwenden – gefunden 2026-10-07
-- [ ] Definition „Baustein fertig“ erfüllt
+- [x] `testrun-pilot.yaml`: leeres Feld `cleanup` von der CRD abgelehnt, entfernt – Korrektur committen, dann aus dem Commit anwenden – gefunden 2026-10-07 – Commit `5ab5857`, daraus angewendet
+- [x] Definition „Baustein fertig“ erfüllt – 2026-10-07, aus Commits `8b7677a`/`5ab5857`; Funktionsprüfung = Probelauf (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ### Probelauf (`pilot`)
-- [ ] Erster Probelauf mit wenigen niedrigen Laststufen *(festgelegt 2026-10-07: 0,1 / 0,2 / 0,5 / 1 je s, je 3 min)*
-- [ ] Abgelegt wie ein Messlauf unter `runs/…_pilot_…/`
-- [ ] `dropped_iterations = 0`, k6 unter seinem CPU-Limit
-- [ ] Abgeschlossene und fehlgeschlagene Transaktionen aus Loki zählbar
-- [ ] Verfahren für die Dauer einer Transaktion festgelegt (Log-Zeitstempel oder EDC-Transferprozesse)
-- [ ] Laborbuch-Eintrag mit Beobachtungen
-- [ ] **Etappe 1 abgeschlossen** – Laborbuch-Eintrag
+- [x] Erster Probelauf mit wenigen niedrigen Laststufen *(festgelegt 2026-10-07: 0,1 / 0,2 / 0,5 / 1 je s, je 3 min)* – 2026-10-07, 01:01–01:13 UTC
+- [x] Abgelegt wie ein Messlauf unter `runs/…_pilot_…/` – `runs/2026-10-07_0100_pilot_rep-1/` (mit `cluster/logs/` nach Änderung der `.gitignore`; Commit durch den Nutzer)
+- [x] `dropped_iterations = 0`, k6 unter seinem CPU-Limit – 0; höchstens 0,005 von 0,5 Kernen
+- [x] Abgeschlossene und fehlgeschlagene Transaktionen aus Loki zählbar – 328 ausgelöst, 324 abgeschlossen, 4 Fehler
+- [ ] Verfahren für die Dauer einer Transaktion festgelegt (Log-Zeitstempel oder EDC-Transferprozesse) *(2026-10-07: EDC-API ohne `createdAt`; EDC-Datenbank hat `created_at`/`state_time_stamp` je Transfer – Kandidat; Entscheidung offen)*
+- [x] Laborbuch-Eintrag mit Beobachtungen – 2026-10-07
+- [x] **Etappe 1 abgeschlossen** – Laborbuch-Eintrag – 2026-10-07 (nach `KONZEPT.md`, Abschnitt 1; Reset folgt vor Etappe 2)
+- [x] `.gitignore` (`logs/`) schließt `runs/*/cluster/logs/` aus: auf `/logs/` (nur Wurzel) einschränken oder Ordner umbenennen – entscheiden; gefunden 2026-10-07 – auf `/logs/` eingeschränkt, 2026-10-07
+- [x] Sammelskript des Probelaufs (Entwurf, Python) ins Repository übernehmen – Grundlage für `./lab run` (Abschnitt 10) – `experiments/collect/collect_run.py`, 2026-10-07
+- [x] Anzahl der Materialien für die Hauptmessungen entscheiden (ein Material: Sperrkonflikte gehören zum Ergebnis; mehrere: realistischer) – gefunden 2026-10-07 – entschieden 2026-10-07: mehrere
+- [ ] Anzahl der Materialien festlegen (für Kapitel 4.3 begründen)
+- [ ] `e1` erweitern: weitere Materialien je Firma (Material/Produkt, Beziehung, Bestand) als JSON-Dateien, aus dem Commit anlegen
+- [ ] k6-Skript: Auslösungen auf die Materialien verteilen (z. B. reihum), Kennzeichnung je Material
+- [ ] S0 nach der Erweiterung neu sichern (bisherige Sicherung behalten)
 
 ## 8 Reset
 
@@ -256,12 +263,12 @@ Geklärt (Details in `KONZEPT.md`, Abschnitt 13):
 Noch offen:
 - [x] Logs: zwei Bausteine `b2-loki` und `b3-alloy` – 2026-10-06
 - [x] Puffer für k3s und Betriebssystem (Abschnitt 2) – 2026-10-06
-- [ ] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf)
-- [ ] Verfahren für die Dauer einer Transaktion (Probelauf)
+- [x] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf) – Fehler (`ObjectOptimisticLockingFailureException`, 4 von 328), keine Doppelungen; 2026-10-07
+- [ ] Verfahren für die Dauer einer Transaktion (Probelauf) *(Kandidat: EDC-Datenbank `created_at`/`state_time_stamp`; siehe Abschnitt 7)*
 - [ ] Wachsen die EDC-Tabellen über die Läufe? (Reset) *(2026-10-07: ja – je Transaktion 2 Transferprozess-Einträge je EDC; Wirkung im Probelauf prüfen)*
 - [x] Hauptumgebung festgelegt: NAS-VM mit eigenem NAS-Profil; VPS nur optional – 2026-10-06 (Entscheidung des Nutzers, `VPS-VARIANTE.md`)
 - [ ] Option VPS durchführen? (A: Nachbau-Test auf 8 dedizierten vCPU mit NAS-Profil, ≈ 5–10 €; B: größere Skalierung nur bei Bedarf) – bis So 18.10., `VPS-VARIANTE.md` Abschnitt 4 und 10
-- [ ] Startwerte des NAS-Profils nach dem Probelauf bestätigen oder anpassen (`VPS-VARIANTE.md`, Abschnitt 2)
+- [ ] Startwerte des NAS-Profils nach dem Probelauf bestätigen oder anpassen (`VPS-VARIANTE.md`, Abschnitt 2) *(Probelauf bis 1/s: alle Komponenten weit unter dem Limit, aber zeitweise Drosselung bei kleinen Limits; Aussage über Sättigung erst mit der Vorstudie)*
 - [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [x] Keycloak (centralidp/sharedidp/PURIS/DTR) weglassen? PURIS per API-Key, DTR ohne Anmeldung wie in den Tractus-X-Bundles – vor `c1` entscheiden – weggelassen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
 - [x] Früh prüfen: Wallet-Stub stellt die von PURIS verlangten Nachweise aus (Membership, `DataExchangeGovernance` 1.0; Profil `profile2509`) – erste Katalogabfrage in Phase c *(Katalogabfragen gelingen, 2026-10-06)* – zwei Vertragsverhandlungen mit `profile2509` und `DataExchangeGovernance:1.0` erfolgreich, 2026-10-07
@@ -270,7 +277,7 @@ Noch offen:
 - [x] Identitätsangaben je Firma mit dem Wallet-Stub geprüft (Phase c) – 2026-10-06 (DIDs, Token, BPN-Verzeichnis; Katalogabfragen beider Firmen)
 - [ ] Wallet-Stub wird als Engpasskandidat mitgemessen (Prometheus-Abfragen enthalten ihn)
 - [x] DTR-CPU des NAS-Profils entscheiden (Customer 100m: 38 % gedrosselt, am Limit; Supplier 200m: 16 %; Zeitlimit des PURIS-Clients ca. 10 s überschritten) – sonst misst die Sättigung vor allem die DTR-Zuteilung; vor dem Probelauf – gefunden 2026-10-07 – entschieden 2026-10-07: vorerst unverändert, Bestätigung mit den Startwerten nach dem Probelauf (nächster Punkt)
-- [ ] Ablage der Rohdaten: kleine Dateien in Git, große auf Zenodo – Größe nach dem Probelauf abschätzen
+- [ ] Ablage der Rohdaten: kleine Dateien in Git, große auf Zenodo – Größe nach dem Probelauf abschätzen *(Probelauf: 2,6M für 12 min, davon 0,5M Logs)*
 
 ## 10 Etappe 2 – Automatisieren
 

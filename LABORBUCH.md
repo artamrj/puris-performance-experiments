@@ -652,3 +652,40 @@ Begründung: Der Probelauf ist genau für diese Prüfung vorgesehen; eine Änder
 **Problem:** Der Server-Trockenlauf lehnte `testrun-pilot.yaml` ab: `spec.cleanup` darf nur `post` sein oder fehlen, ein leerer Wert ist ungültig. Lösung: Feld entfernt (Pods bleiben nach dem Lauf erhalten, wie beabsichtigt); danach Trockenlauf erfolgreich. Die Änderung ist noch zu committen, bevor der Probelauf gestartet wird.
 
 **Nächstes:** Korrektur von `testrun-pilot.yaml` committen; danach Probelauf (nach Zustimmung des Verfassers).
+
+## 2026-10-07 – Probelauf (`pilot`): Messkette funktioniert, Etappe 1 abgeschlossen
+
+**Gemacht:**
+- Probelauf aus Commit `5ab5857` (01:01:05–01:13:05 UTC; 4 Stufen 0,1 / 0,2 / 0,5 / 1 je s, je 3 min), auf Wunsch des Verfassers vom Assistenten gestartet und ausgewertet.
+- Daten in `runs/2026-10-07_0100_pilot_rep-1/` gesammelt (k6-Zusammenfassung, Prometheus, Loki, EDC-API und EDC-Datenbank, Cluster, Logs; Prüfsummen). Dokumentation in `AUFBAU.md`, „Probelauf (`pilot`)“.
+
+**Ergebnis:** Gültig nach allen vorgesehenen Kriterien (`dropped_iterations` 0, k6 weit unter seinem CPU-Limit, keine Neustarts, keine verworfenen Log-Zeilen, Steal Time ≤ 1,12 %). 328 Auslösungen, 324 abgeschlossene Transaktionen, 4 Fehler.
+
+**Problem:** 4 Transaktionen (1 in s2, 3 in s4; 1,2 %) scheiterten beim Speichern mit `ObjectOptimisticLockingFailureException`: Zwei gleichzeitige Aufträge für **dasselbe Material** ersetzen dieselbe Bestandszeile; einer verliert. Der Datenaustausch (2 Transfers) war jeweils schon erfolgt. Keine Doppelungen (danach genau 1 Zeile).
+
+**Beobachtungen:**
+- Offene Frage „Parallele Aufträge für dasselbe Material“ beantwortet: Fehler durch optimistische Sperre, keine Doppelungen. Mit steigender Gleichzeitigkeit ist mehr davon zu erwarten – mit **einem** Material misst die Fehlerrate auch diese Kollisionen. Für die Hauptmessungen entscheiden: ein Material (Kollisionen gehören zum Ergebnis) oder mehrere Materialien (realistischer, Kollisionen seltener).
+- Bis 1/s keine Sättigung: Transferdauer je EDC-Transfer gleichbleibend ca. 2 s (Median), CPU aller Komponenten weit unter dem Limit (höchstens EDC Control Plane Customer 0,19 von 0,5 Kernen). Die Vorstudie braucht deutlich höhere Raten.
+- Trotz geringer Last zeitweise starke CPU-Drosselung bei kleinen Limits (PostgreSQL Wallet und PURIS Supplier bis 65 %, DTR Supplier bis 58 % im 1-min-Fenster) – kurze Spitzen über dem Limit. Für die Engpassanalyse mitbeobachten.
+- Dauer einer Transaktion: Die Management-API der EDCs liefert kein `createdAt`; die EDC-Datenbank enthält `created_at` und `state_time_stamp` je Transfer. Kandidat für das Verfahren: Dauer je Transfer aus der EDC-Datenbank, Durchsatz und Rückstau aus den PURIS-Logs (Loki).
+- EDC-Tabellen wachsen um 2 Zeilen je Transaktion und EDC (hier je +656).
+- k6 braucht bei diesen Raten fast nichts (0,005 Kerne, 12Mi); der Runner ist mit 500m großzügig bemessen.
+- Größe des Laufordners: 2,6M für 12 min (davon 0,5M Pod-Logs).
+- `.gitignore` schließt mit `logs/` auch `runs/*/cluster/logs/` aus.
+
+**Entscheidung:** Etappe 1 ist nach `KONZEPT.md` (Abschnitt 1: „bis eine Bestandsabfrage funktioniert und ein erster Probelauf mit k6 gelingt“) abgeschlossen. Reset (Checkliste, Abschnitt 8) folgt vor Etappe 2.
+
+**Nächstes:** Entscheidungen: Ablage `cluster/logs` (`.gitignore`), Sammelskript ins Repository, Anzahl der Materialien; danach Reset erproben (S0 wiederherstellen).
+
+## 2026-10-07 – Entscheidungen nach dem Probelauf
+
+**Entscheidungen** (vom Verfasser getroffen):
+- `.gitignore`: Regel `logs/` auf `/logs/` eingeschränkt.
+  Begründung: Sie sollte nur rohe Terminal-Mitschnitte im Wurzelordner ausschließen, schloss aber auch `runs/*/cluster/logs/` aus, die `KONZEPT.md` (Abschnitt 6) im Laufordner vorsieht. Die Pod-Logs des Probelaufs sind auf den API-Key geprüft.
+- Sammelskript als Entwurf ins Repository: `experiments/collect/collect_run.py`.
+  Begründung: Nachvollziehbarkeit des Probelaufs; Grundlage für `./lab run` in Etappe 2. Die Fassung im Repository enthält zusätzlich den Export der EDC-Datenbank (`edc/*-transfer-times.csv`) und die Prüfsummen (`SHA256SUMS`), die im Probelauf als getrennte Befehle liefen (`AUFBAU.md`, „Probelauf“).
+- Hauptmessungen mit **mehreren Materialien** statt einem.
+  Begründung: Mit einem Material kollidieren gleichzeitige Aufträge (`ObjectOptimisticLockingFailureException`, im Probelauf 4 von 328); die Fehlerrate würde vor allem diese Testgestaltung messen. Mehrere Materialien entsprechen dem Betrieb eines Customers besser.
+  Folgen: Anzahl festlegen, `e1` um weitere Materialien erweitern (je Firma Material bzw. Produkt, Beziehung, Bestand), k6-Skript verteilt die Auslösungen auf die Materialien, S0 nach der Erweiterung neu sichern (die bisherige Sicherung bleibt erhalten). `KONZEPT.md`, Abschnitte 3 und 13, angepasst.
+
+**Nächstes:** Anzahl der Materialien festlegen und `e1` erweitern; danach Reset erproben und S0 neu sichern.
