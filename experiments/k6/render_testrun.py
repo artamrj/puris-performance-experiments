@@ -39,7 +39,7 @@ if os.environ.get("STAGE_LABELS"):
 testrun = {
     "apiVersion": "k6.io/v1alpha1",
     "kind": "TestRun",
-    "metadata": {"name": name, "namespace": "k6"},
+    "metadata": {"name": name, "namespace": "k6", "labels": {"lab-run-id": testid}},
     "spec": {
         "parallelism": 1,
         "script": {"configMap": {"name": "k6-stock-trigger", "file": "stock-trigger.js"}},

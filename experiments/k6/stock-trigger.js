@@ -76,7 +76,14 @@ const urls = MATERIALS.map((m) => `${BASE_URL}/catena/stockView/update-reported-
 
 export default function () {
   // Reihum je Stufe: iterationInTest zählt die Iterationen des Szenarios über alle VUs.
-  const url = urls[exec.scenario.iterationInTest % urls.length];
+  const iteration = exec.scenario.iterationInTest;
+  const url = urls[iteration % urls.length];
+  // Stufengrenze für collect_run.py: tatsächlicher Start des Szenarios laut k6. Jede VU
+  // meldet ihn bei ihrer ersten Iteration der Stufe (alle Meldungen einer Stufe gleich);
+  // so fehlt der Marker auch dann nicht, wenn eine einzelne Iteration verworfen wird.
+  if (exec.vu.iterationInScenario === 0) {
+    console.log(`K6_STAGE ${JSON.stringify({ stage: exec.scenario.name, start_ms: exec.scenario.startTime })}`);
+  }
   const res = http.get(url, { headers: { 'X-API-KEY': __ENV.PURIS_API_KEY } });
   check(res, { 'HTTP 200': (r) => r.status === 200 });
 }

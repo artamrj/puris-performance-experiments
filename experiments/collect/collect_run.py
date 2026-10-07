@@ -9,13 +9,14 @@ Ablauf: wartet nach dem Ende von k6, bis alle ausgelösten Transaktionen abgesch
 oder gescheitert sind (höchstens DRAIN_MAX_MIN Minuten), und sammelt dann:
   meta.json                 Plan, Zeiten (UTC), Stufen mit Zählungen, Gültigkeit, Reset, Knoten
   k6-summary.json           Zusammenfassung von k6 (Zeile K6_SUMMARY_JSON im Runner-Log)
-  testrun.json              der angewendete TestRun
+  k6-stages.json            tatsächlicher Start je Stufe (Zeilen K6_STAGE im Runner-Log)
+  testrun.json, reset.json  legt `./lab run` vor Lastbeginn ab (bleiben auch bei Abbruch)
   prometheus/*.csv          CPU, RAM, Drosselung, Threads je Container; Steal Time; k6; Loki; Neustarts
   loki/*.tsv.gz             alle Logzeilen der PURIS-Backends (Customer, Supplier) im Zeitfenster
   edc/*-transfer-times.csv  Transferprozesse aus den EDC-Datenbanken (Zeiten, Zustand, Fehler je Transfer)
   edc/*-negotiations.csv    Vertragsverhandlungen (Neuverhandlungen nach „Invalidating … contract data“)
   loki/edc_warn_error.tsv.gz  WARN/ERROR-Zeilen der EDC Control Planes beider Firmen
-  cluster/                  pods.txt, helm.txt, images.txt, logs/k6-runner.txt
+  cluster/                  pods.json (ohne Adressen), helm.txt, images.txt, logs/k6-runner.txt
 Die Dauer je Transaktion wird in der Auswertung rekonstruiert: Logzeilen eines
 Pool-Threads („Terminated transfer process with id …“ bis „Updated …“) und die
 Erstellungszeit der Transfers in der EDC-Datenbank.
@@ -26,7 +27,7 @@ Management-API der EDCs (der Datenbank-Export enthält die Zeiten; kein Port-For
 vollständige PURIS-Logs aus Loki statt `kubectl logs` (Log-Rotation), Threads je Container,
 Prüfsummen schreibt `./lab run`.
 """
-import csv, gzip, json, os, re, subprocess, sys, time, urllib.parse
+import csv, gzip, json, math, os, re, subprocess, sys, time, urllib.parse
 from datetime import datetime, timezone, timedelta
 
 RUN, NAME, TESTID, T_APPLY, COMMIT, TAG, EXTRA = sys.argv[1:8]
@@ -44,14 +45,20 @@ CUST = '{namespace="customer", pod=~"puris-backend.*"}'
 SUPP = '{namespace="supplier", pod=~"puris-backend.*"}'
 
 def kubectl(*args):
-    return subprocess.run(["kubectl", *args], check=True, capture_output=True, text=True).stdout
+    return subprocess.run(["kubectl", "--request-timeout=30s", *args], check=True, capture_output=True, text=True, timeout=45).stdout
 def kraw(path): return kubectl("get", "--raw", path)
-def iso(dt): return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+def iso(dt): return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 def parse(s): return datetime.fromisoformat(s.replace("Z", "+00:00"))
 def log(msg): print(f"[{datetime.now(timezone.utc):%H:%M:%S}] {msg}", flush=True)
+def write(path, text):
+    with open(path, "w") as f: f.write(text)
+def write_json(path, obj):
+    with open(path, "w") as f: json.dump(obj, f, indent=1)
+def read_json(path):
+    with open(path) as f: return json.load(f)
 
-if os.path.exists(RUN):
-    sys.exit(f"Abbruch: {RUN} existiert bereits (Rohdaten nie überschreiben)")
+if not os.path.isfile(f"{RUN}/attempt.json") or any(os.path.exists(f"{RUN}/{p}") for p in ("meta.json", "prometheus", "loki", "edc", "cluster")):
+    sys.exit("Abbruch: eigener neuer Versuch fehlt oder Sammeldaten existieren bereits")
 for d in ("prometheus", "loki", "edc", "cluster/logs"):
     os.makedirs(f"{RUN}/{d}", exist_ok=True)
 
@@ -61,11 +68,49 @@ runner = next(p for p in pods if p["metadata"]["name"].startswith(f"{NAME}-1-"))
 rstat = runner["status"]["containerStatuses"][0]
 r_start = parse(rstat["state"]["terminated"]["startedAt"])
 r_end = parse(rstat["state"]["terminated"]["finishedAt"])
-w_start = parse(T_APPLY) - timedelta(minutes=2)
+w_start = parse(T_APPLY)
 rlog = kubectl("logs", "-n", "k6", runner["metadata"]["name"])
+write(f"{RUN}/cluster/logs/k6-runner.txt", rlog)
 summary = json.loads(next(l for l in rlog.splitlines() if "K6_SUMMARY_JSON " in l).split("K6_SUMMARY_JSON ", 1)[1])
-json.dump(summary, open(f"{RUN}/k6-summary.json", "w"), indent=1)
-open(f"{RUN}/cluster/logs/k6-runner.txt", "w").write(rlog)
+write_json(f"{RUN}/k6-summary.json", summary)
+# Stufengrenzen: Zeilen K6_STAGE aus stock-trigger.js, im Text-Log von k6
+#   time="…" level=info msg="K6_STAGE {\"stage\":\"s1\",\"start_ms\":…}" source=console
+# (unformatierte Zeilen „K6_STAGE {…}“ werden ebenfalls gelesen). Jede VU meldet den Start;
+# alle Meldungen einer Stufe müssen übereinstimmen.
+MARK = re.compile(r'msg="K6_STAGE ((?:[^"\\]|\\.)*)"|^K6_STAGE (\{.*\})$')
+def stage_markers(log):
+    starts = {}
+    for l in log.splitlines():
+        m = MARK.search(l.strip())
+        if not m: continue
+        row = json.loads(json.loads(f'"{m[1]}"') if m[1] is not None else m[2])
+        stage, start = row.get("stage"), row.get("start_ms")
+        if not isinstance(stage, str) or not isinstance(start, (int, float)) or not math.isfinite(start) or start <= 0:
+            raise ValueError("Ungültiger k6-Stufenmarker")
+        if starts.setdefault(stage, start) != start:
+            raise ValueError(f"Widersprüchliche Startzeiten für Stufe {stage}")
+    return starts
+
+k6_starts = stage_markers(rlog)
+if set(k6_starts) != set(LABELS):
+    raise ValueError(f"k6-Stufenmarker fehlen oder unbekannt (erwartet {LABELS}, gefunden {sorted(k6_starts)}); "
+                     "keine geschätzten Stufengrenzen zulässig")
+# Plausibilität: Stufe i beginnt i × Stufendauer nach der ersten (startTime im Skript), und die
+# erste beginnt, während der Runner läuft. Fehlt der Versatz (z. B. Teststart statt
+# Szenariostart), schlägt die Prüfung fehl, statt falsche Grenzen zu liefern.
+STAGE_MS = STAGE_MIN * 60000
+t0 = k6_starts[LABELS[0]]
+for i, label in enumerate(LABELS):
+    if abs(k6_starts[label] - t0 - i * STAGE_MS) > 2000:
+        raise ValueError(f"Start von {label} weicht um mehr als 2 s vom Plan ab")
+if not r_start.timestamp() * 1000 - 2000 <= t0 <= r_end.timestamp() * 1000:
+    raise ValueError("Erste Stufe beginnt außerhalb der Laufzeit des k6-Runners")
+k6_stages = {l: {"start_ms": k6_starts[l], "start_utc": iso(datetime.fromtimestamp(k6_starts[l] / 1000, timezone.utc)),
+                 "duration_ms_plan": STAGE_MS} for l in LABELS}
+write_json(f"{RUN}/k6-stages.json", k6_stages)
+first = datetime.fromtimestamp(t0 / 1000, timezone.utc)
+w_start = first  # Fenster ab Lastbeginn: Transaktionen des Funktionstests zählen nicht mit
+
 
 # --- Abarbeiten abwarten: abgeschlossen + gescheitert = ausgelöst ---
 def loki_count(filt):
@@ -131,7 +176,9 @@ def loki_all(name, sel):
         batch = sorted((int(ts), s["stream"].get("pod", ""), l) for s in res for ts, l in s["values"])
         new = [b for b in batch if b not in seen]
         seen.update(new); out += new
-        if len(batch) < 5000 or not new: break
+        if len(batch) < 5000: break
+        if not new or batch[-1][0] == start:
+            raise ValueError("Loki-Seitengrenze ohne Fortschritt; Vollständigkeit nicht nachweisbar")
         start = batch[-1][0]  # gleicher Zeitstempel kann an der Seitengrenze mehrfach vorkommen
     out.sort()
     with gzip.open(f"{RUN}/loki/{name}.tsv.gz", "wt", newline="") as f:
@@ -158,44 +205,46 @@ EDC_SQL = {
 for side in ("customer", "supplier"):
     for name, sql in EDC_SQL.items():
         out = subprocess.run(["kubectl", "exec", "-i", "-n", side, "edc-postgresql-0", "--", "sh", "-c",
-                              'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" --csv -f -'],
-                             input=sql, check=True, capture_output=True, text=True).stdout
-        open(f"{RUN}/edc/{side}-{name}.csv", "w").write(out)
+                              'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" --csv -f -'],
+                             input=sql, check=True, capture_output=True, text=True, timeout=180).stdout
+        write(f"{RUN}/edc/{side}-{name}.csv", out)
 
 # --- Cluster ---
 allpods = json.loads(kubectl("get", "pods", "-A", "-o", "json"))["items"]
-open(f"{RUN}/cluster/pods.txt", "w").write(kubectl("get", "pods", "-A", "-o", "wide"))
-open(f"{RUN}/cluster/helm.txt", "w").write(subprocess.run(["helm", "list", "-A"], capture_output=True, text=True).stdout)
+with open(f"{RUN}/cluster/pods.json", "w") as f:
+    subprocess.run([sys.executable, "lib/inventory.py"], check=True, stdout=f, timeout=60)
+write(f"{RUN}/cluster/helm.txt", subprocess.run(["helm", "list", "-A"], capture_output=True, text=True, check=True, timeout=45).stdout)
 images = sorted({(p["metadata"]["namespace"], c["name"], c["image"], c.get("imageID", ""))
                  for p in allpods for c in p["status"].get("containerStatuses", [])})
-open(f"{RUN}/cluster/images.txt", "w").write("".join("\t".join(i) + "\n" for i in images))
-subprocess.run(["cp", os.path.join(EXTRA, "testrun.json"), f"{RUN}/testrun.json"], check=True)
+write(f"{RUN}/cluster/images.txt", "".join("\t".join(i) + "\n" for i in images))
+# TestRun und Reset wurden vor Lastbeginn im Versuch gesichert.
 
-# --- Stufen und Zählungen (Stufengrenzen: erste Auslösung + i × Stufendauer) ---
-first = datetime.fromtimestamp(trig[0][0] / 1e9, timezone.utc) if trig else r_start
-D = timedelta(minutes=STAGE_MIN)
+# --- Stufen und Zählungen (Stufengrenzen aus k6, keine Schätzung aus PURIS-Logs) ---
 stages = []
-for i, (label, rate) in enumerate(zip(LABELS, RATES)):
-    s0, s1 = first + i * D, first + (i + 1) * D
+for label, rate in zip(LABELS, RATES):
+    s0 = datetime.fromtimestamp(k6_starts[label] / 1000, timezone.utc)
+    s1 = s0 + timedelta(milliseconds=STAGE_MS)
     n = lambda rows: sum(1 for ts, _, _ in rows if s0.timestamp() * 1e9 <= ts < s1.timestamp() * 1e9)
     stages.append({"stage": label, "rate_per_s": rate, "start_utc": iso(s0), "end_utc": iso(s1),
-                   "planned": round(rate * STAGE_MIN * 60), "triggered_log": n(trig), "completed_log": n(done),
+                   "boundary_source": "k6.scenario.startTime", "planned": round(rate * STAGE_MIN * 60),
+                   "triggered_log": n(trig), "completed_log": n(done),
                    "failed_log": n(errs), "optimistic_lock": n(locks), "error_warn_lines": n(warn),
                    "invalidating_contract": n(inval)})
 
 # --- Gültigkeit (KONZEPT.md, Abschnitt 6; Grenzwert Steal Time aus dem Plan) ---
 m = summary["metrics"]
+# k6 lässt dropped_iterations in der Zusammenfassung weg, solange nichts verworfen wurde
+# (Vorstudie 1: Metrik fehlt in k6-summary.json) → fehlend = 0
 dropped = m.get("dropped_iterations", {}).get("values", {}).get("count", 0)
 runner_cpu = max((float(v) for r in cpu if r["metric"].get("pod", "").startswith(f"{NAME}-1-")
-                  for _, v in r["values"]), default=0.0)
-steal_vals = [float(v) for r in steal for _, v in r["values"] if v != "NaN"]
-steal_max = max(steal_vals, default=0.0)
-steal_mean = sum(steal_vals) / len(steal_vals) if steal_vals else 0.0
+                  for _, v in r["values"]), default=None)
+steal_vals = [float(v) for r in steal for _, v in r["values"] if math.isfinite(float(v))]
+steal_max = max(steal_vals, default=None)
+steal_mean = sum(steal_vals) / len(steal_vals) if steal_vals else None
 # Neustarts: im Messsystem (Prometheus, Loki, Alloy, k3s) immer ungültig; im System unter
 # Test nur während der Aufwärmstufen (Aufbau gestört) – danach sind sie ein Ergebnis der
 # Überlast (z. B. OOMKilled) und werden als solches festgehalten (KONZEPT.md, Abschnitt 6).
-warm_end = max((first + (i + 1) * timedelta(minutes=STAGE_MIN) for i, l in enumerate(LABELS)
-                if l.startswith("warmup")), default=first)
+warm_end = max((parse(s["end_utc"]) for s in stages if s["stage"].startswith("warmup")), default=first)
 restarts, sut_restarts = {}, {}
 for r in rst:
     ns = r["metric"].get("namespace")
@@ -209,23 +258,26 @@ for r in rst:
         sut_restarts[key] = entry
     else:
         restarts[key] = entry
-disc_delta = (float(disc[0]["values"][-1][1]) - float(disc[0]["values"][0][1])) if disc else 0.0
-reset = json.load(open(os.path.join(EXTRA, "reset.json")))
+# Loki legt den Zähler erst bei der ersten Verwerfung an: keine Zeitreihe = nichts verworfen
+disc_delta = (float(disc[0]["values"][-1][1]) - float(disc[0]["values"][0][1])) if disc and disc[0].get("values") else 0.0
+reset = read_json(os.path.join(EXTRA, "reset.json"))
 validity = {
     "dropped_iterations": dropped, "dropped_ok": dropped == 0,
-    "k6_runner_cpu_max_cores": round(runner_cpu, 3), "k6_cpu_ok": runner_cpu < 0.45,
+    "k6_runner_cpu_max_cores": round(runner_cpu, 3) if runner_cpu is not None else None, "k6_cpu_ok": runner_cpu is not None and math.isfinite(runner_cpu) and runner_cpu < 0.45,
     "restarts_invalidating": restarts, "restarts_ok": not restarts,
     "sut_restarts_after_warmup": sut_restarts,
     "loki_discarded_delta": disc_delta, "loki_ok": disc_delta == 0,
-    "steal_max_ratio": round(steal_max, 4), "steal_limit": STEAL_MAX, "steal_mean_ratio": round(steal_mean, 4),
-    "steal_mean_limit": STEAL_MEAN_MAX, "steal_ok": steal_max < STEAL_MAX and steal_mean < STEAL_MEAN_MAX,
-    "reset_ok": bool(reset.get("counts_equal_after_restore")) and reset.get("function_test", {}).get("passed", True),
+    "steal_max_ratio": round(steal_max, 4) if steal_max is not None else None, "steal_limit": STEAL_MAX, "steal_mean_ratio": round(steal_mean, 4) if steal_mean is not None else None,
+    "steal_mean_limit": STEAL_MEAN_MAX, "steal_ok": steal_max is not None and steal_mean is not None and steal_max < STEAL_MAX and steal_mean < STEAL_MEAN_MAX,
+    "reset_ok": bool(reset.get("counts_equal_after_restore")) and reset.get("function_test", {}).get("passed") is True,
 }
-validity["valid"] = all(v for k, v in validity.items() if k.endswith("_ok"))
+validity["valid"] = all(v is True for k, v in validity.items() if k.endswith("_ok"))
 
 node = json.loads(kubectl("get", "nodes", "-o", "json"))["items"][0]
-cpu_model = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")), None) \
-    if os.path.exists("/proc/cpuinfo") else None
+cpu_model = None
+if os.path.exists("/proc/cpuinfo"):
+    with open("/proc/cpuinfo") as f:
+        cpu_model = next((l.split(":", 1)[1].strip() for l in f if l.startswith("model name")), None)
 meta = {
     "run": os.path.basename(RUN), "kind": E.get("PLAN_KIND", E.get("PLAN")), "plan": E.get("PLAN"),
     "repetition": int(E.get("REP", "0")), "git_commit": COMMIT, "tag": TAG or None,
@@ -234,7 +286,7 @@ meta = {
                     "materials_n": int(E.get("MATERIALS_N") or 0) or None, "drain_max_min": DRAIN_MAX,
                     "steal_max": STEAL_MAX, "steal_mean_max": STEAL_MEAN_MAX},
     "times_utc": {"apply": T_APPLY, "runner_start": iso(r_start), "runner_end": iso(r_end),
-                  "first_trigger": iso(first), "drain_end": iso(drain_end), "collection_window": [iso(w_start), iso(w_end)]},
+                  "load_start": iso(first), "stage_boundary_source": "k6.scenario.startTime", "drain_end": iso(drain_end), "collection_window": [iso(w_start), iso(w_end)]},
     "drain": {"reason": drain_reason, "open_at_end": trig_n - fin_n},
     "reset": reset,
     "stages": stages,
@@ -244,9 +296,9 @@ meta = {
                "k6_dropped_iterations": dropped,
                "k6_http_req_failed_rate": m.get("http_req_failed", {}).get("values", {}).get("rate")},
     "validity": validity,
-    "node": {"name": node["metadata"]["name"], "cpu_model": cpu_model, "capacity": node["status"]["capacity"],
+    "node": {"cpu_model": cpu_model, "capacity": node["status"]["capacity"],
              "allocatable": node["status"]["allocatable"], "kernel": node["status"]["nodeInfo"]["kernelVersion"],
              "kubelet": node["status"]["nodeInfo"]["kubeletVersion"]},
 }
-json.dump(meta, open(f"{RUN}/meta.json", "w"), indent=1)
+write_json(f"{RUN}/meta.json", meta)
 print(json.dumps({"stages": stages, "totals": meta["totals"], "validity": validity}, indent=1))

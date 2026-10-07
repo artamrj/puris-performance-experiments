@@ -324,8 +324,50 @@ Die Bestandsabfrage von PURIS ist **asynchron** (Abschnitt 13): Der Endpunkt ant
 - **Steal Time** je Lauf: Die NAS-VM teilt sich die Threads mit dem NAS. node-exporter misst, wie viel CPU-Zeit der Host der VM entzieht (`node_cpu_seconds_total{mode="steal"}`). Überschreitet sie den in der Vorstudie festgelegten Grenzwert, ist der Lauf ungültig und wird wiederholt. *Grenzwert (2026-10-07, aus Probelauf und Vorstudie 1: höchstens 1,1 % bzw. 2,3 %, Letzteres nur im gekippten Zustand): höchstes 1-min-Mittel < 5 % **und** Mittel über das Messfenster < 2 %.*
 - **Neustarts** (2026-10-07): Neustarts im Messsystem (Prometheus, Loki, Alloy, k3s) machen den Lauf immer ungültig; im System unter Test nur, wenn sie in den Aufwärmstufen auftreten (Aufbau gestört). Neustarts des Systems unter Test danach – etwa `OOMKilled` in Überlaststufen – sind ein **Ergebnis** und werden in `meta.json` (`sut_restarts_after_warmup`) festgehalten. Anlass: In Vorstudie 1 stieg der Speicher der EDC Control Plane des Customers bei Überlast auf 979 von 1024 Mi.
 - **Sättigungskriterium** (Vorschlag 2026-10-07, operational für die Auswertung): Eine Stufe gilt als gesättigt, wenn die abgeschlossenen Transaktionen je Sekunde unter 95 % der Eingangslast liegen **oder** mehr als 1 % der Auslösungen scheitern **oder** mindestens ein „Invalidating … contract data“ auftritt. Der Kipppunkt einer Konfiguration ist die erste gesättigte Stufe; berichtet werden Mittelwert und Streuung über die Wiederholungen.
-- **Sicherheitsnetz und Funktionstest** (2026-10-07, `lib/stack.sh`): Vor der Last laufen nach jedem Reset drei echte Transaktionen nacheinander; nur wenn alle abgeschlossen werden, beginnt die Messung (sonst gilt der Reset als nicht bestanden). Hängt beim Start eine Komponente, wird sie im Reset genau einmal neu gestartet; jede solche Reparatur steht in `meta.json`. Reparaturen während der Messung gibt es nicht. Nach jedem Fehler oder Abbruch stoppt `lab` die Last und startet PURIS und EDC geordnet wieder (sicheres Ende). Messreihen laufen mit `./lab series`; ein gescheiterter oder ungültiger Lauf wird einmal durch eine weitere Wiederholung ersetzt (alle Läufe bleiben erhalten und werden berichtet).
+- **Sicherheitsnetz und Funktionstest** (2026-10-07, `lib/stack.sh`): Vor der Last laufen nach jedem Reset drei echte Transaktionen nacheinander; nur wenn alle abgeschlossen werden, beginnt die Messung (sonst gilt der Reset als nicht bestanden). Hängt beim Start eine Komponente, wird sie im Reset genau einmal neu gestartet; jede solche Reparatur steht in `meta.json`. Reparaturen während der Messung gibt es nicht. Nach einem Fehler oder Abbruch stoppt `lab` die eigene Last; PURIS und EDC starten nur nach bestandener Zeilenprüfung des Restores geordnet wieder, sonst bleiben sie angehalten (siehe „Robustheit von `lab`“). Messreihen laufen mit `./lab series`; ein gescheiterter oder ungültiger Lauf wird einmal durch eine weitere Wiederholung ersetzt (alle Läufe bleiben erhalten und werden berichtet).
 - **Aufwärmphase nach dem Reset** (2026-10-07): Der Reset startet PURIS und EDC neu; Last direkt nach dem Kaltstart löste im Kurztest Zeitüberschreitungen und Neuverhandlungen aus. Jeder Messlauf beginnt daher mit Aufwärmstufen geringer Last (Kennzeichnung `warmup…`, nicht ausgewertet); Dauer und Raten legt die Vorstudie fest.
+
+### Robustheit von `lab` (2026-10-07)
+
+Ergänzt das Sicherheitsnetz; ändert weder Messplan, Lastgenerator, Auswertung noch
+Versionen oder Ressourcen. Lokal mit simuliertem `kubectl` geprüft; der Nachweis auf der VM
+steht aus (nächster Probelauf).
+
+- **Fehler sind Fehler:** Fehlende oder nicht lesbare Ausgaben von `kubectl` und `psql`
+  gelten nie als „leer“ oder „gesund“ (Zeitlimits für `kubectl`, `ON_ERROR_STOP` für `psql`;
+  Fehler einzelner Schritte brechen den Ablauf ab). Ist der Laststatus unbekannt, startet
+  weder Reset noch Last.
+- **Zustandsabhängiges Ende:** Bei einem Fehler wird nur der eigene TestRun beendet
+  (Kennzeichnung `lab-run-id`). Ab Beginn der Datenbankwiederherstellung bis zur bestandenen
+  Zeilenprüfung bleiben PURIS und EDC bei einem Fehler angehalten (Marke
+  `reset-incomplete`; `./lab check` und `./lab snapshot` sind dann gesperrt); erst nach
+  geprüftem Restore folgt ein geordneter Wiederanlauf.
+- **Nachweis je Versuch:** `./lab run` legt nach den Vorprüfungen einen Laufordner
+  `runs/<JJJJ-MM-TT_hhmm>_<plan>_rep-<n>/` mit `attempt.json`, `events.jsonl`, `testrun.json`
+  und `reset.json` an (Plan höchstens 30 Zeichen, Wiederholung 1–999, damit die Lauf-ID als
+  Kubernetes-Label passt). Diagnosen enthalten nur Zustandsfelder (keine Secrets,
+  Umgebungsvariablen oder Pod-Spezifikationen); `cluster/pods.json` ohne Adressen.
+- **Gescheiterte Versuche** werden wie gültige Läufe committet und berichtet (Abschnitt 6:
+  alle Läufe bleiben erhalten). Erkennbar sind sie an `attempt.json` (`status: failed`,
+  Phase, Grund, Wiederherstellung) und am Fehlen von `meta.json`; sie gehen nicht in die
+  Auswertung ein.
+- **Stufengrenzen aus k6:** Jede VU meldet bei ihrer ersten Iteration einer Stufe den
+  tatsächlichen Szenariostart (`exec.scenario.startTime`, Zeile `K6_STAGE` im Standard-Log
+  von k6; abgelegt in `k6-stages.json`); bisher wurden die Grenzen aus der ersten Auslösung
+  geschätzt. Das Ende einer Stufe ist Start + Stufendauer laut Plan. Der Lauf wird nicht
+  ausgewertet, wenn ein Marker fehlt, die Meldungen einer Stufe sich widersprechen, eine
+  Stufe mehr als 2 s vom geplanten Abstand (Stufe i: i × Stufendauer nach der ersten)
+  abweicht oder die erste Stufe außerhalb der Laufzeit des k6-Runners beginnt. Das
+  Sammelfenster beginnt mit dem Lastbeginn; Transaktionen des Funktionstests zählen nicht mit.
+- **Gültigkeit:** Fehlen Steal Time oder CPU des k6-Runners, ist der Lauf ungültig
+  (bisher als 0 gewertet).
+- **Snapshots:** Neue Stände enthalten zusätzlich Inhalts-Fingerabdrücke je Tabelle
+  (`*.inhalte.txt`, nur Hashwerte, in `SHA256SUMS` enthalten). Sie belegen, dass sich die
+  Daten während der Sicherung nicht geändert haben (gleich vor und nach `pg_dump`, bis zu
+  3 Versuche je Datenbank im Abstand von 30 s); beim Reset werden sie nicht verglichen,
+  verbindlich bleibt der Zeilenvergleich. Ein Stand entsteht in einem Zwischenordner und
+  erhält seinen Namen erst, wenn er vollständig und geprüft ist; ein Abbruch hinterlässt
+  nichts.
 
 ### Inhalt eines Laufordners
 

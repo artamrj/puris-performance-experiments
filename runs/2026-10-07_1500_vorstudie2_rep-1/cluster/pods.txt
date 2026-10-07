@@ -1,0 +1,34 @@
+NAMESPACE     NAME                                                   READY   STATUS      RESTARTS      AGE    IP              NODE            NOMINATED NODE   READINESS GATES
+customer      dtr-7979c5ccb7-rg7w2                                   1/1     Running     0             24h    10.42.0.48      puris-loadlab   <none>           <none>
+customer      dtr-postgresql-0                                       1/1     Running     0             24h    10.42.0.49      puris-loadlab   <none>           <none>
+customer      edc-controlplane-587996b7b5-5mp7v                      1/1     Running     0             38m    10.42.0.110     puris-loadlab   <none>           <none>
+customer      edc-dataplane-7bd7b6bd97-rplwg                         1/1     Running     0             37m    10.42.0.112     puris-loadlab   <none>           <none>
+customer      edc-postgresql-0                                       1/1     Running     0             25h    10.42.0.33      puris-loadlab   <none>           <none>
+customer      edc-vault-0                                            1/1     Running     0             25h    10.42.0.34      puris-loadlab   <none>           <none>
+customer      puris-backend-6f46958fb-4rjrm                          1/1     Running     0             36m    10.42.0.114     puris-loadlab   <none>           <none>
+customer      puris-postgresql-0                                     1/1     Running     0             17h    10.42.0.56      puris-loadlab   <none>           <none>
+identity      ssi-dim-wallet-stub-b4d7c6fb8-xnmjq                    1/1     Running     1 (29h ago)   29h    10.42.0.27      puris-loadlab   <none>           <none>
+identity      wallet-postgres-0                                      1/1     Running     0             29h    10.42.0.28      puris-loadlab   <none>           <none>
+k6-operator   k6-operator-controller-manager-7c45b488b8-tvch5        1/1     Running     0             14h    10.42.0.58      puris-loadlab   <none>           <none>
+k6            vorstudie2-r1-1500-1-p4287                             0/1     Error       0             32m    10.42.0.117     puris-loadlab   <none>           <none>
+k6            vorstudie2-r1-1500-initializer-7m24f                   0/1     Completed   0             32m    10.42.0.116     puris-loadlab   <none>           <none>
+k6            vorstudie2-r1-1500-starter-7zdv4                       0/1     Completed   0             32m    10.42.0.118     puris-loadlab   <none>           <none>
+kube-system   coredns-577d995dff-bxxlq                               1/1     Running     0             2d3h   10.42.0.3       puris-loadlab   <none>           <none>
+kube-system   helm-install-gateway-api-crd-dhqhl                     0/1     Completed   0             2d3h   <none>          puris-loadlab   <none>           <none>
+kube-system   local-path-provisioner-6858d854cf-q6njl                1/1     Running     0             2d3h   10.42.0.2       puris-loadlab   <none>           <none>
+kube-system   metrics-server-778c4649b4-cmvc2                        1/1     Running     0             2d3h   10.42.0.4       puris-loadlab   <none>           <none>
+logging       alloy-kcv4x                                            2/2     Running     0             29h    10.42.0.26      puris-loadlab   <none>           <none>
+logging       loki-0                                                 1/1     Running     0             29h    10.42.0.25      puris-loadlab   <none>           <none>
+monitoring    monitoring-grafana-647dfc6967-jlf5d                    3/3     Running     0             29h    10.42.0.21      puris-loadlab   <none>           <none>
+monitoring    monitoring-kube-prometheus-operator-6dd9b7895b-nkvg5   1/1     Running     0             39h    10.42.0.8       puris-loadlab   <none>           <none>
+monitoring    monitoring-kube-state-metrics-86b584b658-s8cm5         1/1     Running     0             29h    10.42.0.22      puris-loadlab   <none>           <none>
+monitoring    monitoring-prometheus-node-exporter-jdg2j              1/1     Running     0             29h    192.168.1.145   puris-loadlab   <none>           <none>
+monitoring    prometheus-monitoring-kube-prometheus-prometheus-0     2/2     Running     0             29h    10.42.0.23      puris-loadlab   <none>           <none>
+supplier      dtr-d4f6c5bc5-nzx89                                    1/1     Running     0             24h    10.42.0.50      puris-loadlab   <none>           <none>
+supplier      dtr-postgresql-0                                       1/1     Running     0             24h    10.42.0.51      puris-loadlab   <none>           <none>
+supplier      edc-controlplane-dcc6896cd-w7cwr                       1/1     Running     0             38m    10.42.0.111     puris-loadlab   <none>           <none>
+supplier      edc-dataplane-85b5556596-hlrlv                         1/1     Running     0             37m    10.42.0.113     puris-loadlab   <none>           <none>
+supplier      edc-postgresql-0                                       1/1     Running     0             25h    10.42.0.39      puris-loadlab   <none>           <none>
+supplier      edc-vault-0                                            1/1     Running     0             25h    10.42.0.37      puris-loadlab   <none>           <none>
+supplier      puris-backend-848f5f45fc-kdctn                         1/1     Running     0             36m    10.42.0.115     puris-loadlab   <none>           <none>
+supplier      puris-postgresql-0                                     1/1     Running     0             17h    10.42.0.57      puris-loadlab   <none>           <none>

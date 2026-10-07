@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
 # shellcheck shell=bash
 # Gemeinsame Hilfsfunktionen: PostgreSQL-Datenbanken des Aufbaus (Stand sichern,
 # Reset). Wird von `lab` eingebunden. Zugangsdaten werden im jeweiligen Pod aus
@@ -40,8 +42,31 @@ db_cmd() {
   read -r ns pod _n uv pv dv <<<"$(echo "$DB_LIST" | awk -v n="$name" '$3 == n')"
   [ -n "$pod" ] || { echo "Unbekannte Datenbank: $name" >&2; return 1; }
   if [ "$dv" = postgres ]; then db=postgres; else db="\$$dv"; fi
-  kubectl exec -i -n "$ns" "$pod" -- sh -c \
+  kubectl --request-timeout=180s exec -i -n "$ns" "$pod" -- sh -c \
     "PGPASSWORD=\"\$$pv\" exec $prog -h 127.0.0.1 -U \"\$$uv\" -d \"$db\" $args"
 }
 
-db_counts() { db_cmd "$1" psql "-At -F ' ' -f -" <<<"$ZEILEN_SQL"; }
+db_counts() { db_cmd "$1" psql "-v ON_ERROR_STOP=1 -At -F ' ' -f -" <<<"$ZEILEN_SQL"; }
+
+# Inhaltsvergleich ohne Klartextdaten; Hashes bleiben mit den Dumps außerhalb von Git.
+# pg_restore erhält Werte; Registrierung wird nur beim Vergleich nach Start ausgelassen.
+db_fingerprints() {
+  db_cmd "$1" psql "-v ON_ERROR_STOP=1 -qAt -f -" <<'SQL'
+SET statement_timeout = '120s';
+CREATE TEMP TABLE snapshot_hashes (name text, digest text);
+DO $$
+DECLARE r record; h text;
+BEGIN
+  FOR r IN SELECT table_schema, table_name FROM information_schema.tables
+    WHERE table_schema NOT IN ('pg_catalog','information_schema')
+      AND table_schema NOT LIKE 'pg_temp_%' AND table_type='BASE TABLE'
+    ORDER BY table_schema, table_name
+  LOOP
+    EXECUTE format('SELECT md5(coalesce(string_agg(v, %L ORDER BY v), %L)) FROM
+      (SELECT md5(to_jsonb(t)::text) AS v FROM %I.%I t) hashes', '', '', r.table_schema, r.table_name) INTO h;
+    INSERT INTO snapshot_hashes VALUES (r.table_schema||'.'||r.table_name, h);
+  END LOOP;
+END $$;
+SELECT name||' '||digest FROM snapshot_hashes ORDER BY name;
+SQL
+}

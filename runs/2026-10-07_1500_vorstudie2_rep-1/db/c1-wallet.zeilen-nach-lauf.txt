@@ -1,0 +1,8 @@
+public.custom_credential 7
+public.databasechangelog 3
+public.databasechangeloglock 1
+public.did_document 3
+public.holder_credential 9
+public.holder_credential_as_jwt 6
+public.jwt_credential 6
+public.key_pair 3
