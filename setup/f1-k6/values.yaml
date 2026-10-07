@@ -1,0 +1,34 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    f1-k6
+# Chart:       k6-operator 4.6.0 (https://grafana.github.io/helm-charts)
+# Komponenten: k6-Operator 1.6.0 (Deployment, ein Container „manager“)
+# Zweck:       Startet k6-Lasttests im Cluster als Kubernetes-Ressource
+#              `TestRun` (siehe testrun-pilot.yaml). Die Tests laufen im
+#              Namespace `k6` (namespace.yaml), getrennt vom System unter Test.
+# Regeln:      KONZEPT.md, Abschnitt 3. Nur bewusste Abweichungen vom Chart-
+#              Standard. Jeder Container: requests = limits (QoS Guaranteed).
+#              CPU/RAM sind Startwerte (NAS-Profil, VPS-VARIANTE.md,
+#              Abschnitt 2); nach dem Probelauf abgleichen.
+#
+# Installation [Mac] (im Terminal vorher `puris`):
+#   helm upgrade --install k6-operator grafana/k6-operator --version 4.6.0 \
+#     -n k6-operator --create-namespace \
+#     -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/f1-k6/values.yaml"
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Namespace legt Helm mit --create-namespace an (wie bei allen Bausteinen);
+# der Chart soll ihn nicht zusätzlich als eigene Ressource anlegen
+# (Standard: true – führt sonst zum Konflikt mit --create-namespace).
+namespace:
+  create: false
+
+
+# ═══ Operator (manager) ═══════════════════════════════════════════════════════
+manager:
+  # Der Operator arbeitet nur beim Anlegen und Beenden eines Tests (Pods
+  # erstellen, Status abfragen); während der Messung ist er fast untätig.
+  # NAS-Profil: 50m / 100Mi (Standard: requests 100m/50Mi, limits 100m/100Mi –
+  # nicht Guaranteed).
+  resources:
+    requests: { cpu: 50m, memory: 100Mi }
+    limits:   { cpu: 50m, memory: 100Mi }

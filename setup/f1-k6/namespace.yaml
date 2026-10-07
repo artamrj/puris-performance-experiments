@@ -1,0 +1,9 @@
+# Baustein f1-k6: Namespace für die k6-Lasttests (TestRun, Runner-Pods).
+# Getrennt vom System unter Test, damit Abfragen je Namespace (Prometheus,
+# Loki) k6 nicht mitzählen.
+#
+# Anwenden [Mac]: kubectl apply -f setup/f1-k6/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k6

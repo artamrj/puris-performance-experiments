@@ -609,3 +609,35 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 - S0 ist klein (492K); die Ablage ist kein Engpass.
 
 **Nächstes:** Entscheidung zur DTR-CPU, danach Phase f (k6-Operator, Probelauf); Wiederherstellung von S0 beim Reset (Abschnitt 8) erproben.
+
+## 2026-10-07 – Entscheidung DTR-CPU vor dem Probelauf
+
+**Entscheidung** (vom Verfasser getroffen): Die DTR-Werte des NAS-Profils bleiben vorerst unverändert (Customer 100m, Supplier 200m). Der Probelauf zeigt, ob der DTR des Suppliers zuerst sättigt; danach werden die Startwerte des NAS-Profils bestätigt oder angepasst (`CHECKLISTE.md`, Abschnitt 9).
+Begründung: Der Probelauf ist genau für diese Prüfung vorgesehen; eine Änderung ohne Messdaten wäre geraten. Freie CPU nach k6 (geplant) nur ca. 275m.
+
+**Nächstes:** Vorschlag für Phase f (`f1-k6`).
+
+## 2026-10-07 – `f1-k6` vorbereitet
+
+**Gemacht:**
+- Chart `grafana/k6-operator` 4.6.0 (Operator 1.6.0) untersucht: ein Container (`manager`, Standard requests 100m/50Mi, limits 100m/100Mi – nicht `Guaranteed`); `namespace.create: true` als Standard; CRD `TestRun` mit eigenen Pod-Einstellungen für Initializer, Runner und Starter. Lokal mit `helm template` (Kubernetes 1.37.1) geprüft: 14 Objekte, Operator 50m/100Mi requests = limits.
+- `setup/f1-k6/values.yaml`, `setup/f1-k6/namespace.yaml`, `setup/f1-k6/testrun-pilot.yaml` und `experiments/k6/stock-trigger.js` erstellt (Syntax des Skripts geprüft).
+
+**Beobachtungen (Quellen: Release-Notes k6-Operator, Quellcode `v1.6.0`, Docker Hub, ghcr.io; Stand 2026-10-07):**
+- k6-Operator 1.6.0 ist gegen k6 2.2.0 gebaut (Release-Notes: „go.k6.io/k6/v2 bumped to v2.2.0“). Neueste k6-Version ist 2.3.0 (21.09.2026).
+- k6 2.0 entfernt u. a. den Executor `externally-controlled` und `k6 pause/resume/scale/status`; der HTTP-Server startet nur noch mit `--address` (setzt der Operator). Die Ausgabe heißt weiterhin `experimental-prometheus-rw`; Standard für Trend-Werte nur `p(99)`.
+- Standard-Images des Operators ohne feste Version: Initializer `grafana/k6:latest`, Starter `ghcr.io/grafana/k6-operator:latest-starter` (`pkg/resources/jobs/initializer.go`, `starter.go`). Der Starter hat ohne Angabe requests 50m/2M und limits 100m/200M.
+- Der Initializer bekommt nur `spec.initializer.env`, nicht die Variablen des Runners; Szenarien, die aus Umgebungsvariablen berechnet werden, brauchen sie deshalb dort auch.
+- `constant-arrival-rate` erwartet eine ganze Zahl je `timeUnit`; Raten unter 1/s werden daher je Minute angegeben (0,1/s = 6/min).
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Tests im eigenen Namespace `k6`, getrennt vom System unter Test; der API-Key wird je Aufbau aus dem Chart-Secret in `customer` in ein Secret `puris-api-key` in `k6` kopiert (Wert nie in einer Datei).
+  Begründung: Abfragen je Namespace in Prometheus und Loki zählen k6 sonst mit.
+- Runner und Initializer mit `grafana/k6:2.2.0` (per Digest), Starter mit `starter-v1.6.0` (per Digest) statt `latest`.
+  Begründung: 2.2.0 ist die Version, gegen die der Operator gebaut ist; feste Versionen sind Pflicht (`KONZEPT.md`, Abschnitt 3).
+- Probelauf: 4 Stufen 0,1 / 0,2 / 0,5 / 1 Auslösungen je Sekunde, je 3 min (ca. 12 min).
+  Begründung: Im Leerlauf dauert eine Transaktion ca. 4,4 s; bei 1/s laufen ca. 4–5 gleichzeitig – genug, um die Messkette zu prüfen, ohne den Aufbau gleich zu überlasten.
+- Feste CPU/RAM: Operator 50m/100Mi, Runner 500m/512Mi (NAS-Profil), Initializer 200m/256Mi, Starter 50m/64Mi (beide kurzlebig, Startwerte).
+- Runner-Pods bleiben nach dem Lauf erhalten (`cleanup` leer); die k6-Zusammenfassung steht als Zeile `K6_SUMMARY_JSON …` im Log.
+
+**Nächstes:** Dateien committen, dann Operator installieren, Namespace, Secret und ConfigMap anlegen, Probelauf starten.

@@ -1,0 +1,80 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    f1-k6 – Probelauf (pilot)
+# Ressource:   TestRun (k6.io/v1alpha1, CRD aus k6-operator 4.6.0)
+# Komponenten: Initializer (k6 archive/inspect), ein Runner (k6 run), Starter
+#              (startet den Runner) – je ein Pod mit festen CPU/RAM-Werten.
+# Zweck:       Erster Probelauf mit wenigen niedrigen Laststufen: prüft die
+#              ganze Messkette (k6 → PURIS → Logs in Loki → Prometheus).
+# Skript:      experiments/k6/stock-trigger.js (als ConfigMap `k6-stock-trigger`)
+# Geheimnis:   API-Key nur als Verweis auf das Secret `puris-api-key` im
+#              Namespace k6 (Kopie des Chart-Secrets aus `customer`, siehe
+#              AUFBAU.md, f1). Kein Wert in dieser Datei.
+#
+# Anwenden [Mac] (vorher: Operator, namespace.yaml, Secret, ConfigMap):
+#   kubectl apply -f setup/f1-k6/testrun-pilot.yaml
+# Ein zweiter Lauf mit demselben Namen braucht vorher:
+#   kubectl delete testrun pilot -n k6
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: pilot
+  namespace: k6
+spec:
+  # Ein Runner (KONZEPT.md, Abschnitt 13): keine Aufteilung der Last.
+  parallelism: 1
+  script:
+    configMap:
+      name: k6-stock-trigger
+      file: stock-trigger.js
+  # Metriken per Remote Write an Prometheus (b1, Empfänger eingeschaltet);
+  # testid kennzeichnet den Lauf in allen k6-Metriken.
+  arguments: --out experimental-prometheus-rw --tag testid=pilot
+  # Pods nach dem Lauf behalten (Log mit K6_SUMMARY_JSON); Aufräumen von Hand.
+  cleanup: ""
+
+  # ─── Initializer: prüft das Skript (k6 archive, k6 inspect) ────────────────
+  # Bekommt nur nicht geheime Variablen; die Szenarien hängen von RATES und
+  # STAGE_DURATION ab und müssen schon hier berechnet werden.
+  initializer:
+    # k6 2.2.0: die Version, gegen die k6-Operator 1.6.0 gebaut ist.
+    image: grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6
+    # Kurzlebig (wenige Sekunden vor dem Lauf). Standard: keine Werte.
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits:   { cpu: 200m, memory: 256Mi }
+    env:
+      - { name: BASE_URL,        value: "http://puris-backend.customer:8081" }
+      - { name: MATERIAL_NUMBER, value: "MNR-7307-AU340474.002" }
+      # Probelauf: 4 Stufen × 3 min (Entscheidung 2026-10-07).
+      - { name: RATES,           value: "0.1,0.2,0.5,1" }
+      - { name: STAGE_DURATION,  value: "3" }
+
+  # ─── Runner: erzeugt die Last ──────────────────────────────────────────────
+  runner:
+    image: grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6
+    # NAS-Profil: 500m / 512Mi (VPS-VARIANTE.md, Abschnitt 2). Gültigkeit je
+    # Lauf: k6 bleibt unter diesem CPU-Limit und dropped_iterations = 0.
+    resources:
+      requests: { cpu: 500m, memory: 512Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+    env:
+      - { name: BASE_URL,        value: "http://puris-backend.customer:8081" }
+      - { name: MATERIAL_NUMBER, value: "MNR-7307-AU340474.002" }
+      - { name: RATES,           value: "0.1,0.2,0.5,1" }
+      - { name: STAGE_DURATION,  value: "3" }
+      - name: PURIS_API_KEY
+        valueFrom:
+          secretKeyRef: { name: puris-api-key, key: key }
+      - { name: K6_PROMETHEUS_RW_SERVER_URL,  value: "http://monitoring-kube-prometheus-prometheus.monitoring:9090/api/v1/write" }
+      # Standard: nur p(99).
+      - { name: K6_PROMETHEUS_RW_TREND_STATS, value: "p(50),p(95),p(99),max" }
+
+  # ─── Starter: startet den Runner über dessen REST-API ──────────────────────
+  starter:
+    # Fest statt Standard `latest-starter` (gleicher Digest am 2026-10-07).
+    image: ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6
+    # Kurzlebig (ein HTTP-Aufruf). Standard: requests 50m/2M, limits 100m/200M.
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 50m, memory: 64Mi }

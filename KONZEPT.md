@@ -107,7 +107,7 @@ Was für den Versuch gebraucht wird – und nur das. Herleitung und Quellen in A
 | PURIS-Backend + PostgreSQL – je Firma | `puris` 7.2.0 | PURIS 6.2.0 | `d1`, `d2` | Anwendung unter Test |
 | Testdaten | – (REST-API von PURIS) | – | `e1` | Partner, Material, Material-Partner-Beziehung, Bestand |
 | Monitoring und Logs | `kube-prometheus-stack` 91.9.0, `loki` 7.3.0, `alloy` 1.13.0 | – | `b1`–`b3` | Messung (vorhanden) |
-| Lastgenerator | `k6-operator` 4.6.0 | k6-Operator 1.6.0 | `f1` | erzeugt die Last |
+| Lastgenerator | `k6-operator` 4.6.0 | k6-Operator 1.6.0, k6 2.2.0 (Runner-Image) | `f1` | erzeugt die Last; Tests im Namespace `k6` |
 
 - **Versionen passen zusammen:** PURIS wurde laut Changelog mit Version 6.0.0 auf EDC 0.12.0 und DTR 0.11.0 umgestellt; bis 6.2.0 folgt keine weitere Änderung dieser Versionen (`CHANGELOG.md`, Tag `6.2.0`) – genau die Versionen der Bundles. Ein neuerer EDC (0.13.0) wird deshalb **nicht** verwendet. *Präzisiert 2026-10-06:* Die lokale Referenzumgebung von PURIS (Tag `6.2.0`, `local/tractus-x-edc/docker-compose.yaml`) nutzt dagegen die EDC-Images `0.13.0-rc1` (Vorabversion).
 - **PostgreSQL der Bundles:** `bitnamilegacy/postgresql:15.4.0-debian-11-r45` (Übergangslösung der Bundles nach der Bitnami-Umstellung 2025; ohne Updates – Einschränkung). **Ausnahme `c1`** (geprüft 2026-10-06): Der Wallet-Stub bringt über das Sub-Chart `cloudpirates/postgres` 0.11.0 das Image `postgres:18.0` mit (im Chart per Digest festgelegt). Die Images von `c2`–`c5` werden je Baustein am gerenderten Chart geprüft.
@@ -609,4 +609,4 @@ Ablauf:
 - Option VPS (Nachbau auf 8 dedizierten vCPU mit NAS-Profil; größere Skalierungen nur bei Bedarf): durchführen ja/nein, Anbieter; Erfolgskriterien des Nachbau-Tests festlegen; Startwerte des NAS-Profils nach dem Probelauf bestätigen; Grenzwert für Steal Time in der Vorstudie – siehe [`VPS-VARIANTE.md`](VPS-VARIANTE.md), Abschnitt 10.
 - Der Wallet-Stub wird bei jeder Anfrage im Datenraum genutzt und ist damit ein Engpasskandidat; er wird wie alle Komponenten gemessen.
 - Rohdaten-Größe: kleine Dateien direkt in Git, große am Ende auf Zenodo archivieren.
-- DTR-CPU im NAS-Profil (Customer 100m, Supplier 200m): Beide DTRs sind schon beim Anlegen der Testdaten gedrosselt und überschreiten das Zeitlimit des PURIS-Clients (ca. 10 s). Da jede Bestandsabfrage den DTR des Suppliers liest, vor dem Probelauf entscheiden, ob die Werte erhöht werden (`VPS-VARIANTE.md`, Abschnitt 2; `LABORBUCH.md`, 2026-10-07).
+- DTR-CPU im NAS-Profil (Customer 100m, Supplier 200m): Beide DTRs sind schon beim Anlegen der Testdaten gedrosselt und überschreiten das Zeitlimit des PURIS-Clients (ca. 10 s). Da jede Bestandsabfrage den DTR des Suppliers liest, vor dem Probelauf entscheiden, ob die Werte erhöht werden (`VPS-VARIANTE.md`, Abschnitt 2; `LABORBUCH.md`, 2026-10-07). *(Entschieden 2026-10-07: vorerst unverändert; der Probelauf zeigt, ob der DTR zuerst sättigt.)*
