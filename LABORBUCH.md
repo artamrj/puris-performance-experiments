@@ -590,3 +590,22 @@ Keine IP-Adressen, MAC-Adressen, Seriennummern, Gerätenamen des NAS, Passwörte
 **Entscheidung:** Plan B für So 18.10. entfällt – Meilenstein 1 ist am 07.10. erreicht.
 
 **Nächstes:** Stand S0 sichern (alle PostgreSQL-Datenbanken) – Verfahren vorher festlegen; danach Entscheidung zur DTR-CPU und Phase f.
+
+## 2026-10-07 – Stand S0 gesichert
+
+**Gemacht:**
+- Alle 7 PostgreSQL-Datenbanken (Wallet-Stub, EDC ×2, DTR ×2, PURIS ×2) mit `pg_dump -Fc` im jeweiligen Pod gesichert, dazu die Zeilenzahl jeder Tabelle und SHA-256-Prüfsummen (S0-Zeitpunkt 2026-10-06T23:51:30Z, nach `e1` und den beiden Abfragen aus `e2`). Auf Wunsch des Verfassers vom Assistenten ausgeführt; nur lesende Zugriffe auf die Datenbanken.
+- Kopie auf den Mac übertragen, Prüfsummen 14 × `OK`. Dokumentation in `AUFBAU.md`, „Stand S0 sichern“.
+
+**Entscheidungen** (vom Verfasser bestätigt):
+- Ablage auf der VM (`~/puris-loadlab-state/s0/`) und als Kopie auf dem Mac, nie in Git.
+  Begründung: Reset und Messläufe laufen auf der VM; die Kopie schützt vor dem Verlust des VM-Datenträgers.
+- Die Datenbank des Wallet-Stubs wird mitgesichert; ob der Reset sie wiederherstellt, wird beim Erproben des Resets entschieden.
+  Begründung: Sicherung kostet nichts; die Wiederherstellung könnte mit dem Zustand des laufenden Wallet-Stubs kollidieren.
+
+**Beobachtungen:**
+- Die Datenbank des Wallet-Stubs liegt auf einem `emptyDir` (Standard des Charts `identity-and-trust-bundle` 1.1.3): Ein Neustart des Pods `wallet-postgres-0` leert sie. Für den Reset und für Neustarts während der Messreihen relevant.
+- Die Zeilenzahlen in S0 passen zu `e2`: je EDC 8 Transferprozesse und 3 Vertragsverhandlungen.
+- S0 ist klein (492K); die Ablage ist kein Engpass.
+
+**Nächstes:** Entscheidung zur DTR-CPU, danach Phase f (k6-Operator, Probelauf); Wiederherstellung von S0 beim Reset (Abschnitt 8) erproben.

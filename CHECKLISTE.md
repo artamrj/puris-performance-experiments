@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); als Nächstes Stand S0 sichern, dann Phase f. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; als Nächstes Entscheidung DTR-CPU, dann Phase f. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -24,7 +24,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 3 Phase b – Monitoring und Logs | erledigt (2026-10-06) | Di 06.–Sa 10.10. |
 | 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
-| 6 Phase e – Testdaten und Funktionstest | weitgehend erledigt (2026-10-07; Meilenstein 1 erreicht); offen: S0 sichern | Sa 17.–**So 18.10. (Meilenstein 1)** |
+| 6 Phase e – Testdaten und Funktionstest | erledigt (2026-10-07; Meilenstein 1 erreicht, S0 gesichert) | Sa 17.–**So 18.10. (Meilenstein 1)** |
 | 7 Phase f – Lastgenerator und Probelauf | offen | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
@@ -204,8 +204,8 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Je Transaktion zwei neue Transferprozesse in den EDCs beobachtet – 2. Abfrage: 2 je EDC (1. Abfrage mit Vertragsverhandlung: 3); 2026-10-07
 - [x] Zweite Abfrage: gespeicherter Vertrag wird wiederverwendet (keine neue Verhandlung) – Verhandlungen 3 → 3, 2026-10-07
 - [x] Dauer einer einzelnen Transaktion grob festgehalten (Bezugsgröße für die Vorstudie) – ca. 4,4 s mit gespeicherten Verträgen, ca. 10,4 s mit Verhandlung; 2026-10-07
-- [ ] Stand **S0** gesichert: alle PostgreSQL-Datenbanken nach Testdaten und erfolgreicher Abfrage
-- [ ] Verfahren für S0 festlegen (welche Datenbanken – Wallet-Stub, EDC ×2, DTR ×2, PURIS ×2 –, Format, Ablage außerhalb von Git, Wiederherstellung) – vor dem Sichern, gefunden 2026-10-07
+- [x] Stand **S0** gesichert: alle PostgreSQL-Datenbanken nach Testdaten und erfolgreicher Abfrage – 7 Datenbanken, `pg_dump -Fc` + Zeilenzahlen + Prüfsummen, VM und Mac; 2026-10-07
+- [x] Verfahren für S0 festlegen (welche Datenbanken – Wallet-Stub, EDC ×2, DTR ×2, PURIS ×2 –, Format, Ablage außerhalb von Git, Wiederherstellung) – vor dem Sichern, gefunden 2026-10-07 – Sichern festgelegt und dokumentiert (`AUFBAU.md`, e2); Wiederherstellung → Abschnitt 8; 2026-10-07
 - [x] Ergebnis als Grundlage für Kapitel 5.1 dokumentiert – `AUFBAU.md`, e2 (Tabelle); 2026-10-07
 
 ## 7 Phase f – Lastgenerator und Probelauf
@@ -236,6 +236,8 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Prüfung nach dem Reset: Zeilenzahlen wie in S0, alle Pods `Ready`
 - [ ] PURIS beim Reset bzw. Neuaufbau nicht mit `helm uninstall` neu installieren, ohne das Datenbank-Volume zu löschen (neues Zufallspasswort passt sonst nicht zur Datenbank) – gefunden 2026-10-07
 - [ ] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`)
+- [ ] Wallet-Stub-Datenbank liegt auf `emptyDir` (Neustart leert sie): beim Reset wiederherstellen oder Wallet-Pod nie neu starten – entscheiden; gefunden 2026-10-07
+- [ ] Wiederherstellung von S0 mit `pg_restore` erproben (Sicherungen: `~/puris-loadlab-state/s0/` auf der VM)
 - [ ] Vorläufige Entscheidung zu S0 (mit Verträgen) im Laborbuch bestätigt oder geändert
 
 ## 9 Offene Punkte klären

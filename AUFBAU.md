@@ -954,6 +954,71 @@ Ergebnis:
 
 **Hinweis:** Ein falscher API-Key liefert HTTP 500, kein HTTP 401 (ohne Key: HTTP 401) – bei der Fehlerzählung in k6 beachten.
 
+### Stand S0 sichern
+
+**Datum:** 2026-10-07 (S0-Zeitpunkt 2026-10-06T23:51:30Z, nach e1 und den beiden Abfragen aus e2; Experiment-Repository auf Stand `cc6e497`)
+**Ziel:** Alle PostgreSQL-Datenbanken als Ausgangszustand S0 für den Reset sichern (`KONZEPT.md`, Abschnitt 6) – mit Testdaten und ausgehandelten Verträgen.
+
+**Ablage:** auf der VM unter `~/puris-loadlab-state/s0/` (dort laufen Reset und Messläufe), Kopie auf dem Mac unter `~/.local/opt/puris-loadlab/s0/`; nie in Git. Zugangsdaten der Datenbanken werden im jeweiligen Pod aus dessen Umgebungsvariablen gelesen und verlassen den Cluster nicht.
+
+**Sichern `[VM]`** (Skript per `ssh puris-vm 'bash -s' < <Datei>` ausgeführt; bricht ab, wenn `s0/` schon existiert):
+```bash
+set -euo pipefail
+D="$HOME/puris-loadlab-state/s0"
+[ -e "$D" ] && { echo "Abbruch: $D existiert bereits"; exit 1; }
+mkdir -p "$D"
+cat > "$D/zeilen.sql" <<'SQL'
+select table_schema||'.'||table_name,
+       (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text
+from information_schema.tables
+where table_schema not in ('pg_catalog','information_schema') and table_type='BASE TABLE'
+order by 1;
+SQL
+# Namespace Pod Datei Benutzer-Var Passwort-Var Datenbank (Var oder fest)
+while read -r ns pod name uv pv dv; do
+  [ "$dv" = "postgres" ] && db='postgres' || db="\$$dv"
+  conn="PGPASSWORD=\"\$$pv\" exec %s -h 127.0.0.1 -U \"\$$uv\" -d \"$db\""
+  kubectl exec -n "$ns" "$pod" -- sh -c "$(printf "$conn" pg_dump) -Fc" > "$D/$name.dump"
+  kubectl exec -i -n "$ns" "$pod" -- sh -c "$(printf "$conn" psql) -At -F ' ' -f -" < "$D/zeilen.sql" > "$D/$name.zeilen.txt"
+  echo "$name: $(du -h "$D/$name.dump" | cut -f1), $(wc -l < "$D/$name.zeilen.txt") Tabellen, $(awk '{s+=$2} END {print s}' "$D/$name.zeilen.txt") Zeilen"
+done <<'LIST'
+identity wallet-postgres-0 c1-wallet POSTGRES_USER POSTGRES_PASSWORD postgres
+customer edc-postgresql-0 c2-customer-edc POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+customer dtr-postgresql-0 c3-customer-dtr POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+supplier edc-postgresql-0 c4-supplier-edc POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+supplier dtr-postgresql-0 c5-supplier-dtr POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+customer puris-postgresql-0 d1-puris-customer CUSTOM_USER CUSTOM_PASSWORD CUSTOM_DB
+supplier puris-postgresql-0 d2-puris-supplier CUSTOM_USER CUSTOM_PASSWORD CUSTOM_DB
+LIST
+date -u +%Y-%m-%dT%H:%M:%SZ > "$D/zeitpunkt.txt"
+(cd "$D" && sha256sum *.dump *.zeilen.txt > SHA256SUMS)
+chmod -R go-rwx "$HOME/puris-loadlab-state"
+```
+
+**Kopie auf den Mac und Prüfung `[Mac]`:**
+```bash
+scp -q -o ClearAllForwardings=yes -r puris-vm:puris-loadlab-state/s0 "$HOME/.local/opt/puris-loadlab/s0" && chmod -R go-rwx "$HOME/.local/opt/puris-loadlab/s0"
+cd "$HOME/.local/opt/puris-loadlab/s0" && shasum -a 256 -c SHA256SUMS
+```
+
+Ergebnis: 7 Sicherungen im Format `pg_dump -Fc` (`pg_dump` im jeweiligen Pod, gleiche Version wie der Server: 18.0 bzw. 15.4), je mit Zeilenzahl aller Tabellen; Kopie auf dem Mac: 14 × `OK`, zusammen 492K.
+
+| Datei | Datenbank | Tabellen | Zeilen | Größe |
+|---|---|---|---|---|
+| `c1-wallet` | Wallet-Stub (`postgres`) | 8 | 38 | 20K |
+| `c2-customer-edc` | EDC Customer | 18 | 84 | 40K |
+| `c3-customer-dtr` | DTR Customer | 22 | 83 | 52K |
+| `c4-supplier-edc` | EDC Supplier | 18 | 109 | 40K |
+| `c5-supplier-dtr` | DTR Supplier | 22 | 103 | 52K |
+| `d1-puris-customer` | PURIS Customer | 69 | 135 | 124K |
+| `d2-puris-supplier` | PURIS Supplier | 69 | 128 | 124K |
+
+Stichprobe der Zeilenzahlen: je EDC `edc_transfer_process` 8, `edc_contract_negotiation` 3; PURIS Customer `reported_material_item_stock` 1, PURIS Supplier `product_item_stock` 1; je PURIS `partner` 2 (eigene Firma und Partner), `material_partner_relation` 1.
+
+**Hinweise:**
+- Die Datenbank des Wallet-Stubs liegt auf einem `emptyDir` (kein dauerhaftes Volume): Bei einem Neustart des Pods `wallet-postgres-0` ist sie leer. Ob der Reset sie wiederherstellt, wird beim Erproben des Resets entschieden (`CHECKLISTE.md`, Abschnitt 8).
+- Wiederherstellung (`pg_restore`) ist noch nicht erprobt (Abschnitt 8 der Checkliste).
+
 ---
 
 ## Hilfswerkzeuge (optional, kein Teil des Experiments)
