@@ -327,7 +327,8 @@ Noch offen:
 - [ ] Nach jedem Lauf Gültigkeit geprüft und im Laborbuch vermerkt
 - [ ] Fehlgeschlagene oder abgebrochene Läufe erhalten und im Laborbuch vermerkt
 - [ ] Rohdaten in `runs/` nie verändert, gelöscht oder umbenannt
-- [ ] Laufordner byte-genau in Git (`.gitattributes`: `runs/** -text`); nach jedem Commit `SHA256SUMS` gegen den Commit prüfen – Probelauf: CRLF→LF beim ersten Commit, behoben 2026-10-07 (Prüfung nach dem Commit offen)
+- [x] Laufordner byte-genau in Git (`.gitattributes`: `runs/** -text`); nach jedem Commit `SHA256SUMS` gegen den Commit prüfen – Probelauf: CRLF→LF beim ersten Commit, behoben 2026-10-07 – Commit `a4bb002`: 25/25 gleich, frischer Klon 25 × `OK`
+- [ ] Laufend: nach jedem Commit eines Laufordners `SHA256SUMS` gegen den Commit bzw. einen frischen Klon prüfen (in Etappe 2 in `./lab run` oder `check.sh`)
 - [ ] Änderungen nach `setup-v1` nur mit neuem Tag (`setup-v2`) und Laborbuch-Eintrag
 
 ## 13 Etappe 3 – Nachbau-Test

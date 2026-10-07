@@ -698,3 +698,5 @@ Begründung: Der Probelauf ist genau für diese Prüfung vorgesehen; eine Änder
 Begründung: Rohdaten dürfen nicht verändert werden; die Prüfsummen müssen zu den gespeicherten Dateien passen. Umwandeln der Originale oder neue Prüfsummen hätten die Rohdaten bzw. ihren Nachweis verändert.
 
 **Nächstes:** Nach dem Commit prüfen, dass die Dateien im Commit gleich `SHA256SUMS` sind.
+
+**Prüfung:** Nach Commit `a4bb002` sind alle 25 Dateien des Laufordners im Commit gleich `SHA256SUMS`; frischer Klon: 25 × `OK`.
