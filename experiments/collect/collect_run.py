@@ -219,7 +219,7 @@ validity = {
     "loki_discarded_delta": disc_delta, "loki_ok": disc_delta == 0,
     "steal_max_ratio": round(steal_max, 4), "steal_limit": STEAL_MAX, "steal_mean_ratio": round(steal_mean, 4),
     "steal_mean_limit": STEAL_MEAN_MAX, "steal_ok": steal_max < STEAL_MAX and steal_mean < STEAL_MEAN_MAX,
-    "reset_ok": bool(reset.get("counts_equal_after_restore")),
+    "reset_ok": bool(reset.get("counts_equal_after_restore")) and reset.get("function_test", {}).get("passed", True),
 }
 validity["valid"] = all(v for k, v in validity.items() if k.endswith("_ok"))
 

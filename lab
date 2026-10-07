@@ -13,9 +13,21 @@
 #                             Registrierung der Data Planes löschen, dann Control
 #                             Planes → Data Planes → PURIS starten
 #   ./lab run <plan> <rep>    Messlauf nach experiments/plans/<plan>.env:
-#                             Reset → k6-TestRun → Abarbeiten abwarten →
-#                             Sammeln nach runs/<Zeit>_<plan>_rep-<rep>/
-#                             (nur auf der VM, nur bei sauberem Git-Stand)
+#                             Vorprüfung → Reset → Funktionstest → k6-TestRun →
+#                             Abarbeiten abwarten → Sammeln nach
+#                             runs/<Zeit>_<plan>_rep-<rep>/ (nur auf der VM, nur bei
+#                             sauberem Git-Stand)
+#   ./lab series <plan> <n>   Messreihe: Wiederholungen 1..n nacheinander; ein
+#                             gescheiterter Lauf hält die Reihe nicht an, er wird
+#                             einmal durch eine weitere Wiederholung ersetzt;
+#                             Übersicht in $STATE_DIR/logs/series-<plan>.txt
+#   ./lab status              Zustand: letzte Meldung, Sperre, PURIS/EDC vollständig?
+#   ./lab check               Funktionstest: 3 echte Transaktionen nacheinander (ohne Reset)
+#
+# Sicherheitsnetz (lib/stack.sh, seit 2026-10-07): nur ein Befehl gleichzeitig (Sperre);
+# geordneter Start mit genau einer Reparatur je Stufe (nur im Reset, in meta.json
+# festgehalten); nach einem Fehler oder Abbruch stoppt das sichere Ende die Last und
+# startet PURIS und EDC geordnet wieder – das System bleibt nie halb angehalten.
 #
 # Läuft dort, wo kubectl den Versuchscluster erreicht (Mac mit `puris` oder VM);
 # `run` nur auf der VM (KONZEPT.md, Abschnitt 5).
@@ -28,6 +40,8 @@ cd "$(dirname "$0")"
 die() { echo "Abbruch: $*" >&2; exit 1; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 log() { echo "[$(date -u +%H:%M:%S)] $*"; }
+# shellcheck source=lib/stack.sh
+. lib/stack.sh
 
 # Deployments, die der Reset anhält und neu startet (je Firma).
 APPS_EDC="edc-controlplane edc-dataplane"
@@ -72,11 +86,10 @@ cmd_reset() {
   [ -d "$d" ] || die "Stand $d fehlt"
   (cd "$d" && sha256sum -c --quiet SHA256SUMS) || die "Prüfsummen von $d stimmen nicht"
   t0=$(date +%s)
-  log "Reset auf $name"
+  log "Reset auf $name"; status "Reset auf $name läuft"
+  REPAIRS=()
   # 1. kein laufender Lastgenerator
-  if kubectl get testrun -n k6 -o jsonpath='{range .items[*]}{.status.stage}{"\n"}{end}' | grep -qv '^finished$'; then
-    die "ein TestRun ist noch nicht beendet"
-  fi
+  load_active && die "ein TestRun ist noch nicht beendet"
   # 2. PURIS und EDC beider Firmen anhalten (Hintergrundaufträge enden mit)
   for ns in customer supplier; do
     # shellcheck disable=SC2086
@@ -100,31 +113,21 @@ cmd_reset() {
   # neu an. Eine wiederhergestellte, beim Start nicht erreichbare Registrierung macht die
   # Control Plane „nicht bereit“; dann erreicht die Data Plane sie über den Dienst nicht
   # und startet neu – gegenseitiges Warten (Reset 2026-10-07, 13:51 UTC).
-  for n in c2-customer-edc c4-supplier-edc; do
-    db_cmd "$n" psql "-q -c 'DELETE FROM edc_data_plane_instance'" >/dev/null
-  done
+  for ns in customer supplier; do dp_registration_clear "$ns"; done
   # 5. Reihenfolge: Control Planes → Data Planes (melden sich bei der bereiten Control
-  #    Plane an) → PURIS (spricht beim Start den EDC an)
-  for ns in customer supplier; do kubectl scale deploy edc-controlplane -n "$ns" --replicas=1 >/dev/null; done
-  for ns in customer supplier; do kubectl rollout status deploy/edc-controlplane -n "$ns" --timeout=600s >/dev/null; done
-  log "Control Planes bereit"
-  for ns in customer supplier; do kubectl scale deploy edc-dataplane -n "$ns" --replicas=1 >/dev/null; done
-  for ns in customer supplier; do kubectl rollout status deploy/edc-dataplane -n "$ns" --timeout=600s >/dev/null; done
-  log "Data Planes bereit"
-  for ns in customer supplier; do
-    kubectl scale deploy $APPS_PURIS -n "$ns" --replicas=1 >/dev/null
-  done
-  for ns in customer supplier; do
-    kubectl rollout status "deploy/$APPS_PURIS" -n "$ns" --timeout=900s >/dev/null
-  done
-  log "PURIS bereit"
+  #    Plane an) → PURIS (spricht beim Start den EDC an); je Stufe höchstens eine
+  #    Reparatur (lib/stack.sh), festgehalten in last-reset.json
+  start_stack 1 || die "PURIS/EDC nach Reparatur nicht bereit"
   # 6. Zeilen nach dem Start (Schreibzugriffe beim Start werden festgehalten)
   after="$(check_counts "$d")"
   jq -n --arg state "$name" --arg start "$(date -u -r "$t0" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$t0" +%Y-%m-%dT%H:%M:%SZ)" \
     --arg end "$(now)" --argjson dur "$(( $(date +%s) - t0 ))" --arg after "$after" \
+    --arg repairs "${REPAIRS[*]+${REPAIRS[*]}}" \
     '{state: $state, start_utc: $start, end_utc: $end, duration_s: $dur, counts_equal_after_restore: true,
-      counts_diff_after_start: ($after | split("\n") | map(select(. != "")))}' > "$STATE_DIR/last-reset.json"
-  log "Reset fertig nach $(( $(date +%s) - t0 )) s${after:+; nach dem Start abweichend: $after}"
+      counts_diff_after_start: ($after | split("\n") | map(select(. != ""))),
+      repairs: ($repairs | split(" ") | map(select(. != "")))}' > "$STATE_DIR/last-reset.json"
+  log "Reset fertig nach $(( $(date +%s) - t0 )) s${after:+; nach dem Start abweichend: $after}${REPAIRS[*]+; Reparaturen: ${REPAIRS[*]}}"
+  status "Reset auf $name fertig${REPAIRS[*]+ (Reparaturen: ${REPAIRS[*]})}"
 }
 
 cmd_run() {
@@ -144,9 +147,14 @@ cmd_run() {
   name=$(echo "${plan}-r${rep}-$(date -u +%H%M)" | tr 'A-Z_' 'a-z-')
   tmp=$(mktemp -d)
   log "Lauf $run_id (Plan $plan, Commit ${commit:0:7}${tag:+, Tag $tag})"
+  precheck
 
   cmd_reset "$STATE"
-  cp "$STATE_DIR/last-reset.json" "$tmp/reset.json"
+  # Funktionstest: drei echte Transaktionen nacheinander müssen durchlaufen, sonst keine Last
+  status "Funktionstest ($run_id)"
+  function_test 3 || die "Funktionstest nach dem Reset fehlgeschlagen: $FUNCTION_TEST"
+  log "Funktionstest bestanden: $FUNCTION_TEST"
+  jq --argjson ft "$FUNCTION_TEST" '. + {function_test: $ft}' "$STATE_DIR/last-reset.json" > "$tmp/reset.json"
 
   # Skript als ConfigMap aus dem Commit; alte TestRuns entfernen (Daten gesammelt)
   kubectl delete testrun --all -n k6 --wait=true >/dev/null
@@ -158,8 +166,9 @@ cmd_run() {
   n_stages=$(echo "$RATES" | tr ',' '\n' | wc -l)
   total=$(( n_stages * STAGE_DURATION + 10 ))
   log "TestRun $name gestartet, $n_stages Stufen à $STAGE_DURATION min (Ende spätestens nach $total min)"
+  status "Last läuft: $run_id (TestRun $name, Ende spätestens $(date -u -d "+$total min" +%H:%M 2>/dev/null || echo '?') UTC)"
   kubectl wait --for=jsonpath='{.status.stage}'=finished "testrun/$name" -n k6 --timeout="${total}m" >/dev/null
-  log "TestRun beendet; warte auf offene Transaktionen und sammle"
+  log "TestRun beendet; warte auf offene Transaktionen und sammle"; status "Sammeln: $run_id"
 
   python3 experiments/collect/collect_run.py "$run_dir" "$name" "$run_id" "$t_apply" "$commit" "$tag" "$tmp"
   mkdir -p "$run_dir/db"
@@ -175,11 +184,56 @@ cmd_run() {
   (cd "$run_dir" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
   rm -rf "$tmp"
   log "Fertig: $run_dir ($(du -sh "$run_dir" | cut -f1)); Gültigkeit: $(jq -c .validity "$run_dir/meta.json")"
+  status "Fertig: $run_dir – gültig: $(jq -r .validity.valid "$run_dir/meta.json")"
 }
 
+# Messreihe: jede Wiederholung als eigener Prozess (ein Fehler beendet nur diesen Lauf;
+# das sichere Ende stellt das System wieder her). Je gescheitertem Lauf eine Ersatz-
+# Wiederholung (höchstens so viele wie Läufe geplant).
+cmd_series() {
+  local plan="${1:?Plan fehlt}" n="${2:?Anzahl fehlt}" rep rc dir valid failed=0 next ov="$STATE_DIR/logs/series-${1:-}.txt"
+  [ -r "experiments/plans/$plan.env" ] || die "experiments/plans/$plan.env fehlt"
+  mkdir -p "$STATE_DIR/logs"
+  echo "[$(now)] Messreihe $plan, $n Wiederholungen, Commit $(git rev-parse --short HEAD)" >> "$ov"
+  run_one() {
+    local r="$1" before
+    before=$(ls -d runs/*_"${plan}"_rep-"$r" 2>/dev/null || true)
+    rc=0; ./lab run "$plan" "$r" || rc=$?
+    # nur der in diesem Lauf neu entstandene Laufordner
+    dir=$(comm -13 <(echo "$before") <(ls -d runs/*_"${plan}"_rep-"$r" 2>/dev/null || true) | tail -1)
+    valid=$( [ -n "$dir" ] && [ -f "$dir/meta.json" ] && jq -r .validity.valid "$dir/meta.json" || echo "-")
+    echo "[$(now)] rep-$r: Ende-Code $rc, gültig $valid, ${dir:-kein Laufordner}" >> "$ov"
+    [ "$rc" -eq 0 ] && [ "$valid" = true ]
+  }
+  for rep in $(seq 1 "$n"); do run_one "$rep" || failed=$((failed + 1)); done
+  # je gescheitertem oder ungültigem Lauf genau ein Ersatzversuch
+  next=$((n + 1))
+  while [ "$failed" -gt 0 ]; do
+    echo "[$(now)] Ersatz für einen gescheiterten oder ungültigen Lauf: rep-$next" >> "$ov"
+    run_one "$next" || true
+    next=$((next + 1)); failed=$((failed - 1))
+  done
+  echo "[$(now)] Messreihe $plan beendet" >> "$ov"; cat "$ov"
+}
+
+cmd_status() {
+  echo "Letzte Meldung: $(cat "$STATUS_FILE" 2>/dev/null || echo '–')"
+  if [ -d "$LOCK" ]; then echo "Sperre: PID $(cat "$LOCK/pid" 2>/dev/null) – $(cat "$LOCK/cmd" 2>/dev/null)"; else echo "Sperre: frei"; fi
+  if stack_healthy; then echo "PURIS und EDC: vollständig (6/6 bereit)"; else
+    echo "PURIS und EDC: UNVOLLSTÄNDIG"
+    for ns in $SUT_NS; do kubectl get deploy -n "$ns" $SUT_APPS --no-headers 2>/dev/null | sed "s/^/  $ns: /"; done
+  fi
+  if load_active; then echo "Last: TestRun aktiv"; else echo "Last: keine"; fi
+}
+
+trap safe_exit EXIT
+trap 'exit 130' INT TERM HUP
 case "${1:-}" in
-  snapshot) shift; cmd_snapshot "$@" ;;
-  reset)    shift; cmd_reset "$@" ;;
-  run)      shift; cmd_run "$@" ;;
-  *) sed -n '2,21p' "$0"; exit 2 ;;
+  snapshot) lock_acquire "$*"; shift; cmd_snapshot "$@" ;;
+  reset)    lock_acquire "$*"; shift; cmd_reset "$@" ;;
+  run)      lock_acquire "$*"; shift; cmd_run "$@" ;;
+  series)   shift; cmd_series "$@" ;;
+  status)   cmd_status ;;
+  check)    lock_acquire "$*"; function_test 3 || die "Funktionstest fehlgeschlagen: $FUNCTION_TEST"; log "Funktionstest bestanden: $FUNCTION_TEST" ;;
+  *) sed -n '2,33p' "$0"; exit 2 ;;
 esac

@@ -247,6 +247,9 @@ grafana:
 | `./lab refresh d1` | nur `d1` ab- und wieder aufbauen (z. B. nach geänderten Werten) |
 | `./lab reset` | Ausgangszustand zwischen zwei Messläufen herstellen |
 | `./lab run <plan>` | Messreihe nach Plan ausführen, Ergebnisse in `runs/` |
+| `./lab series <plan> <n>` | (seit 2026-10-07) n Wiederholungen nacheinander, Ersatzlauf je gescheitertem Lauf |
+| `./lab check` | (seit 2026-10-07) Funktionstest: drei Transaktionen nacheinander |
+| `./lab status` | (seit 2026-10-07) letzte Meldung, Sperre, PURIS/EDC vollständig, Last aktiv |
 
 **Helmfile:** In Etappe 2 beschreibt eine `helmfile.yaml` alle Helm-Releases der Phasen b–f (Chart, feste Version, Namespace, `values.yaml`, Reihenfolge über `needs`). `./lab up`/`down` rufen Helmfile auf; die Systembausteine der Phase a bleiben Skripte. Bewusst **kein** GitOps-Controller (z. B. Argo CD) im Cluster: Er verbraucht selbst Ressourcen und könnte den Aufbau während einer Messung verändern.
 
@@ -321,6 +324,7 @@ Die Bestandsabfrage von PURIS ist **asynchron** (Abschnitt 13): Der Endpunkt ant
 - **Steal Time** je Lauf: Die NAS-VM teilt sich die Threads mit dem NAS. node-exporter misst, wie viel CPU-Zeit der Host der VM entzieht (`node_cpu_seconds_total{mode="steal"}`). Überschreitet sie den in der Vorstudie festgelegten Grenzwert, ist der Lauf ungültig und wird wiederholt. *Grenzwert (2026-10-07, aus Probelauf und Vorstudie 1: höchstens 1,1 % bzw. 2,3 %, Letzteres nur im gekippten Zustand): höchstes 1-min-Mittel < 5 % **und** Mittel über das Messfenster < 2 %.*
 - **Neustarts** (2026-10-07): Neustarts im Messsystem (Prometheus, Loki, Alloy, k3s) machen den Lauf immer ungültig; im System unter Test nur, wenn sie in den Aufwärmstufen auftreten (Aufbau gestört). Neustarts des Systems unter Test danach – etwa `OOMKilled` in Überlaststufen – sind ein **Ergebnis** und werden in `meta.json` (`sut_restarts_after_warmup`) festgehalten. Anlass: In Vorstudie 1 stieg der Speicher der EDC Control Plane des Customers bei Überlast auf 979 von 1024 Mi.
 - **Sättigungskriterium** (Vorschlag 2026-10-07, operational für die Auswertung): Eine Stufe gilt als gesättigt, wenn die abgeschlossenen Transaktionen je Sekunde unter 95 % der Eingangslast liegen **oder** mehr als 1 % der Auslösungen scheitern **oder** mindestens ein „Invalidating … contract data“ auftritt. Der Kipppunkt einer Konfiguration ist die erste gesättigte Stufe; berichtet werden Mittelwert und Streuung über die Wiederholungen.
+- **Sicherheitsnetz und Funktionstest** (2026-10-07, `lib/stack.sh`): Vor der Last laufen nach jedem Reset drei echte Transaktionen nacheinander; nur wenn alle abgeschlossen werden, beginnt die Messung (sonst gilt der Reset als nicht bestanden). Hängt beim Start eine Komponente, wird sie im Reset genau einmal neu gestartet; jede solche Reparatur steht in `meta.json`. Reparaturen während der Messung gibt es nicht. Nach jedem Fehler oder Abbruch stoppt `lab` die Last und startet PURIS und EDC geordnet wieder (sicheres Ende). Messreihen laufen mit `./lab series`; ein gescheiterter oder ungültiger Lauf wird einmal durch eine weitere Wiederholung ersetzt (alle Läufe bleiben erhalten und werden berichtet).
 - **Aufwärmphase nach dem Reset** (2026-10-07): Der Reset startet PURIS und EDC neu; Last direkt nach dem Kaltstart löste im Kurztest Zeitüberschreitungen und Neuverhandlungen aus. Jeder Messlauf beginnt daher mit Aufwärmstufen geringer Last (Kennzeichnung `warmup…`, nicht ausgewertet); Dauer und Raten legt die Vorstudie fest.
 
 ### Inhalt eines Laufordners

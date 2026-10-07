@@ -249,7 +249,9 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`) – 2026-10-07, `AUFBAU.md`, „Reset (`./lab reset`)“
 - [x] Wallet-Stub-Datenbank liegt auf `emptyDir` (Neustart leert sie): beim Reset wiederherstellen oder Wallet-Pod nie neu starten – entscheiden; gefunden 2026-10-07 – entschieden 2026-10-07: nie neu starten, nicht zurücksetzen, Zeilen bei jedem Reset prüfen (Daten ändern sich im Lauf nicht)
 - [x] Wiederherstellung von S0 mit `pg_restore` erproben (Sicherungen: `~/puris-loadlab-state/s0/` auf der VM) – 2026-10-07, 4 Datenbanken in 20 s
-- [ ] Reset ohne Wettlauf beim Start der EDCs: Registrierung der Data Planes löschen, Start Control Plane → Data Plane → PURIS – gefunden 2026-10-07 (Reset hing 13:51 UTC), Erklärung von Hand geprüft (Control Plane ohne Registrierung bereit nach 40 s); in `lab` umgesetzt, Bestätigung mit dem nächsten Reset offen
+- [x] Reset ohne Wettlauf beim Start der EDCs: Registrierung der Data Planes löschen, Start Control Plane → Data Plane → PURIS – gefunden 2026-10-07 (Reset hing 13:51 UTC), Erklärung von Hand geprüft (Control Plane ohne Registrierung bereit nach 40 s); in `lab` umgesetzt – bestätigt 2026-10-07 im Test-Reset 14:26 UTC (zusätzlicher 404-Zustand der Data Plane durch die automatische Reparatur behoben)
+- [x] Sicherheitsnetz (`lib/stack.sh`): Sperre, Vorprüfung, geordneter Start mit einer Reparatur je Stufe, Funktionstest vor der Last, sicheres Ende, `./lab series`/`status`/`check` – 2026-10-07; geprüft mit absichtlichen Fehlern (Abbruch im Reset, PURIS Supplier aus) und einer echten Reparatur, alle bestanden (`LABORBUCH.md`)
+- [ ] Später (nicht nötig für K0): Wächter während der Last (z. B. PURIS-Pod verschwunden, k6-Runner abgestürzt → Last früh stoppen und Lauf als ungültig kennzeichnen); optional Benachrichtigung aufs Telefon bei Fehlern in der Nacht
 - [ ] Vorläufige Entscheidung zu S0 (mit Verträgen) im Laborbuch bestätigt oder geändert
 
 ## 9 Offene Punkte klären

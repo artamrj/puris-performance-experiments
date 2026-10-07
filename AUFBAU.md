@@ -1199,7 +1199,7 @@ Ablauf im Skript ([`lab`](lab), [`lib/db.sh`](lib/db.sh)):
 3. `pg_restore --clean --if-exists --single-transaction --exit-on-error` der Datenbanken `c2`, `c4`, `d1`, `d2` (im Datenbank-Pod, Zugangsdaten aus der Pod-Umgebung).
 4. Zeilen aller Tabellen aller 7 Datenbanken gleich dem Stand – sonst Abbruch.
 5. EDC beider Firmen auf 1 Replikat, `kubectl rollout status`; danach PURIS (spricht beim Start den EDC an).
-   *Geändert 2026-10-07 (nach dem hängenden Reset um 13:51 UTC, `LABORBUCH.md`): vorher `DELETE FROM edc_data_plane_instance` in beiden EDC-Datenbanken; dann erst die Control Planes, nach deren Bereitschaft die Data Planes (melden sich selbst an), danach PURIS.*
+   *Geändert 2026-10-07 (nach dem hängenden Reset um 13:51 UTC, `LABORBUCH.md`): vorher `DELETE FROM edc_data_plane_instance` in beiden EDC-Datenbanken; dann erst die Control Planes, nach deren Bereitschaft die Data Planes (melden sich selbst an), danach PURIS. Seit dem Sicherheitsnetz (`lib/stack.sh`): Zeitlimits 300 / 240 / 600 s, bei Überschreitung genau ein Neustart der Stufe (Data Plane mit gelöschter Registrierung), festgehalten in `last-reset.json` → `repairs`.*
 6. Zeilen nach dem Start erneut verglichen; Ergebnis in `~/puris-loadlab-state/last-reset.json` (wird von `./lab run` in `meta.json` übernommen).
 
 Ergebnis der ersten Ausführung (Stand nach dem Probelauf → S0):
@@ -1235,6 +1235,12 @@ Ablauf im Skript ([`lab`](lab)):
 4. Alte TestRuns löschen; ConfigMap `k6-stock-trigger` aus dem Skript im Commit; TestRun aus [`render_testrun.py`](experiments/k6/render_testrun.py) (Images und Ressourcen wie `testrun-pilot.yaml`, alle Materialien aus `materialien.tsv`, `testid` = Name des Laufordners) anwenden; warten, bis er `finished` meldet.
 5. [`collect_run.py`](experiments/collect/collect_run.py): warten, bis alle ausgelösten Transaktionen abgeschlossen oder gescheitert sind (Zählung über Loki alle 30 s; Abbruch nach 2 min ohne Fortschritt oder nach der Höchstdauer), dann sammeln (Inhalt siehe Kopf des Skripts) und Gültigkeit in `meta.json`.
 6. Zeilen aller 7 Datenbanken nach dem Lauf (`db/`), Prüfung auf den API-Key (Abbruch, falls gefunden), `SHA256SUMS`.
+
+*Seit 2026-10-07 (Sicherheitsnetz, `lib/stack.sh`, Prüfung in `LABORBUCH.md`):* vor Schritt 3 eine Vorprüfung (Messsystem bereit, kein TestRun aktiv, Platte < 85 %, Steal Time der letzten 5 min unter dem Grenzwert); nach Schritt 3 ein Funktionstest (3 Transaktionen nacheinander, alle müssen „Updated …“ melden, Ergebnis in `meta.json` → `reset.function_test`); Sperre gegen gleichzeitige Befehle; sicheres Ende bei Fehler oder Abbruch (Last stoppen, PURIS und EDC geordnet starten). Messreihe für die Nacht:
+```bash
+tmux new-session -d -s k0 -c ~/puris-performance-experiments "./lab series k0 3 2>&1 | tee ~/puris-loadlab-state/logs/k0-series.log"
+```
+Zustand jederzeit: `./lab status` (auch vom Mac mit `puris`); Funktionstest allein: `./lab check`.
 
 **Übernahme ins Repository `[Mac]`** (Commit durch den Verfasser; auf der VM danach verschieben, nicht löschen):
 ```bash

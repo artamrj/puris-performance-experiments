@@ -938,3 +938,30 @@ Begründung: Vergleich über Konfigurationen (Papadopoulos et al.: Abdeckung von
 Begründung: So entspricht der Start dem einer Neuinstallation (keine Registrierung vorhanden, Control Plane wird bereit), und die Data Plane trifft immer auf eine bereite Control Plane – kein Wettlauf mehr. Die Zeilenzahl nach dem Start bleibt gleich (die Data Plane legt ihre Registrierung neu an).
 
 **Nächstes:** Commit der Änderung, dann `./lab run vorstudie2 1` erneut.
+
+## 2026-10-07 – Sicherheitsnetz für `lab` und Prüfung mit absichtlichen Fehlern
+
+**Anlass:** Der hängende Reset (13:51 UTC) ließ PURIS beider Firmen auf 0 Replikaten zurück (vom Verfasser bemerkt). Auf Wunsch des Verfassers zuerst ein Sicherheitsnetz, dann Vorstudie 2.
+
+**Umgesetzt** (`lib/stack.sh`, `lab`):
+- *Sperre:* nur ein `lab`-Befehl gleichzeitig; verwaiste Sperre wird erkannt.
+- *Vorprüfung* vor jedem Messlauf: Messsystem und k6-Operator bereit, kein TestRun aktiv, Platte < 85 % belegt, Steal Time der letzten 5 min unter dem Grenzwert (sonst bis 15 min warten).
+- *Geordneter Start* (Control Planes → Data Planes → PURIS) mit genau **einer Reparatur je Stufe** bei Zeitüberschreitung (Control Plane 300 s, Data Plane 240 s, PURIS 600 s; Data Plane mit gelöschter Registrierung neu); Reparaturen stehen in `last-reset.json` und damit in `meta.json`.
+- *Funktionstest* nach dem Reset: 3 echte Transaktionen nacheinander (je höchstens 90 s); erst wenn alle „Updated …“ melden, beginnt die Last. Der Reset gilt sonst als nicht bestanden (`reset_ok` in `meta.json`).
+- *Sicheres Ende* bei jedem Ende mit Fehler oder Abbruch (auch Strg+C, `kill`, Schließen des Terminals): laufende Last stoppen; sind PURIS und EDC nicht vollständig, Data Planes aus, Registrierung löschen, geordneter Start (mit Reparatur); Meldung in `~/puris-loadlab-state/status.txt`.
+- *Neue Befehle:* `./lab series <plan> <n>` (Wiederholungen nacheinander, ein gescheiterter Lauf hält die Reihe nicht an und erhält genau einen Ersatzversuch; Übersicht in `~/puris-loadlab-state/logs/series-<plan>.txt`), `./lab status`, `./lab check` (Funktionstest allein).
+
+**Prüfung mit absichtlichen Fehlern** (Kopie der Skripte unter `/tmp/labtest` auf der VM, damit das Repository sauber bleibt):
+
+| Test | Fehler | Ergebnis |
+|---|---|---|
+| 0 | keiner (`./lab check`) | 3/3 Transaktionen in 31 s – bestanden |
+| 1 | Reset nach „PURIS und EDC angehalten“ mit `kill -TERM` abgebrochen (14:44:23 UTC) | sofort „Sicheres Ende (Code 130)“, geordneter Start, „System wieder vollständig“ nach 5 min; Sperre frei – bestanden |
+| 2 | PURIS des Suppliers vorher auf 0, dann `./lab check` | Funktionstest 0/3 nach 238 s → Abbruch vor jeder Last; sicheres Ende stellte PURIS her, 6/6 bereit nach 4,5 min – bestanden |
+| 3 | (nicht absichtlich) beim Test-Reset 14:26 UTC: Data Plane des Suppliers trotz geordnetem Start nicht bereit | automatische Reparatur nach 600 s (damaliges Zeitlimit), Data Plane 49 s später bereit; Reset ohne Eingriff fertig, Reparatur in `last-reset.json` (`dataplane-supplier`) – bestanden |
+
+Ein erster Versuch von Test 1 schlug wegen eines Fehlers im Testbefehl fehl (das `cd` lief nur in einer Hintergrund-Subshell, das Abbruchsignal wurde nie gesendet); der Reset lief dabei normal weiter und lieferte Test 3.
+
+**Beobachtung (Test 3):** Auch bei richtiger Reihenfolge kann die Data Plane hängen: Sie meldete sich erfolgreich an („data plane registered to control plane“, „Runtime edc-dataplane ready“, alle Komponenten der Lebend- und Startprüfung gesund), ihre Bereitschaftsprüfung lieferte aber dauerhaft HTTP 404, und die Control Plane führte ihre Registrierung als `UNAVAILABLE` (Zustand 300). Die Data Plane des Customers mit gleicher Konfiguration lieferte 200. Ursache innerhalb der EDC nicht geklärt; ein Neustart der Data Plane mit gelöschter Registrierung behebt es. Deshalb Zeitlimit der Data Plane 240 s statt 600 s (normal bereit nach 40–90 s).
+
+**Entscheidungen:** Automatische Reparaturen nur im Reset (vor der Messung), höchstens eine je Stufe, immer in `meta.json`; ein Lauf zählt nur mit bestandenem Funktionstest. Begründung: Der Startzustand der EDCs ist nicht deterministisch (Wettlauf, 404-Zustand); ohne Reparatur ginge bei einer nächtlichen Messreihe ein ganzer Lauf verloren, mit dokumentierter Reparatur vor der Messung bleibt der gemessene Zeitraum unberührt.
