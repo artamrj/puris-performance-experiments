@@ -1117,3 +1117,9 @@ Gesamt: 3068 Iterationen von k6, 2858 Auslösungen im PURIS-Log, 1755 abgeschlos
 **Beobachtung** (Vorstudie 3, Prometheus, ohne die erste Minute je Stufe): CPU des DTR des Customers in allen Stufen ca. 0,002 Kerne; DTR des Suppliers steigt mit der Last von 0,004 (`warmup1`) auf 0,016 Kerne (`s4`) und fällt nach dem Kippen auf 0,002–0,003. Das stützt indirekt, dass im untersuchten Ablauf nur der DTR des Suppliers abgefragt wird (kein Logbeleg; DTR-Logs werden nicht gesammelt).
 
 **Offen vor dem Start von K0:** Tag `setup-v1` (Verfasser); Bestätigung des Verfassers, dass die anderen Dienste des NAS ruhen.
+
+## 2026-10-08 – Aufbau eingefroren (`setup-v1`), VM auf dem Tag
+
+**Gemacht:** Verfasser: Commit `78c7e84` (Messplan `k0.env`, Entscheidungen vor K0), Tag `setup-v1`, beide nach `origin` gepusht. Auf der VM (ca. 23:40 UTC am 2026-10-07): VM-Kopie von `runs/2026-10-07_2025_vorstudie3_rep-1/` geprüft – `SHA256SUMS` gleich dem Commit, `sha256sum -c` ohne Abweichung, 37 Dateien wie auf dem Mac – und nach `~/puris-loadlab-state/runs-vm/` verschoben; dann `git pull --ff-only` und `git fetch --tags`.
+**Ergebnis:** `HEAD` = `78c7e84`, `git describe --tags --exact-match` = `setup-v1`, Git-Stand sauber; `./lab status`: Sperre frei, PURIS und EDC 6/6 bereit, keine Last. Die VM ist bereit für `./lab series k0 3`.
+**Offen vor dem Start:** Bestätigung des Verfassers, dass die anderen Dienste des NAS ruhen; Startzeitpunkt.

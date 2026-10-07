@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-08 – Etappe 1 abgeschlossen; Robustheit von `lab` auf der VM nachgewiesen (Kurztest 2); Vorstudien 1–3 abgeschlossen (Vorstudie 3: stabil bis 0,5/s, Kippen bei 0,8/s, keine Erholung bei 0,2/s). K0-Plan und S0 entschieden (2026-10-08, `k0.env`). Als Nächstes: Commit und `setup-v1` (Verfasser) → VM auf den Tag, Tag prüfen → K0-NAS mit `./lab series k0 3` (NAS-Dienste ruhen lassen). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-08 – Etappe 1 abgeschlossen; Robustheit von `lab` auf der VM nachgewiesen (Kurztest 2); Vorstudien 1–3 abgeschlossen (Vorstudie 3: stabil bis 0,5/s, Kippen bei 0,8/s, keine Erholung bei 0,2/s). K0-Plan und S0 entschieden, Aufbau eingefroren (`setup-v1` = `78c7e84`, 2026-10-08), VM auf dem Tag und bereit. Als Nächstes: K0-NAS mit `./lab series k0 3` (NAS-Dienste ruhen lassen). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -29,7 +29,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 8 Reset | weitgehend erledigt (2026-10-07; offen: Robustheit von `lab` auf der VM) | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
 | 10 Etappe 2 – Automatisieren | offen | Do 22.–Sa 24.10. (inkl. Neuaufbau mit Skripten) |
-| 11 Etappe 3 – Vorstudie und Einfrieren | weit fortgeschritten (Vorstudien 1–3 gelaufen, 2026-10-07; K0-Plan und S0 entschieden 2026-10-08; `setup-v1` offen) | Vorstudie Nacht 24./25.10., **`setup-v1` So 25.10. (Meilenstein 2)** |
+| 11 Etappe 3 – Vorstudie und Einfrieren | weit fortgeschritten (Vorstudien 1–3 gelaufen, 2026-10-07; K0-Plan und S0 entschieden, `setup-v1` gesetzt 2026-10-08; Hauptmessungen folgen) | Vorstudie Nacht 24./25.10., **`setup-v1` So 25.10. (Meilenstein 2)** |
 | 12 Etappe 3 – Hauptmessungen | offen | Mo 26.–Do 29.10. (ca. 5 h je Konfiguration, nachts) |
 | 13 Etappe 3 – Nachbau-Test | offen | Fr 30.10.–**So 01.11. (Meilenstein 3)** |
 | 14 Auswertung (`analysis/`) | offen | Skripte ab Mo 26.10. parallel, fertig Mo 02.11. |
@@ -41,7 +41,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 Wird ein Meilenstein verfehlt, wird am selben Tag entschieden und im Laborbuch festgehalten. Weicht der Plan vom Konzept ab (z. B. Reihenfolge der Etappen), wird zuerst `KONZEPT.md` angepasst.
 
 - [x] **So 18.10.** – Funktionstest (`e2`) noch nicht erfolgreich: Betreuung sofort einbeziehen (Datenraum vereinfachen, Hilfe bei Fraunhofer ISST, oder Abgabe der Arbeit verschieben). – entfällt (Meilenstein 1 am 07.10.2026 erreicht)
-- [ ] **So 25.10.** – `setup-v1` noch nicht gesetzt: Etappe 2 nur so weit, wie für `./lab reset` und `./lab run` nötig; vollständige Automatisierung und Nachbau-Test nach den Hauptmessungen oder als Limitation.
+- [x] **So 25.10.** – `setup-v1` noch nicht gesetzt: Etappe 2 nur so weit, wie für `./lab reset` und `./lab run` nötig; vollständige Automatisierung und Nachbau-Test nach den Hauptmessungen oder als Limitation. – entfällt (`setup-v1` am 2026-10-08 gesetzt)
 - [ ] **So 01.11.** – Messungen unvollständig: nur K0 und eine Skalierungskonfiguration auswerten; Fehlendes als Limitation bzw. Ausblick.
 
 ---
@@ -332,8 +332,8 @@ Noch offen:
 - [ ] K1-NAS vorbereiten (Eingriff zur Prüfung der Engpasshypothese, F3): EDC Control Plane Customer 500m → 1000m und PostgreSQL beider EDCs 200m → 400m, umverteilt aus kaum genutzten Zuteilungen (Wallet-Stub, PURIS, Data Plane Customer, k6-Runner) – Berechnung 2026-10-07: Obergrenze von 1,3–2,7/s auf ca. 2,5–4/s (`LABORBUCH.md`)
 - [x] K0-Plan (`experiments/plans/k0.env`) aus Vorstudie 2: Aufwärmen, 8 Stufen × 10 min um den Kipppunkt, zum Schluss 10 min Erholungsstufe mit geringer Last (zeigt, ob sich das System nach dem Kippen erholt – metastabiles Verhalten) *(Vorschlag im Laborbuch, Entscheidung des Verfassers offen: Aufwärmen 0,1 und 0,3/s je 10 min – nicht 0,5/s, dort lag der Auslöser –, Stufen 0,2 / 0,3 / 0,4 / 0,5 / 0,6 / 0,7 / 0,8 / 1 je s zu 10 min, Erholung 0,2/s 10 min; ca. 2,3 h je Wiederholung)* – entschieden 2026-10-08 (Verfasser, Chat): Stufen der Vorstudie 3 unverändert, Erholung 10 min; `k0.env` angelegt (`main`, `s0-v2`, 20 Materialien), TestRun lokal gleich dem der Vorstudie 3 (`LABORBUCH.md`, „Entscheidungen vor K0“); Vorstudie 3: ca. 2,0 h je Wiederholung
 - [ ] Je Lauf prüfen, ob nach dem Aufwärmen ein stabiler Zustand erreicht ist (CPU je Transaktion in den letzten Aufwärm-Minuten; vgl. Barrett et al. 2017), statt ihn anzunehmen
-- [ ] Aufbau vor K0 einfrieren: Git-Tag `setup-v1` (Verfasser)
-- [ ] Tag und VM-Stand vor K0: `k0.env` (`PLAN_KIND="main"`, `STATE="s0-v2"` wie Vorstudie 3) liegt im getaggten Commit; `lab` trägt den Tag nur bei exaktem Treffer in `meta.json` ein (`git describe --tags --exact-match`, Vorstudie 3: `tag: null`) → auf der VM nach `git fetch --tags` prüfen und die VM während der NAS-Messreihe auf dem Tag lassen (Doku-Commits nur auf dem Mac) – neu 2026-10-08
+- [x] Aufbau vor K0 einfrieren: Git-Tag `setup-v1` (Verfasser) – 2026-10-08, auf Commit `78c7e84` (`AUFBAU.md`, „Einfrieren“)
+- [x] Tag und VM-Stand vor K0: `k0.env` (`PLAN_KIND="main"`, `STATE="s0-v2"` wie Vorstudie 3) liegt im getaggten Commit; `lab` trägt den Tag nur bei exaktem Treffer in `meta.json` ein (`git describe --tags --exact-match`, Vorstudie 3: `tag: null`) → auf der VM nach `git fetch --tags` prüfen und die VM während der NAS-Messreihe auf dem Tag lassen (Doku-Commits nur auf dem Mac) – neu 2026-10-08 – geprüft 2026-10-08: VM auf `78c7e84`, `git describe --tags --exact-match` = `setup-v1`, Git-Stand sauber, `./lab status` bereit (`LABORBUCH.md`, „Aufbau eingefroren“)
 - [ ] K1-Plan mit erweitertem Stufenraster: Stufen von K0 übernehmen und über 1/s hinaus ergänzen (rechnerische Obergrenze K1 ca. 2,5–4/s; mit dem K0-Raster bis 1/s wäre ein Kipppunkt von K1 nicht messbar); K1-Überlagerung und `k1.env` möglichst schon im Commit von `setup-v1`, sonst `setup-v2` mit Laborbuch-Eintrag – neu 2026-10-08
 - [x] Dauer der Aufwärmphase bestimmt – 2026-10-08: 0,1/s und 0,3/s je 10 min (`KONZEPT.md`, Abschnitt 6; `k0.env`); stabiler Zustand wird je Lauf geprüft (Punkt oben) *(2026-10-07: Kurztest zeigt Kaltstart-Überlast; Vorstudie beginnt mit 0,1/s und 0,2/s je 5 min; Vorstudie 2: CPU der Control Plane des Customers sinkt über 15 min bei 0,5/s auf ca. das Niveau des Probelaufs, `LABORBUCH.md, „Vorstudie 2: Aufwärmen wirkt …“`)*
 - [x] Laststufen festgelegt (5–10 Stufen, je ca. 10 Minuten, plus Baseline) – 2026-10-08: 8 Stufen 0,2–1/s je 10 min plus Erholungsstufe (`k0.env`); Baseline = `s1` (0,2/s, niedrigste Stufe nach dem Aufwärmen) *(abgeleitet – bitte bestätigen)*
@@ -345,7 +345,7 @@ Noch offen:
 - [ ] Gesamtdauer der Hauptmessungen geschätzt (ca. 5 h je Konfiguration laut `ANLEITUNG.md`)
 - [ ] Alle Entscheidungen mit Begründung im Laborbuch
 - [x] Updates einmal eingespielt (Abschnitt 1) – entfällt (Entscheidung 2026-10-07, Abschnitt 1)
-- [ ] **Aufbau eingefroren:** Git-Tag `setup-v1` gesetzt und gepusht
+- [x] **Aufbau eingefroren:** Git-Tag `setup-v1` gesetzt und gepusht – 2026-10-08 (Verfasser; `origin`: `[new tag] setup-v1`)
 
 ## 12 Etappe 3 – Hauptmessungen
 

@@ -1262,6 +1262,30 @@ python3 analysis/stage_summary.py runs/<laufordner>
 
 ---
 
+## Einfrieren (`setup-v1`)
+
+**Datum:** 2026-10-08
+**Ziel:** Aufbau vor den Hauptmessungen einfrieren (`KONZEPT.md`, Abschnitt 6, „Einfrieren des Aufbaus“); jeder Lauf der Messreihe K0 trägt den Tag in `meta.json`.
+**Stand:** Commit `78c7e84` (enthält den Messplan [`experiments/plans/k0.env`](experiments/plans/k0.env)); Helm-Stand unverändert seit dem Probelauf (12 Releases, Tabelle in `LABORBUCH.md`, „Helm-Stand … nachträglich belegt“).
+
+**Befehle `[Mac]`** (durch den Verfasser):
+```bash
+git tag -a setup-v1 -m "freeze setup before main measurement k0"
+```
+```bash
+git push origin main setup-v1
+```
+
+**VM auf den Tag bringen `[VM]`** (vorher nicht versionierte Laufordner unter `runs/` mit `sha256sum -c SHA256SUMS` gegen den Commit prüfen und nach `~/puris-loadlab-state/runs-vm/` verschieben, sonst bricht `git pull` ab):
+```bash
+cd ~/puris-performance-experiments && git pull --ff-only && git fetch --tags && git describe --tags --exact-match && git status --porcelain && ./lab status
+```
+
+**Prüfung:** `git describe --tags --exact-match` → `setup-v1`; `git status --porcelain` leer; `./lab status`: Sperre frei, PURIS und EDC 6/6 bereit, keine Last.
+**Hinweise:** `lab` trägt den Tag nur ein, wenn `HEAD` genau auf ihm steht. Während einer Messreihe auf der VM nicht `git pull` ausführen; Änderungen am Aufbau nach `setup-v1` nur mit neuem Tag (`setup-v2`) und Laborbuch-Eintrag.
+
+---
+
 ## Hilfswerkzeuge (optional, kein Teil des Experiments)
 
 ### k9s – Terminal-Oberfläche für Kubernetes
