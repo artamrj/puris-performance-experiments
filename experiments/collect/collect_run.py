@@ -35,7 +35,9 @@ RATES = [float(r) for r in E["RATES"].split(",")]
 STAGE_MIN = float(E["STAGE_DURATION"])
 LABELS = E["STAGE_LABELS"].split(",") if E.get("STAGE_LABELS") else [f"s{i+1}" for i in range(len(RATES))]
 DRAIN_MAX = float(E.get("DRAIN_MAX_MIN", "15"))
-STEAL_MAX = float(E.get("STEAL_MAX", "0.02"))
+STEAL_MAX = float(E.get("STEAL_MAX", "0.05"))            # höchstes 1-min-Mittel
+STEAL_MEAN_MAX = float(E.get("STEAL_MEAN_MAX", "0.02"))  # Mittel über das Messfenster
+SUT_NS = {"customer", "supplier", "identity"}             # System unter Test
 PROM = "/api/v1/namespaces/monitoring/services/http:monitoring-kube-prometheus-prometheus:9090/proxy"
 LOKI = "/api/v1/namespaces/logging/services/http:loki:3100/proxy"
 CUST = '{namespace="customer", pod=~"puris-backend.*"}'
@@ -186,19 +188,37 @@ m = summary["metrics"]
 dropped = m.get("dropped_iterations", {}).get("values", {}).get("count", 0)
 runner_cpu = max((float(v) for r in cpu if r["metric"].get("pod", "").startswith(f"{NAME}-1-")
                   for _, v in r["values"]), default=0.0)
-steal_max = max((float(v) for r in steal for _, v in r["values"] if v != "NaN"), default=0.0)
-restarts = {f'{r["metric"].get("namespace")}/{r["metric"].get("pod")}/{r["metric"].get("container")}':
-            int(float(r["values"][-1][1]) - float(r["values"][0][1]))
-            for r in rst if r["metric"].get("namespace") != "k6"}
-restarts = {k: v for k, v in restarts.items() if v}
+steal_vals = [float(v) for r in steal for _, v in r["values"] if v != "NaN"]
+steal_max = max(steal_vals, default=0.0)
+steal_mean = sum(steal_vals) / len(steal_vals) if steal_vals else 0.0
+# Neustarts: im Messsystem (Prometheus, Loki, Alloy, k3s) immer ungültig; im System unter
+# Test nur während der Aufwärmstufen (Aufbau gestört) – danach sind sie ein Ergebnis der
+# Überlast (z. B. OOMKilled) und werden als solches festgehalten (KONZEPT.md, Abschnitt 6).
+warm_end = max((first + (i + 1) * timedelta(minutes=STAGE_MIN) for i, l in enumerate(LABELS)
+                if l.startswith("warmup")), default=first)
+restarts, sut_restarts = {}, {}
+for r in rst:
+    ns = r["metric"].get("namespace")
+    if ns == "k6" or not r["values"]: continue
+    v0 = float(r["values"][0][1])
+    inc = [(t, float(v)) for t, v in r["values"] if float(v) > v0]
+    if not inc: continue
+    key = f'{ns}/{r["metric"].get("pod")}/{r["metric"].get("container")}'
+    entry = {"count": int(float(r["values"][-1][1]) - v0), "first_utc": iso(datetime.fromtimestamp(inc[0][0], timezone.utc))}
+    if ns in SUT_NS and datetime.fromtimestamp(inc[0][0], timezone.utc) >= warm_end:
+        sut_restarts[key] = entry
+    else:
+        restarts[key] = entry
 disc_delta = (float(disc[0]["values"][-1][1]) - float(disc[0]["values"][0][1])) if disc else 0.0
 reset = json.load(open(os.path.join(EXTRA, "reset.json")))
 validity = {
     "dropped_iterations": dropped, "dropped_ok": dropped == 0,
     "k6_runner_cpu_max_cores": round(runner_cpu, 3), "k6_cpu_ok": runner_cpu < 0.45,
-    "restarts_during_run": restarts, "restarts_ok": not restarts,
+    "restarts_invalidating": restarts, "restarts_ok": not restarts,
+    "sut_restarts_after_warmup": sut_restarts,
     "loki_discarded_delta": disc_delta, "loki_ok": disc_delta == 0,
-    "steal_max_ratio": round(steal_max, 4), "steal_limit": STEAL_MAX, "steal_ok": steal_max < STEAL_MAX,
+    "steal_max_ratio": round(steal_max, 4), "steal_limit": STEAL_MAX, "steal_mean_ratio": round(steal_mean, 4),
+    "steal_mean_limit": STEAL_MEAN_MAX, "steal_ok": steal_max < STEAL_MAX and steal_mean < STEAL_MEAN_MAX,
     "reset_ok": bool(reset.get("counts_equal_after_restore")),
 }
 validity["valid"] = all(v for k, v in validity.items() if k.endswith("_ok"))
@@ -211,7 +231,8 @@ meta = {
     "repetition": int(E.get("REP", "0")), "git_commit": COMMIT, "tag": TAG or None,
     "testrun": NAME, "testid": TESTID, "script": "experiments/k6/stock-trigger.js",
     "plan_values": {"state": E.get("STATE"), "rates_per_s": RATES, "stage_labels": LABELS, "stage_minutes": STAGE_MIN,
-                    "materials_n": int(E.get("MATERIALS_N") or 0) or None, "drain_max_min": DRAIN_MAX, "steal_max": STEAL_MAX},
+                    "materials_n": int(E.get("MATERIALS_N") or 0) or None, "drain_max_min": DRAIN_MAX,
+                    "steal_max": STEAL_MAX, "steal_mean_max": STEAL_MEAN_MAX},
     "times_utc": {"apply": T_APPLY, "runner_start": iso(r_start), "runner_end": iso(r_end),
                   "first_trigger": iso(first), "drain_end": iso(drain_end), "collection_window": [iso(w_start), iso(w_end)]},
     "drain": {"reason": drain_reason, "open_at_end": trig_n - fin_n},

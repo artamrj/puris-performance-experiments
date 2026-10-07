@@ -782,3 +782,108 @@ Begründung: Ihre Daten ändern sich im Lauf nicht; ein Neustart der DTRs dauert
 - Sammelskript ergänzt: Vertragsverhandlungen (`edc/*-negotiations.csv`), Zustand und Fehler je Transfer, WARN/ERROR-Zeilen der EDC Control Planes aus Loki; „Invalidating …“ zählt jetzt beide Varianten (Item Stock und DTR).
 - `./lab run` prüft den Git-Stand ohne neue Laufordner unter `runs/` (eine Messreihe erzeugt mehrere Laufordner nacheinander; sie ändern den gemessenen Aufbau nicht).
 - Laufordner entstehen auf der VM; zum Commit werden sie auf den Mac kopiert (Prüfsummen geprüft), auf der VM danach nach `~/puris-loadlab-state/runs-vm/` verschoben (nicht gelöscht), damit `git pull` sie als versionierte Dateien übernimmt.
+
+## 2026-10-07 – Vorstudie 1: Kipppunkt zwischen 0,5/s und 1/s, Engpass EDC Control Plane des Customers
+
+**Gemacht:** `./lab run vorstudie 1` auf der VM in `tmux` (aus Commit `8863197`): Reset auf `s0-v2` (327 s), ab 11:21:19 UTC Stufen je 5 min: Aufwärmen 0,1/s und 0,2/s, dann 0,5 / 1 / 2 / 3 / 4 / 5 / 6 je s. Verlauf je Minute live über Loki und Prometheus beobachtet. **k6 um 11:48:37 UTC vorzeitig beendet** (REST-API des Runners, `stopped: true`; Zusammenfassung von k6 vorhanden), Entscheidung des Assistenten im Rahmen des Auftrags: Sättigungsbereich und Engpasskandidat waren eindeutig; die Stufen ab 3/s hätten nur das bereits gekippte System gezeigt (ca. 40 min ohne neue Information).
+
+**Beobachtungen (live, je Minute):**
+
+| Zeit (UTC) | Stufe | ausgelöst/min | abgeschlossen/min | gescheitert/min | „Invalidating …“/min | CPU Control Plane Customer | Threads PURIS Customer |
+|---|---|---|---|---|---|---|---|
+| 11:22–11:26 | 0,1/s | 5–6 | 5–6 | 0 | 0 | 0,30 (1. Minute) → 0,06–0,11 | 37–39 |
+| 11:27–11:31 | 0,2/s | 12 | 12–13 | 0 | 0 | 0,06–0,09 | 37–38 |
+| 11:32–11:36 | 0,5/s | 29–30 | 28–30 | 0 | 0 | 0,13–0,22 (fallend) | 40–41 |
+| 11:37 | 1/s | 59 | 10 | 0 | 0 | 0,47 | 96 |
+| 11:38–11:40 | 1/s | 59–60 | 0–1 | 3–40 | 14–90 | 0,40–0,50 | 148–204 |
+| 11:41–11:46 | 2/s | 88–120 | 0 | 43–58 | 92–122 | 0,35–0,50 | 245–493 |
+
+- Je Minute (Prometheus, 11:33–11:40): **nur die EDC Control Plane des Customers erreicht ihr Limit** (0,49–0,50 von 0,5 Kernen, 89–99 % der Perioden gedrosselt ab 11:38). Alle anderen Komponenten weit darunter (Control Plane Supplier höchstens 0,18 von 0,5; PURIS Customer 0,17 von 0,6; Wallet-Stub 0,05 von 0,5; Data Plane Supplier 0,08 von 0,4). PostgreSQL-Pods mit kleinem Limit dauerhaft gedrosselt (DTR Customer 64–83 %, PURIS Supplier 59–79 %), aber ohne Zusammenhang mit dem Kippen.
+- Ablauf des Kippens wie im Kurztest: Control Plane am Limit → Zeitüberschreitungen → „Invalidating …“ → Neuverhandlungen → noch mehr Last auf der Control Plane. Ab 11:38 praktisch keine abgeschlossene Transaktion mehr.
+- Threads im PURIS-Backend des Customers wachsen ohne Grenze mit dem Rückstau (37 → 493 in 10 min): Der Thread-Pool hat keine Obergrenze (`KONZEPT.md`, Abschnitt 13).
+- Aufwärmen wirkt: Die CPU der Control Plane fällt bei 0,1/s nach 2–3 min von 0,30 auf unter 0,1 Kerne. Bei 0,5/s sinkt sie innerhalb der Stufe weiter (0,22 → 0,14).
+- **Vergleich mit dem Probelauf:** Dort (JVMs seit ca. 12 h warm, 1 Material) lief 1/s fehlerfrei bei höchstens 0,19 Kernen; bei 0,5/s im Mittel ca. 0,11. Hier bei 0,5/s ca. 0,18 – der CPU-Bedarf je Transaktion ist nach 10 min Aufwärmen deutlich höher. Vermutung: JIT-Übersetzung der JVM nach dem Neustart noch nicht abgeschlossen (bei 0,5 Kernen konkurrieren Übersetzung und Anwendung um dieselbe Zuteilung). Wird mit Vorstudie 2 geprüft.
+
+**Bedeutung für die Arbeit (vorläufig):** Zwei Zustände bei derselben Last – stabil (Probelauf) und gekippt (hier) –, abhängig von der Vorgeschichte. Das passt zum Muster „metastabiler Ausfälle“ (sich selbst erhaltende Überlast nach einem Auslöser) – Literatur dazu vor der Übernahme in Kapitel 2/6 prüfen.
+
+**Ergebnis (gesammelt, `runs/2026-10-07_1115_vorstudie_rep-1/`, 10M, Mac 0 Abweichungen von `SHA256SUMS`;** `python3 analysis/stage_summary.py`; Dauer nach Verfahren A, B gleich bis auf 0,1 s):
+
+| Stufe | Rate | abgeschlossen/s | gescheitert | „Invalidating …“ / neue Verhandlungen | Dauer p50 / p95 | CPU Control Plane Customer (Mittel) |
+|---|---|---|---|---|---|---|
+| warmup1 | 0,1/s | 0,10 | 0 | 0 / 0 | 4,2 / 12,9 s | 0,11 |
+| warmup2 | 0,2/s | 0,20 | 0 | 0 / 0 | 2,9 / 4,3 s | 0,09 |
+| s1 | 0,5/s | 0,50 | 0 | 0 / 0 | 3,3 / 4,8 s | 0,18 |
+| s2 | 1/s | 0,06 | 101 | 226 / 315 | 19,7 / 92,1 s | 0,49 |
+| s3 | 2/s | 0,00 | 292 | 609 / 1016 | – | 0,48 |
+| s4 | 3/s (bis Abbruch) | 0,00 | 471 | 971 / 847 | – | 0,48 |
+
+- Gesamt: 1531 ausgelöst, 260 abgeschlossen, 1253 gescheitert; nach dem Ende von k6 alle offenen Transaktionen in 7 min beendet (überwiegend gescheitert).
+- Gültigkeit: alle Kriterien erfüllt außer Steal Time (höchstens 2,31 % gegenüber dem vorläufigen Grenzwert 2 %; Probelauf höchstens 1,12 %). Steal Time stieg erst im gekippten Zustand auf 2 %; in den stabilen Stufen höchstens 1 %. Grenzwert wird nach Vorstudie 2 festgelegt.
+- Dauer der Aufwärmphase: In warmup1 (kalt) p95 12,9 s, ab warmup2 stabil um 3 s.
+
+**Entscheidung:** Vorstudie 2 (`experiments/plans/vorstudie2.env`) mit längerem Aufwärmen (0,2/s 5 min, dann 0,5/s 15 min) und feinen Stufen 0,6 / 0,7 / 0,8 / 0,9 / 1 / 1,2 je s (je 5 min).
+Begründung: Klären, ob der Kipppunkt vom Grad des Aufwärmens abhängt (Probelauf: 1/s stabil), und ihn genauer bestimmen, bevor die Stufen der Hauptmessung K0 festgelegt werden.
+
+## 2026-10-07 – Analyse nach Vorstudie 1: Warum kippt das System bei 1/s, der Probelauf aber nicht?
+
+**Vergleich bei gleicher Rate** (Mittel je Stufe ohne erste Minute, Kerne; Probelauf `2026-10-07_0100_pilot_rep-1` gegen Vorstudie 1):
+
+| Komponente | Probelauf 0,5/s | Vorstudie 1 0,5/s | Verhältnis | neu gestartet durch Reset? |
+|---|---|---|---|---|
+| EDC Control Plane Customer | 0,110 | 0,179 | 1,6 | ja |
+| EDC Control Plane Supplier | 0,077 | 0,128 | 1,7 | ja |
+| PostgreSQL EDC Customer | 0,060 | 0,096 | 1,6 | nein (Datenbank zurückgesetzt) |
+| PostgreSQL EDC Supplier | 0,066 | 0,099 | 1,5 | nein (Datenbank zurückgesetzt) |
+| PURIS Customer | 0,045 | 0,063 | 1,4 | ja |
+| Wallet-Stub | 0,039 | 0,025 | **0,6** | nein, läuft seit 2026-10-06 |
+
+Je Transaktion weiterhin genau 2 Transfers (keine zusätzlichen Versuche). Im Probelauf lief 1/s mit 0,150 Kernen (Control Plane Customer); in Vorstudie 1 innerhalb der 0,5/s-Stufe je Minute 0,19 → 0,22 → 0,16 → 0,14 (fallend).
+
+**Deutung (Hypothesen, nicht belegt):**
+1. *Aufwärmzustand der JVMs:* Der Reset startet Control Planes und PURIS neu; der nicht neu gestartete, seit dem Probelauf viel genutzte Wallet-Stub braucht dagegen weniger CPU als damals. Gegen eine reine Erklärung durch Last spricht, dass auch der Probelauf kaum vorherige Last hatte – die Komponenten liefen dort aber seit Stunden (Hintergrundschleifen der EDC mit Protokollierung auf Stufe DEBUG übersetzt die JVM auch ohne Last).
+2. *Tageszeit / Host:* Probelauf um 03:00, Vorstudie um 13:00 Ortszeit; die hybride CPU des NAS (Performance- und Effizienzkerne) und andere NAS-Dienste können die Leistung je CPU-Sekunde ändern. Die höhere CPU der Datenbanken (ohne JIT) passt eher hierzu.
+3. *Zustand nach `pg_restore`:* keine Planer-Statistiken bis zum ersten Autovacuum (in Vorstudie 1 bis zu 47-mal je Tabelle während der Last).
+
+**Weitere Beobachtungen:**
+- Speicher der Control Plane des Customers: bis 0,5/s höchstens 254 Mi, bei 1/s 901 Mi, danach 979–982 Mi von 1024 Mi (Heap höchstens 768 Mi). Beim Kippen ist der Heap voll; die Speicherbereinigung braucht zusätzlich CPU. Zweite Rückkopplung neben den Neuverhandlungen; Risiko `OOMKilled` in Überlaststufen.
+- Verhandlungen im EDC des Customers nach Vorstudie 1: 2340 (S0-v2: 3).
+- Der Kipppunkt hängt damit nicht nur von der Last ab, sondern auch vom Zustand davor – entscheidend für den Messablauf (gleiches Aufwärmen in jeder Wiederholung) und für die Diskussion (Kapitel 6).
+
+**Entscheidungen** (vom Assistenten vorgeschlagen; gelten mit dem Commit des Verfassers; Einzelheiten in `KONZEPT.md`, Abschnitte 6 und 12):
+- Reset mit `ANALYZE` der zurückgesetzten Datenbanken (Hypothese 3 ausschalten, gleicher Startzustand).
+- Gültigkeit: Steal Time höchstes 1-min-Mittel < 5 % und Mittel < 2 %; Neustarts im Messsystem immer ungültig, im System unter Test nur während des Aufwärmens – danach Ergebnis.
+- Sättigungskriterium (Vorschlag): abgeschlossen < 95 % der Eingangslast oder > 1 % gescheitert oder mindestens ein „Invalidating …“.
+- Vorstudie 2 (`experiments/plans/vorstudie2.env`): Aufwärmen 0,1/s und 0,2/s je 5 min, dann 15 min 0,5/s (prüft Hypothese 1: sinkt der CPU-Bedarf auf das Niveau des Probelaufs?), danach 0,6 / 0,8 / 1 / 1,2 / 1,5 / 2 / 2,5 je s; Abbruch nach eindeutigem Kippen.
+- Hauptmessungen K0 nachts mit ruhenden NAS-Diensten (alle Wiederholungen unter gleichen Bedingungen; Hypothese 2).
+
+## 2026-10-07 – Ursache des Kippens: zu kleine CPU-Anteile je Container, nicht zu wenig CPU im Knoten
+
+**Anlass:** Frage des Verfassers – während der Läufe bleibt viel CPU ungenutzt.
+
+**Beobachtungen:**
+- Belegung des Knotens in Vorstudie 1 (node-exporter, ohne erste Minute je Stufe): 1,05 / 1,05 / 1,43 / 1,89 / 2,11 von 8 Kernen in `warmup1` bis `s3` (13–27 %). Auch im gekippten Zustand waren ca. 6 Kerne frei.
+- Jeder Container hat ein festes Limit (requests = limits, `KONZEPT.md` Abschnitt 3); freie CPU des Knotens kann er nicht nutzen. Die Control Plane des Customers stößt an ihre 0,5 Kerne, während der Knoten fast leer ist.
+- JVM unter einem Limit unter einem Kern (geprüft in Control Plane und PURIS-Backend des Customers mit `java -XX:+PrintFlagsFinal -version` und `java -XshowSettings:system -version`): „Effective CPU Count: 1“, `UseSerialGC = true` (Speicherbereinigung hält alle Anwendungs-Threads an), CPU-Quote 50 000 µs bzw. 60 000 µs je Periode von 100 000 µs. Nach 50 ms Rechenzeit in einer Periode wird der ganze Container bis zum Periodenende angehalten; JIT-Übersetzung, Speicherbereinigung und Anwendung teilen sich dieselbe Quote.
+- Bedarf je Transaktion D (Steigung der mittleren CPU über die stabilen Stufen, Kern-s je Transaktion) und theoretische Obergrenze X_max = Limit / D (Auslastungsgesetz):
+
+| Komponente | Limit | D Probelauf | X_max | D Vorstudie 1 | X_max |
+|---|---|---|---|---|---|
+| EDC Control Plane Customer | 0,50 | 0,117 | 4,3/s | 0,297 | 1,7/s |
+| EDC Control Plane Supplier | 0,50 | 0,091 | 5,5/s | 0,189 | 2,6/s |
+| PostgreSQL EDC Customer | 0,20 | 0,060 | 3,3/s | 0,134 | 1,5/s |
+| PostgreSQL EDC Supplier | 0,20 | 0,064 | 3,1/s | 0,124 | 1,6/s |
+| PURIS Customer | 0,60 | 0,045 | 13,3/s | 0,097 | 6,2/s |
+| EDC Data Plane Supplier | 0,40 | 0,054 | 7,4/s | 0,081 | 4,9/s |
+| Wallet-Stub | 0,50 | 0,061 | 8,2/s | 0,053 | 9,4/s |
+| übrige (PURIS Supplier, DTR Supplier, übrige PostgreSQL, Vault) | 0,1–0,4 | ≤ 0,021 | ≥ 8,7/s | ≤ 0,027 | ≥ 6,9/s |
+
+Summe der Limits im System unter Test: 4,55 Kerne.
+
+**Deutung:**
+- Das Kippen bei 1/s zeigt vor allem die Wirkung der gewählten CPU-Anteile (NAS-Profil, Schätzung vom 2026-10-06 ohne Messdaten): Vier Komponenten liegen fast gleichauf nahe ihrer Grenze (X_max 1,5–2,6/s); das System kippte schon bei ca. 60 % davon. Die Java-Dienste laufen unter Bedingungen (1 CPU, SerialGC, Quote unter einem Kern), die das Verhalten stark vom Aufwärmzustand abhängig machen (Faktor 2,5 im Bedarf der Control Plane zwischen Probelauf und Vorstudie 1).
+- Davon unabhängig und als Ergebnis gültig: der Mechanismus Zeitüberschreitung → Verwerfen der Verträge → Neuverhandlung sowie der Thread-Pool ohne Obergrenze. Er tritt bei jeder Ausstattung auf, sobald eine Komponente im Anfrageweg gesättigt ist; mit mehr CPU erst bei höherer Last.
+
+**Vorschlag des Assistenten (Entscheidung des Verfassers offen):**
+- Feste Limits beibehalten (Reproduzierbarkeit, Zuordnung des Engpasses über die Drosselung), aber nach gemessenem Bedarf bemessen: jede JVM mindestens 1 Kern, Komponenten im Anfrageweg mit Reserve (Control Planes 2 Kerne / 2Gi, PostgreSQL der EDCs 1 Kern). Summe grob ca. 16 Kerne für das System unter Test, mit Messsystem und k6 ca. 20 Kerne – nicht auf der NAS-VM (7 zuteilbar), aber auf der VM der Betreuung (24 vCPU, 48 GB).
+- Hauptmessungen auf der VM der Betreuung mit diesem Referenzprofil; das NAS-Profil dort als Vergleichskonfiguration auf derselben Hardware; Verdopplung des gefundenen Engpasses als Skalierungskonfiguration.
+- Vorstudie 2 auf der NAS-VM (`experiments/plans/vorstudie2.env`) zurückgestellt, bis die Entscheidung gefallen ist; K0 mit dem NAS-Profil heute Nacht nicht starten.

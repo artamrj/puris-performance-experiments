@@ -111,6 +111,11 @@ for s in meta["stages"]:
     rows.append({
         "stage": s["stage"], "rate": s["rate_per_s"], "planned": s["planned"], "triggered": s["triggered_log"],
         "completed_per_s": round(s["completed_log"] / dur, 3),
+        # Sättigungskriterium (Vorschlag 2026-10-07): abgeschlossen < 95 % der Eingangslast
+        # oder gescheitert > 1 % der Auslösungen oder mindestens ein „Invalidating …“
+        "saturated": (s["completed_log"] / dur < 0.95 * s["rate_per_s"])
+                     or (s.get("failed_log", 0) > 0.01 * max(s["triggered_log"], 1))
+                     or any(a <= t < b for t in inval_t),
         "invalidations": sum(1 for t in inval_t if a <= t < b), "negotiations": sum(1 for t in neg_created if a <= t < b),
         "failed": s.get("failed_log", s.get("error_warn_lines")),
         "A_p50_s": q(da, .5), "A_p95_s": q(da, .95), "A_max_s": max(da, default=None), "A_n": len(da),
@@ -124,7 +129,7 @@ for s in meta["stages"]:
 fmt = lambda x: "–" if x is None else (f"{x:.2f}" if isinstance(x, float) else str(x))
 print(f"Lauf {meta['run']} – gültig: {meta.get('validity', {}).get('valid')}")
 for r in rows:
-    print(f"{r['stage']:>8} {fmt(r['rate']):>5}/s  ausgelöst {r['triggered']:>5}/{r['planned']:<5} fertig {fmt(r['completed_per_s'])}/s  "
+    print(f"{'S' if r['saturated'] else ' '}{r['stage']:>8} {fmt(r['rate']):>5}/s  ausgelöst {r['triggered']:>5}/{r['planned']:<5} fertig {fmt(r['completed_per_s'])}/s  "
           f"Fehler {r['failed']:>3}  Inval./Verh. {r['invalidations']}/{r['negotiations']}  A p50/p95/max {fmt(r['A_p50_s'])}/{fmt(r['A_p95_s'])}/{fmt(r['A_max_s'])} s  "
           f"B p50/p95 {fmt(r['B_p50_s'])}/{fmt(r['B_p95_s'])} s  Threads {fmt(r['puris_threads_max'])}  Steal {fmt(r['steal_max'])}")
     print(f"{'':>16}CPU (Mittel, Kerne): {r['cpu_top']}")

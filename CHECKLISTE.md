@@ -307,12 +307,16 @@ Noch offen:
 
 ## 11 Etappe 3 – Vorstudie und Einfrieren
 
-- [ ] Vorstudie: Lastbereiche gering / mäßig / stark bestimmt
+- [ ] Vorstudie: Lastbereiche gering / mäßig / stark bestimmt *(2026-10-07, Vorstudie 1: stabil bis 0,5/s, Kippen bei 1/s nach 10 min Aufwärmen; Engpass EDC Control Plane Customer; Vorstudie 2 mit längerem Aufwärmen und Stufen 0,6–1,2/s folgt)*
+- [ ] Vorstudie 2 (`experiments/plans/vorstudie2.env`): sinkt der CPU-Bedarf je Transaktion mit längerem Aufwärmen (0,1 → 0,2 → 15 min 0,5/s) auf das Niveau des Probelaufs? Wo liegt der Kipppunkt (Stufen 0,6–2,5/s)?
+- [x] Reset mit `ANALYZE` der zurückgesetzten Datenbanken – 2026-10-07 (gleiche Planer-Statistiken zu Beginn jedes Laufs; vorher nur durch Autovacuum während der Last)
+- [ ] Vor K0: andere NAS-Dienste ruhen lassen (Verfasser), K0 nachts starten; Grafana und k9s geschlossen
+- [ ] Skalierungskonfiguration K1 vorbereiten: Engpasshypothese prüfen – CPU der EDC Control Plane des Customers 500m → 1000m (Umverteilung auf der NAS-VM, z. B. vom kaum genutzten Wallet-Stub und PURIS Customer); optional K2: Speicher der Control Plane 1Gi → 2Gi (Rückkopplung über die Speicherbereinigung)
 - [ ] Dauer der Aufwärmphase bestimmt *(2026-10-07: Kurztest zeigt Kaltstart-Überlast; Vorstudie beginnt mit 0,1/s und 0,2/s je 5 min)*
 - [ ] Laststufen festgelegt (5–10 Stufen, je ca. 10 Minuten, plus Baseline)
-- [ ] Gültigkeitskriterien je Lauf festgelegt: `dropped_iterations = 0`, k6 unter CPU-Limit, keine `OOMKilled`/Neustarts, Reset-Prüfung bestanden
-- [ ] Grenzwert für Steal Time festgelegt (`node_cpu_seconds_total{mode="steal"}`, z. B. < 2 % der CPU-Zeit) – Läufe darüber sind ungültig
-- [ ] Sättigungskriterium operational festgelegt (abgeschlossene Transaktionen/s folgen der Eingangslast nicht mehr, Rückstau)
+- [x] Gültigkeitskriterien je Lauf festgelegt: `dropped_iterations = 0`, k6 unter CPU-Limit, keine `OOMKilled`/Neustarts, Reset-Prüfung bestanden – 2026-10-07 (`KONZEPT.md`, Abschnitt 6): Neustarts im Messsystem immer ungültig, im System unter Test nur während des Aufwärmens; danach Ergebnis (Vorschlag, mit Commit bestätigt)
+- [x] Grenzwert für Steal Time festgelegt (`node_cpu_seconds_total{mode="steal"}`, z. B. < 2 % der CPU-Zeit) – Läufe darüber sind ungültig – 2026-10-07: höchstes 1-min-Mittel < 5 % und Mittel < 2 % (Probelauf max. 1,1 %, Vorstudie 1 max. 2,3 % nur im gekippten Zustand)
+- [x] Sättigungskriterium operational festgelegt (abgeschlossene Transaktionen/s folgen der Eingangslast nicht mehr, Rückstau) – 2026-10-07 (Vorschlag, `KONZEPT.md` Abschnitt 6): < 95 % der Eingangslast abgeschlossen oder > 1 % gescheitert oder mindestens ein „Invalidating …“; in `analysis/stage_summary.py` als Kennzeichen `S`
 - [ ] Skalierungskonfigurationen ausgewählt (aus dem Engpasskandidaten der Vorstudie), jeweils als zusätzliche YAML-Datei mit `-f`
 - [ ] Erfolgskriterium des Nachbau-Tests **vorher** festgelegt
 - [ ] Gesamtdauer der Hauptmessungen geschätzt (ca. 5 h je Konfiguration laut `ANLEITUNG.md`)

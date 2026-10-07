@@ -9,7 +9,7 @@
 #                             $STATE_DIR/<name>; bricht ab, wenn es ihn schon gibt
 #   ./lab reset <name>        Ausgangszustand herstellen: PURIS und EDC beider
 #                             Firmen anhalten, ihre Datenbanken auf <name>
-#                             zurücksetzen, Zeilen aller 7 Datenbanken prüfen,
+#                             zurücksetzen, Zeilen aller 7 Datenbanken prüfen, ANALYZE,
 #                             EDC und PURIS wieder starten
 #   ./lab run <plan> <rep>    Messlauf nach experiments/plans/<plan>.env:
 #                             Reset → k6-TestRun → Abarbeiten abwarten →
@@ -91,7 +91,10 @@ cmd_reset() {
   # 4. Zeilen aller 7 Datenbanken = Stand
   diffs="$(check_counts "$d")"
   [ -z "$diffs" ] || die "Zeilen weichen vom Stand ab:"$'\n'"$diffs"
-  log "Datenbanken auf $name, Zeilen aller 7 Datenbanken gleich"
+  # Planer-Statistiken sofort erzeugen: pg_restore stellt keine wieder her; sonst entstehen
+  # sie erst durch Autovacuum zu zufälligen Zeitpunkten während der Last (Vorstudie 1).
+  for n in $RESET_DBS; do db_cmd "$n" psql "-q -c 'SET client_min_messages TO error; ANALYZE'" >/dev/null; done
+  log "Datenbanken auf $name, Zeilen aller 7 Datenbanken gleich, ANALYZE ausgeführt"
   # 5. erst EDC, dann PURIS starten (PURIS spricht beim Start den EDC an)
   for ns in customer supplier; do
     # shellcheck disable=SC2086
