@@ -1199,6 +1199,7 @@ Ablauf im Skript ([`lab`](lab), [`lib/db.sh`](lib/db.sh)):
 3. `pg_restore --clean --if-exists --single-transaction --exit-on-error` der Datenbanken `c2`, `c4`, `d1`, `d2` (im Datenbank-Pod, Zugangsdaten aus der Pod-Umgebung).
 4. Zeilen aller Tabellen aller 7 Datenbanken gleich dem Stand – sonst Abbruch.
 5. EDC beider Firmen auf 1 Replikat, `kubectl rollout status`; danach PURIS (spricht beim Start den EDC an).
+   *Geändert 2026-10-07 (nach dem hängenden Reset um 13:51 UTC, `LABORBUCH.md`): vorher `DELETE FROM edc_data_plane_instance` in beiden EDC-Datenbanken; dann erst die Control Planes, nach deren Bereitschaft die Data Planes (melden sich selbst an), danach PURIS.*
 6. Zeilen nach dem Start erneut verglichen; Ergebnis in `~/puris-loadlab-state/last-reset.json` (wird von `./lab run` in `meta.json` übernommen).
 
 Ergebnis der ersten Ausführung (Stand nach dem Probelauf → S0):

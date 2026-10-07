@@ -249,6 +249,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`) – 2026-10-07, `AUFBAU.md`, „Reset (`./lab reset`)“
 - [x] Wallet-Stub-Datenbank liegt auf `emptyDir` (Neustart leert sie): beim Reset wiederherstellen oder Wallet-Pod nie neu starten – entscheiden; gefunden 2026-10-07 – entschieden 2026-10-07: nie neu starten, nicht zurücksetzen, Zeilen bei jedem Reset prüfen (Daten ändern sich im Lauf nicht)
 - [x] Wiederherstellung von S0 mit `pg_restore` erproben (Sicherungen: `~/puris-loadlab-state/s0/` auf der VM) – 2026-10-07, 4 Datenbanken in 20 s
+- [ ] Reset ohne Wettlauf beim Start der EDCs: Registrierung der Data Planes löschen, Start Control Plane → Data Plane → PURIS – gefunden 2026-10-07 (Reset hing 13:51 UTC), Erklärung von Hand geprüft (Control Plane ohne Registrierung bereit nach 40 s); in `lab` umgesetzt, Bestätigung mit dem nächsten Reset offen
 - [ ] Vorläufige Entscheidung zu S0 (mit Verträgen) im Laborbuch bestätigt oder geändert
 
 ## 9 Offene Punkte klären
@@ -267,10 +268,10 @@ Noch offen:
 - [ ] Verfahren für die Dauer einer Transaktion (Probelauf) *(Kandidat: EDC-Datenbank `created_at`/`state_time_stamp`; siehe Abschnitt 7)*
 - [x] Wachsen die EDC-Tabellen über die Läufe? (Reset) – ja: `edc_transfer_process`, `edc_jti_validation`, beim Supplier auch `edc_data_plane`, `edc_policy_monitor`; der Reset setzt beide EDC-Datenbanken zurück – 2026-10-07
 - [x] Hauptumgebung festgelegt: NAS-VM mit eigenem NAS-Profil; VPS nur optional – 2026-10-06 (Entscheidung des Nutzers, `VPS-VARIANTE.md`)
-- [ ] Option VPS durchführen? (A: Nachbau-Test auf 8 dedizierten vCPU mit NAS-Profil, ≈ 5–10 €; B: größere Skalierung nur bei Bedarf) – bis So 18.10., `VPS-VARIANTE.md` Abschnitt 4 und 10 *(seit 2026-10-07: VM der Betreuung könnte A und B ersetzen, siehe nächste Punkte)*
+- [ ] Option VPS durchführen? (A: Nachbau-Test auf 8 dedizierten vCPU mit NAS-Profil, ≈ 5–10 €; B: größere Skalierung nur bei Bedarf) – bis So 18.10., `VPS-VARIANTE.md` Abschnitt 4 und 10 *(seit 2026-10-07: VM der Betreuung könnte A und B ersetzen, siehe nächste Punkte)* *(2026-10-07: ersetzt durch die VM der Betreuung; nur Plan B, falls diese nicht rechtzeitig nutzbar ist)*
 - [x] Zusätzliche VM von der Betreuung erhalten: 24 vCPU, 48 GB RAM, 500 GB Speicher – 2026-10-07 (Aussage des Verfassers; `LABORBUCH.md`)
 - [ ] VM der Betreuung prüfen: CPU-Modell (`lscpu`), dedizierte oder geteilte vCPU (Steal Time), Betriebssystem, Root-Rechte, Zugang vom Mac, Abruf der Images, Verfügbarkeit bis nach der Abgabe
-- [ ] Rolle der VM der Betreuung festlegen (Vorschlag: NAS-VM bleibt Hauptumgebung; VM der Betreuung für den Neuaufbau mit den Skripten = Nachbau-Test auf fremder Hardware und für Skalierungskonfigurationen mit echtem Zuwachs, K0 dort als Bezug) – dann `KONZEPT.md` und `VPS-VARIANTE.md` anpassen
+- [x] Rolle der VM der Betreuung festlegen (Vorschlag: NAS-VM bleibt Hauptumgebung; VM der Betreuung für den Neuaufbau mit den Skripten = Nachbau-Test auf fremder Hardware und für Skalierungskonfigurationen mit echtem Zuwachs, K0 dort als Bezug) – dann `KONZEPT.md` und `VPS-VARIANTE.md` anpassen – entschieden 2026-10-07 (Verfasser, auf Vorschlag nach Ressourcenanalyse, `LABORBUCH.md`): NAS-VM Hauptumgebung mit dem bisherigen Profil (K0) und Entlastung der EDC (K1); VM der Betreuung: Original-Konfiguration der Charts (K0-ISST unverändert, K1-ISST PostgreSQL ohne Test-Preset) und Neuaufbau mit den Skripten (Nachbau-Test)
 - [x] Reihenfolge entscheiden: Hauptmessung K0 auf der NAS-VM **vor** der vollständigen Automatisierung (nur `reset`/`run` als Skript, Plan-B-Umfang aus „Entscheidungspunkte“ vorgezogen) – vor dem Einfrieren; dann `KONZEPT.md`, Abschnitt 1, anpassen – entschieden 2026-10-07: ja; `KONZEPT.md` Abschnitte 1, 11, 12
 - [ ] Startwerte des NAS-Profils nach dem Probelauf bestätigen oder anpassen (`VPS-VARIANTE.md`, Abschnitt 2) *(Probelauf bis 1/s: alle Komponenten weit unter dem Limit, aber zeitweise Drosselung bei kleinen Limits; Aussage über Sättigung erst mit der Vorstudie)*
 - [x] Netzwerk im Cluster festlegen: Kubernetes-Dienstnamen statt Ingress (wie die PURIS-Referenzumgebung; ingress-nginx seit 03/2026 ohne Pflege) oder Ingress + DNS (wie Umbrella) – vor `c1` – Dienstnamen, 2026-10-06 *(abgeleitet – bitte bestätigen)*
@@ -308,10 +309,13 @@ Noch offen:
 ## 11 Etappe 3 – Vorstudie und Einfrieren
 
 - [ ] Vorstudie: Lastbereiche gering / mäßig / stark bestimmt *(2026-10-07, Vorstudie 1: stabil bis 0,5/s, Kippen bei 1/s nach 10 min Aufwärmen; Engpass EDC Control Plane Customer; Vorstudie 2 mit längerem Aufwärmen und Stufen 0,6–1,2/s folgt)*
-- [ ] Vorstudie 2 (`experiments/plans/vorstudie2.env`): sinkt der CPU-Bedarf je Transaktion mit längerem Aufwärmen (0,1 → 0,2 → 15 min 0,5/s) auf das Niveau des Probelaufs? Wo liegt der Kipppunkt (Stufen 0,6–2,5/s)?
+- [ ] Vorstudie 2 (`experiments/plans/vorstudie2.env`): sinkt der CPU-Bedarf je Transaktion mit längerem Aufwärmen (0,1 → 0,2 → 15 min 0,5/s) auf das Niveau des Probelaufs? Wo liegt der Kipppunkt (Stufen 0,6–2,5/s)? – gestartet 2026-10-07, 13:50 UTC (aus Commit `c518438`)
 - [x] Reset mit `ANALYZE` der zurückgesetzten Datenbanken – 2026-10-07 (gleiche Planer-Statistiken zu Beginn jedes Laufs; vorher nur durch Autovacuum während der Last)
 - [ ] Vor K0: andere NAS-Dienste ruhen lassen (Verfasser), K0 nachts starten; Grafana und k9s geschlossen
-- [ ] Skalierungskonfiguration K1 vorbereiten: Engpasshypothese prüfen – CPU der EDC Control Plane des Customers 500m → 1000m (Umverteilung auf der NAS-VM, z. B. vom kaum genutzten Wallet-Stub und PURIS Customer); optional K2: Speicher der Control Plane 1Gi → 2Gi (Rückkopplung über die Speicherbereinigung)
+- [ ] K1-NAS vorbereiten (Eingriff zur Prüfung der Engpasshypothese, F3): EDC Control Plane Customer 500m → 1000m und PostgreSQL beider EDCs 200m → 400m, umverteilt aus kaum genutzten Zuteilungen (Wallet-Stub, PURIS, Data Plane Customer, k6-Runner) – Berechnung 2026-10-07: Obergrenze von 1,3–2,7/s auf ca. 2,5–4/s (`LABORBUCH.md`)
+- [ ] K0-Plan (`experiments/plans/k0.env`) aus Vorstudie 2: Aufwärmen, 8 Stufen × 10 min um den Kipppunkt, zum Schluss 10 min Erholungsstufe mit geringer Last (zeigt, ob sich das System nach dem Kippen erholt – metastabiles Verhalten)
+- [ ] Je Lauf prüfen, ob nach dem Aufwärmen ein stabiler Zustand erreicht ist (CPU je Transaktion in den letzten Aufwärm-Minuten; vgl. Barrett et al. 2017), statt ihn anzunehmen
+- [ ] Aufbau vor K0 einfrieren: Git-Tag `setup-v1` (Verfasser)
 - [ ] Dauer der Aufwärmphase bestimmt *(2026-10-07: Kurztest zeigt Kaltstart-Überlast; Vorstudie beginnt mit 0,1/s und 0,2/s je 5 min)*
 - [ ] Laststufen festgelegt (5–10 Stufen, je ca. 10 Minuten, plus Baseline)
 - [x] Gültigkeitskriterien je Lauf festgelegt: `dropped_iterations = 0`, k6 unter CPU-Limit, keine `OOMKilled`/Neustarts, Reset-Prüfung bestanden – 2026-10-07 (`KONZEPT.md`, Abschnitt 6): Neustarts im Messsystem immer ungültig, im System unter Test nur während des Aufwärmens; danach Ergebnis (Vorschlag, mit Commit bestätigt)
@@ -327,8 +331,9 @@ Noch offen:
 ## 12 Etappe 3 – Hauptmessungen
 
 - [ ] Grundkonfiguration K0: 3 Messläufe (`rep-1` bis `rep-3`) mit `./lab run` auf der VM in `tmux`
-- [ ] Skalierungskonfiguration K1: 3 Messläufe
+- [ ] Skalierungskonfiguration K1: 3 Messläufe *(K1-NAS: EDC entlastet, siehe Abschnitt 11)*
 - [ ] Skalierungskonfiguration K2 (falls geplant): 3 Messläufe
+- [ ] VM der Betreuung: Neuaufbau mit den Skripten aus Etappe 2 (zugleich Nachbau-Test), Vorstudie, dann K0-ISST (Original-Konfiguration der Charts, unverändert) und K1-ISST (PostgreSQL mit normalen Ressourcen statt Bitnami-Preset „nano“) – je 3 Messläufe; Ziel bis ca. 20.10.
 - [ ] Jede Skalierungskonfiguration in Ressourcenübersicht und Laborbuch vermerkt
 - [ ] Vor jedem Lauf `./lab reset`; während einer Messreihe nichts am Aufbau geändert
 - [ ] Während der Läufe k9s und Grafana geschlossen; Mac nicht im Lastweg

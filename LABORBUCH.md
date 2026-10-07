@@ -887,3 +887,54 @@ Summe der Limits im System unter Test: 4,55 Kerne.
 - Feste Limits beibehalten (Reproduzierbarkeit, Zuordnung des Engpasses über die Drosselung), aber nach gemessenem Bedarf bemessen: jede JVM mindestens 1 Kern, Komponenten im Anfrageweg mit Reserve (Control Planes 2 Kerne / 2Gi, PostgreSQL der EDCs 1 Kern). Summe grob ca. 16 Kerne für das System unter Test, mit Messsystem und k6 ca. 20 Kerne – nicht auf der NAS-VM (7 zuteilbar), aber auf der VM der Betreuung (24 vCPU, 48 GB).
 - Hauptmessungen auf der VM der Betreuung mit diesem Referenzprofil; das NAS-Profil dort als Vergleichskonfiguration auf derselben Hardware; Verdopplung des gefundenen Engpasses als Skalierungskonfiguration.
 - Vorstudie 2 auf der NAS-VM (`experiments/plans/vorstudie2.env`) zurückgestellt, bis die Entscheidung gefallen ist; K0 mit dem NAS-Profil heute Nacht nicht starten.
+
+## 2026-10-07 – Ressourcenanalyse: Warum kippt das System, obwohl die VM fast leer ist? Entscheidung für zwei Umgebungen
+
+**Anlass:** Frage des Verfassers: Die VM hat während des Kippens viel freie CPU – liegt das Problem an der CPU-Zuteilung, und wäre die Original-Konfiguration der Charts besser?
+
+**Beobachtung (Vorstudie 1, Prometheus):** Knoten bei 0,5/s 1,7 von 8 vCPU belegt, bei 1/s 2,1 (5,8 Kerne frei). Die EDC Control Plane des Customers lag dabei an ihrem Limit (0,49 von 0,5 Kernen, 95 % der Perioden gedrosselt). Schon bei 0,5/s (36 % Auslastung) 10 % der Perioden gedrosselt: Die JVM verbraucht die Quote (50 ms je 100 ms) in Schüben und steht dann still. Das Messsystem nutzte höchstens 0,12 Kerne (zugeteilt 1,43), k6 0,01 (zugeteilt 0,55).
+
+**Standardwerte der Charts** (eigene `values.yaml`-Kommentare aus `helm show values`; geprüft: `tractusx-connector` 0.12.0, Bitnami `postgresql`): EDC Control Plane und Data Plane Limit 1,5 Kerne (NAS-Profil 0,5 bzw. 0,2/0,4), Protokoll auf Stufe DEBUG; PURIS-Backend 1→3 Kerne (NAS 0,6/0,4); DTR 0,25→0,75 (NAS 0,1/0,2); Wallet-Stub 0,5→1 (NAS 0,5); PostgreSQL der Bundles Bitnami-Preset `nano` = 0,1→0,15 Kerne, laut Bitnami nur für Tests. Summe der Limits ca. 15 Kerne – mehr als die 8 Threads des NAS.
+
+**Rechnung** (Bedarf je Transaktion und Grundlast je Komponente aus Probelauf = „warm“ und Vorstudie 1 = „kalt“; Obergrenze je Komponente = (Limit − Grundlast) / Bedarf; Vorstudie 1 kippte bei ca. 75 % der kalten Obergrenze):
+
+| Konfiguration | passt? | Obergrenze kalt–warm | erster Engpass |
+|---|---|---|---|
+| NAS-Profil (jetzt) | ja | 1,3–2,7/s | EDC Control Plane Customer und PostgreSQL der EDCs gemeinsam |
+| Original proportional verkleinert (× 0,3) | ja | 0,1–0,3/s | PostgreSQL (0,05 Kerne) |
+| Original auf dem NAS | requests ja, Limits nein (15 von 8 Threads) | 0,9–1,9/s | PostgreSQL (`nano`) |
+| NAS nach gemessenem Bedarf neu verteilt | ja (6,8 von 7) | 2,0–4,0/s | verteilt |
+| K1-NAS: Control Plane Customer 1,0, PostgreSQL EDC je 0,4, aus ungenutzten Zuteilungen | ja | ca. 2,5–4/s | Control Plane Supplier / Wallet-Stub |
+| Original auf der VM der Betreuung (24 vCPU / 48 GB) | ja, alle Limits zusammen ca. 20 von 24 Kernen | 0,9–1,9/s | PostgreSQL (`nano`) |
+| dort mit PostgreSQL ohne Test-Preset | ja | 4,9–12,5/s | Control Plane Customer (1,5 Kerne) |
+
+- Der NAS ist klein (Intel Core i3-1315U, 15 W, 2 Performance- und 4 Effizienzkerne, 8 Threads, geteilt mit dem NAS-Betriebssystem). Ohne harte Grenzen würde das System bei Sättigung alle Threads belegen und vor allem den NAS messen (Effizienzkerne, Leistungsgrenze, Steal Time).
+- Proportional verkleinerte Original-Werte helfen nicht: Die Verhältnisse der Charts folgen nicht dem Bedarf (PURIS viel, PostgreSQL wenig).
+- Die Daten unterscheiden drei Ebenen: Auslöser ist die zu kleine CPU-Zuteilung der Control Plane; dass sie als erste knapp wird, liegt am höchsten Bedarf je Transaktion (Eigenschaft der EDC); dass das System abrupt kippt, liegt an der Reaktion von PURIS auf Zeitüberschreitungen (Verwerfen der Verträge, Neuverhandlung).
+- PURIS-Chart: `helm upgrade` übernimmt vorhandene Secrets (`lookup` in `backend-secrets.yaml`, Z. 30) – Änderungen der Ressourcen sind ohne neue Passwörter möglich.
+
+**Entscheidung** (Verfasser, auf Vorschlag des Assistenten):
+- **NAS-VM:** bisheriges Profil als K0 (Vorstudie 2 → Hauptmessung K0); danach **K1-NAS** als gezielter Eingriff: EDC Control Plane des Customers und PostgreSQL der EDCs entlasten. Steigt der Kipppunkt deutlich, ist die Engpasshypothese bestätigt (F3); ein neuer Engpass zeigt die Verschiebung.
+- **VM der Betreuung (Fraunhofer ISST):** Original-Konfiguration der Charts – K0-ISST unverändert, K1-ISST mit PostgreSQL ohne Test-Preset; Aufbau mit den Skripten aus Etappe 2 (zugleich Nachbau-Test auf anderer Hardware). Ersetzt die Option VPS (bleibt Plan B).
+- Kein vollständiger Neuzuschnitt des NAS-Profils: Gewinn nur ca. Faktor 1,5 bei einem Tag Aufwand; der gezielte Eingriff K1 beantwortet F3 klarer.
+Begründung: Vergleich über Konfigurationen (Papadopoulos et al.: Abdeckung von Konfigurationen; Henning und Hasselbring: Experimente je Kombination aus Last und Ressourcen); die Original-Konfiguration passt nur auf die größere VM.
+
+**Für die Arbeit vormerken:** Kapitel 4.3/4.5 (zwei Umgebungen, vier Konfigurationen, Begründung der Werte), 6.2 (drei Ebenen des Engpasses, metastabiles Kippen), 6.5 (Java-Dienste unter einem Kern, DEBUG-Protokoll als Standard, Bedarf aus kurzen Läufen geschätzt, Hardware des NAS). Quellen vor der Übernahme am Original prüfen.
+
+## 2026-10-07 – Vorstudie 2, erster Versuch: Reset hängt am EDC des Suppliers (Wettlauf beim Start)
+
+**Gemacht:** `./lab run vorstudie2 1` aus Commit `c518438` (13:50:10 UTC). Reset: anhalten, Datenbanken zurücksetzen, `ANALYZE` – in Ordnung (13:51:19). Danach startete der EDC des Suppliers nicht: Control Plane und Data Plane nicht bereit, Data Plane 2 Neustarts. Nach 15 min Zeitüberschreitung des Resets (`kubectl rollout status`, 14:06), Lauf abgebrochen, kein Laufordner. PURIS blieb dadurch in beiden Firmen auf 0 Replikaten (der Reset startet PURIS erst nach den EDCs) – vom Verfasser bemerkt.
+
+**Ursache** (Logs aus Loki, Vergleich mit dem erfolgreichen Reset um 11:17):
+- Die Data Plane meldet sich beim Start selbst bei der Control Plane an (`DataPlaneSelfRegistration`), über den Kubernetes-Dienst `edc-controlplane`. Der Dienst leitet nur an bereite Pods weiter.
+- 11:17 (erfolgreich): Control Plane bereit 11:17:22, Anmeldung der Data Plane 11:17:30–31, Prüfung durch die Control Plane 11:17:39 → `AVAILABLE`.
+- 13:51 (hängend): Anmeldung schon 13:52:01, 3 s nach dem Start der Control Plane, als deren Pod noch nicht bereit war → nach 16 s „Cannot register data plane to the control plane … HTTP Status = 0“ → Data Plane bricht ab. Die Control Plane setzte die aus S0-v2 wiederhergestellte Registrierung auf `UNAVAILABLE` (Zustand 300, 13:52:14) und meldet sich seitdem nicht bereit (Bereitschaftsprüfung HTTP 404; Lebendprüfung und `/api/check/health` gesund) → die Data Plane erreicht sie über den Dienst nie: gegenseitiges Warten.
+- Die ersten drei Resets gelangen nur, weil die Reihenfolge zufällig passte.
+
+**Prüfung der Erklärung (von Hand, 14:07–14:09 UTC):** Data Plane des Suppliers auf 0 → `DELETE FROM edc_data_plane_instance` in der EDC-Datenbank des Suppliers (1 Zeile) → Control Plane neu gestartet (`kubectl rollout restart`) → **bereit nach 40 s ohne Data Plane** → Data Plane auf 1 → Anmeldung erfolgreich (Zustand 100), bereit nach 82 s. Danach PURIS beider Firmen wieder auf 1 Replikat (bereit 14:12:53 bzw. 14:13:24). Alle Pods `Running`.
+- Hinweis: `kubectl rollout restart` hat am Deployment `edc-controlplane` (supplier) die Anmerkung `kubectl.kubernetes.io/restartedAt` gesetzt (Abweichung vom Helm-Stand nur in dieser Anmerkung, ohne Wirkung auf die Konfiguration). Künftig nur `kubectl scale`.
+
+**Entscheidung:** Reset geändert (`lab`): nach dem Zurücksetzen der Datenbanken die Registrierung der Data Planes löschen (`edc_data_plane_instance`, beide EDCs; die Data Plane meldet sich bei jedem Start ohnehin neu an), dann **erst Control Planes, dann Data Planes, dann PURIS** starten, jeweils erst nach Bereitschaft des vorherigen Schritts.
+Begründung: So entspricht der Start dem einer Neuinstallation (keine Registrierung vorhanden, Control Plane wird bereit), und die Data Plane trifft immer auf eine bereite Control Plane – kein Wettlauf mehr. Die Zeilenzahl nach dem Start bleibt gleich (die Data Plane legt ihre Registrierung neu an).
+
+**Nächstes:** Commit der Änderung, dann `./lab run vorstudie2 1` erneut.

@@ -10,7 +10,8 @@
 #   ./lab reset <name>        Ausgangszustand herstellen: PURIS und EDC beider
 #                             Firmen anhalten, ihre Datenbanken auf <name>
 #                             zurücksetzen, Zeilen aller 7 Datenbanken prüfen, ANALYZE,
-#                             EDC und PURIS wieder starten
+#                             Registrierung der Data Planes löschen, dann Control
+#                             Planes → Data Planes → PURIS starten
 #   ./lab run <plan> <rep>    Messlauf nach experiments/plans/<plan>.env:
 #                             Reset → k6-TestRun → Abarbeiten abwarten →
 #                             Sammeln nach runs/<Zeit>_<plan>_rep-<rep>/
@@ -95,15 +96,21 @@ cmd_reset() {
   # sie erst durch Autovacuum zu zufälligen Zeitpunkten während der Last (Vorstudie 1).
   for n in $RESET_DBS; do db_cmd "$n" psql "-q -c 'SET client_min_messages TO error; ANALYZE'" >/dev/null; done
   log "Datenbanken auf $name, Zeilen aller 7 Datenbanken gleich, ANALYZE ausgeführt"
-  # 5. erst EDC, dann PURIS starten (PURIS spricht beim Start den EDC an)
-  for ns in customer supplier; do
-    # shellcheck disable=SC2086
-    kubectl scale deploy $APPS_EDC -n "$ns" --replicas=1 >/dev/null
+  # Registrierung der Data Plane löschen: Die Data Plane meldet sich bei jedem Start selbst
+  # neu an. Eine wiederhergestellte, beim Start nicht erreichbare Registrierung macht die
+  # Control Plane „nicht bereit“; dann erreicht die Data Plane sie über den Dienst nicht
+  # und startet neu – gegenseitiges Warten (Reset 2026-10-07, 13:51 UTC).
+  for n in c2-customer-edc c4-supplier-edc; do
+    db_cmd "$n" psql "-q -c 'DELETE FROM edc_data_plane_instance'" >/dev/null
   done
-  for ns in customer supplier; do for n in $APPS_EDC; do
-    kubectl rollout status "deploy/$n" -n "$ns" --timeout=900s >/dev/null
-  done; done
-  log "EDC bereit"
+  # 5. Reihenfolge: Control Planes → Data Planes (melden sich bei der bereiten Control
+  #    Plane an) → PURIS (spricht beim Start den EDC an)
+  for ns in customer supplier; do kubectl scale deploy edc-controlplane -n "$ns" --replicas=1 >/dev/null; done
+  for ns in customer supplier; do kubectl rollout status deploy/edc-controlplane -n "$ns" --timeout=600s >/dev/null; done
+  log "Control Planes bereit"
+  for ns in customer supplier; do kubectl scale deploy edc-dataplane -n "$ns" --replicas=1 >/dev/null; done
+  for ns in customer supplier; do kubectl rollout status deploy/edc-dataplane -n "$ns" --timeout=600s >/dev/null; done
+  log "Data Planes bereit"
   for ns in customer supplier; do
     kubectl scale deploy $APPS_PURIS -n "$ns" --replicas=1 >/dev/null
   done

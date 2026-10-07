@@ -1,5 +1,7 @@
 # Hauptumgebung NAS-VM und Option VPS – Profile und Reproduzierbarkeit
 
+**Nachtrag (2026-10-07):** Die Option VPS wird durch eine VM der Betreuung (24 vCPU, 48 GB) ersetzt und bleibt nur Plan B; Rollen siehe `KONZEPT.md`, Abschnitt 12, und `LABORBUCH.md`, 2026-10-07 („Ressourcenanalyse“).
+
 **Status (2026-10-06):** Entschieden ist: **Die NAS-VM bleibt die Hauptumgebung** – dort laufen Aufbau, Probeläufe und Hauptmessungen. Ein VPS ist **optional** und dient vor allem als zusätzlicher Nachweis der Reproduzierbarkeit (Abschnitt 4). Verbindlich bleibt [`KONZEPT.md`](KONZEPT.md); offene Punkte in Abschnitt 10.
 
 ---
