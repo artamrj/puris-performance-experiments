@@ -1,0 +1,11 @@
+{
+  "run": "2026-10-07_1953_smoke_rep-1",
+  "git_commit": "7f86093c571e3d155c0559e523d590a94330fa61",
+  "plan": "smoke",
+  "repetition": "1",
+  "started_utc": "2026-10-07T19:53:31.049631+00:00",
+  "time_utc": "2026-10-07T20:09:28.034864+00:00",
+  "phase": "completed",
+  "status": "completed",
+  "reason": "valid=true"
+}

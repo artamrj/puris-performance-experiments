@@ -1,0 +1,11 @@
+{
+  "run": "2026-10-07_2025_vorstudie3_rep-1",
+  "git_commit": "2dff5d9f15193325c070cb0b91f7c01f3ec89040",
+  "plan": "vorstudie3",
+  "repetition": "1",
+  "started_utc": "2026-10-07T20:25:03.568206+00:00",
+  "time_utc": "2026-10-07T22:24:53.904133+00:00",
+  "phase": "completed",
+  "status": "completed",
+  "reason": "valid=true"
+}

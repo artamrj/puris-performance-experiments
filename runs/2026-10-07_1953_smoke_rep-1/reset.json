@@ -1,0 +1,17 @@
+{
+  "state": "s0-v2",
+  "start_utc": "2026-10-07T19:53:31Z",
+  "end_utc": "2026-10-07T20:00:02Z",
+  "duration_s": 391,
+  "counts_equal_after_restore": true,
+  "counts_diff_after_start": [
+    "c2-customer-edc: < public.edc_lease 0 > public.edc_lease 1 "
+  ],
+  "repairs": [],
+  "function_test": {
+    "transactions": 3,
+    "completed": 3,
+    "seconds": 34,
+    "passed": true
+  }
+}

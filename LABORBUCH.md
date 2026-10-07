@@ -1063,3 +1063,40 @@ Begründung: Ursache ist die Umgebung, nicht der Sammler; so nutzen `kubectl` un
 | `k6-operator` | k6-operator | 1 | 2026-10-07 00:49 |
 
 **Schluss:** Jede Änderung über Helm (Upgrade, Rollback) erzeugt eine neue Revision. Da die letzte Änderung (00:49 UTC) vor dem Probelauf liegt und die Revisionen seitdem gleich sind, galt dieser Helm-Stand für alle drei Läufe mit leerem `helm.txt`. Änderungen ohne Helm in dieser Zeit: Skalieren der Deployments durch `lab` (Reset) und die Anmerkung `restartedAt` am Deployment `edc-controlplane` des Suppliers (14:07 UTC, Eintrag „Vorstudie 2, erster Versuch“) – beide ohne Wirkung auf die Konfiguration.
+
+## 2026-10-07 – Kurztest 2 bestanden: Robustheit von `lab` auf der VM nachgewiesen
+
+**Gemacht:** `./lab run smoke 1` aus Commit `7f86093` (mit `KUBECONFIG`-Fix), 19:53:31–20:09:28 UTC. Vorprüfung (Steal Time 0,5 %), Reset 391 s ohne Reparatur, Funktionstest 3/3 in 34 s, TestRun 2 × 1 min; nach 5 min Abarbeiten 21 offen (Kaltstart wie in den früheren Kurztests); Sammeln vollständig.
+**Ergebnis:** gültig; `attempt.json` `status: completed`; `cluster/helm.txt` mit 13 Zeilen (12 Releases); `k6-stages.json`: s1 20:00:49,274, s2 20:01:49,279 UTC (Abstand 60,0 s); `SHA256SUMS` auf dem Mac 0 Abweichungen. Laufordner `runs/2026-10-07_1953_smoke_rep-1/` (2,2M).
+**Beobachtung:** Nach dem Start des Resets wich eine Zeilenzahl ab: `c2-customer-edc` `public.edc_lease` 0 → 1 (vermutlich eine Sperre der gerade gestarteten EDC; der Reset gilt trotzdem als bestanden). Bei weiteren Läufen beobachten.
+
+## 2026-10-07 – Vorstudie 3 (Generalprobe für K0): stabil bis 0,5/s, Kippen bei 0,8/s, **keine Erholung unter geringer Last**
+
+**Gemacht:** `./lab run vorstudie3 1` aus Commit `2dff5d9`, 20:25:03–22:24:53 UTC, ohne vorzeitigen Abbruch. Stufen je 10 min: Aufwärmen 0,1 / 0,3 je s, dann 0,2 / 0,3 / 0,4 / 0,5 / 0,6 / 0,7 / 0,8 / 1 je s, Erholung 0,2/s. Andere NAS-Dienste: nicht ausdrücklich angehalten (keine Bestätigung des Verfassers). Laufordner `runs/2026-10-07_2025_vorstudie3_rep-1/` (29M), `SHA256SUMS` auf dem Mac 0 Abweichungen.
+**Gültigkeit:** gültig – `dropped_iterations` 0, keine Neustarts (auch nicht im gekippten Zustand), Steal Time max. 2,26 % / Mittel 0,99 %; Abarbeiten bis „alle Transaktionen beendet“, offen 0.
+
+**Ergebnis** (`analysis/stage_summary.py`; Stufengrenzen aus k6):
+
+| Stufe | Rate | ausgelöst | abgeschlossen/s | gescheitert | „Invalidating …“ | Dauer p50 / p95 | CPU Control Plane Customer | Threads PURIS Customer |
+|---|---|---|---|---|---|---|---|---|
+| warmup1 | 0,1 | 60 | 0,10 | 0 | 0 | 3,5 / 4,4 s | 0,07 | 37 |
+| warmup2 | 0,3 | 181 | 0,30 | 0 | 0 | 3,2 / 4,6 s | 0,11 | 40 |
+| s1 | 0,2 | 121 | 0,20 | 2 | 1 | 3,0 / 4,4 s | 0,06 | 40 |
+| s2 | 0,3 | 181 | 0,30 | 0 | 0 | 3,1 / 4,3 s | 0,08 | 39 |
+| s3 | 0,4 | 241 | 0,40 | 0 | 0 | 3,1 / 4,6 s | 0,09 | 42 |
+| s4 | 0,5 | 300 | 0,50 | 0 | 0 | 3,2 / 4,8 s | 0,11 | 40 |
+| s5 | 0,6 | 334 | 0,56 | 2 | 2 | 3,6 / 5,5 s | 0,14 | 43 |
+| s6 | 0,7 | 353 | 0,57 | 0 | 0 | 4,2 / 7,1 s | 0,20 | 98 |
+| s7 | 0,8 | 366 | 0,00 | 315 | 691 | – | 0,47 | 269 |
+| s8 | 1,0 | 601 | 0,00 | 472 | 944 | – | 0,46 | 417 |
+| recovery | 0,2 | 120 | 0,00 | 306 | 612 | – | 0,42 | 380 |
+
+Gesamt: 3068 Iterationen von k6, 2858 Auslösungen im PURIS-Log, 1755 abgeschlossen, 1106 gescheitert, 2268 × „Invalidating …“.
+
+**Beobachtungen / Deutung (Hypothesen):**
+- Bis 0,5/s stabil, Dauer p50 ca. 3 s. Ein einzelner Fehler mit Invalidierung in s1 (0,2/s) blieb folgenlos – bei geringer Last fängt das System den Auslöser ab.
+- 0,6–0,7/s: Übergang – abgeschlossen bleibt bei ca. 0,57/s, Dauer und Threads steigen (Rückstau).
+- 0,8/s: Kippen wie in Vorstudie 1 und 2 (Control Plane des Customers am Limit, Neuverhandlungen).
+- **Erholungsstufe 0,2/s: keine einzige abgeschlossene Transaktion**, Control Plane weiter am Limit, Threads bleiben bei ca. 380. Das System bleibt nach dem Kippen auch unter geringer Last gekippt (in Vorstudie 2 erholte es sich erst ohne Last). Muster passt zu einem metastabilen Ausfall – zentral für F2 und Kapitel 6.2.
+- Im Kipp-Zustand fehlen Auslösungen im PURIS-Log (3068 von k6 gegenüber 2858 im Log) – später klären.
+- Der Ablauf von `lab` lief über 2 h vollständig durch (alle Stufen, Abarbeiten, Sammeln).

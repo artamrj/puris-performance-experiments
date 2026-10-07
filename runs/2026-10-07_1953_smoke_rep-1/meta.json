@@ -1,0 +1,140 @@
+{
+ "run": "2026-10-07_1953_smoke_rep-1",
+ "kind": "smoke",
+ "plan": "smoke",
+ "repetition": 1,
+ "git_commit": "7f86093c571e3d155c0559e523d590a94330fa61",
+ "tag": null,
+ "testrun": "lab-20261007195331-3560977",
+ "testid": "2026-10-07_1953_smoke_rep-1",
+ "script": "experiments/k6/stock-trigger.js",
+ "plan_values": {
+  "state": "s0-v2",
+  "rates_per_s": [
+   0.5,
+   1.0
+  ],
+  "stage_labels": [
+   "s1",
+   "s2"
+  ],
+  "stage_minutes": 1.0,
+  "materials_n": null,
+  "drain_max_min": 5.0,
+  "steal_max": 0.02,
+  "steal_mean_max": 0.02
+ },
+ "times_utc": {
+  "apply": "2026-10-07T20:00:40Z",
+  "runner_start": "2026-10-07T20:00:45.000Z",
+  "runner_end": "2026-10-07T20:02:49.000Z",
+  "load_start": "2026-10-07T20:00:49.274Z",
+  "stage_boundary_source": "k6.scenario.startTime",
+  "drain_end": "2026-10-07T20:07:57.108Z",
+  "collection_window": [
+   "2026-10-07T20:00:49.274Z",
+   "2026-10-07T20:08:57.108Z"
+  ]
+ },
+ "drain": {
+  "reason": "H\u00f6chstdauer 5 min erreicht",
+  "open_at_end": 21
+ },
+ "reset": {
+  "state": "s0-v2",
+  "start_utc": "2026-10-07T19:53:31Z",
+  "end_utc": "2026-10-07T20:00:02Z",
+  "duration_s": 391,
+  "counts_equal_after_restore": true,
+  "counts_diff_after_start": [
+   "c2-customer-edc: < public.edc_lease 0 > public.edc_lease 1 "
+  ],
+  "repairs": [],
+  "function_test": {
+   "transactions": 3,
+   "completed": 3,
+   "seconds": 34,
+   "passed": true
+  }
+ },
+ "stages": [
+  {
+   "stage": "s1",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-07T20:00:49.274Z",
+   "end_utc": "2026-10-07T20:01:49.274Z",
+   "boundary_source": "k6.scenario.startTime",
+   "planned": 30,
+   "triggered_log": 30,
+   "completed_log": 20,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0
+  },
+  {
+   "stage": "s2",
+   "rate_per_s": 1.0,
+   "start_utc": "2026-10-07T20:01:49.279Z",
+   "end_utc": "2026-10-07T20:02:49.279Z",
+   "boundary_source": "k6.scenario.startTime",
+   "planned": 60,
+   "triggered_log": 61,
+   "completed_log": 4,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 32,
+   "invalidating_contract": 5
+  }
+ ],
+ "totals": {
+  "triggered_log": 92,
+  "completed_log": 59,
+  "failed_log": 33,
+  "optimistic_lock": 0,
+  "error_warn_lines_customer": 307,
+  "invalidating_contract": 105,
+  "k6_iterations": 92,
+  "k6_dropped_iterations": 0,
+  "k6_http_req_failed_rate": 0
+ },
+ "validity": {
+  "dropped_iterations": 0,
+  "dropped_ok": true,
+  "k6_runner_cpu_max_cores": 0.01,
+  "k6_cpu_ok": true,
+  "restarts_invalidating": {},
+  "restarts_ok": true,
+  "sut_restarts_after_warmup": {},
+  "loki_discarded_delta": 0.0,
+  "loki_ok": true,
+  "steal_max_ratio": 0.0188,
+  "steal_limit": 0.02,
+  "steal_mean_ratio": 0.0159,
+  "steal_mean_limit": 0.02,
+  "steal_ok": true,
+  "reset_ok": true,
+  "valid": true
+ },
+ "node": {
+  "cpu_model": "13th Gen Intel(R) Core(TM) i3-1315U",
+  "capacity": {
+   "cpu": "8",
+   "ephemeral-storage": "101859844096",
+   "hugepages-1Gi": "0",
+   "hugepages-2Mi": "0",
+   "memory": "31807336Ki",
+   "pods": "110"
+  },
+  "allocatable": {
+   "cpu": "7",
+   "ephemeral-storage": "96766851816",
+   "hugepages-1Gi": "0",
+   "hugepages-2Mi": "0",
+   "memory": "28661608Ki",
+   "pods": "110"
+  },
+  "kernel": "7.0.0-38-generic",
+  "kubelet": "v1.37.1+k3s1"
+ }
+}
