@@ -965,3 +965,47 @@ Ein erster Versuch von Test 1 schlug wegen eines Fehlers im Testbefehl fehl (das
 **Beobachtung (Test 3):** Auch bei richtiger Reihenfolge kann die Data Plane hängen: Sie meldete sich erfolgreich an („data plane registered to control plane“, „Runtime edc-dataplane ready“, alle Komponenten der Lebend- und Startprüfung gesund), ihre Bereitschaftsprüfung lieferte aber dauerhaft HTTP 404, und die Control Plane führte ihre Registrierung als `UNAVAILABLE` (Zustand 300). Die Data Plane des Customers mit gleicher Konfiguration lieferte 200. Ursache innerhalb der EDC nicht geklärt; ein Neustart der Data Plane mit gelöschter Registrierung behebt es. Deshalb Zeitlimit der Data Plane 240 s statt 600 s (normal bereit nach 40–90 s).
 
 **Entscheidungen:** Automatische Reparaturen nur im Reset (vor der Messung), höchstens eine je Stufe, immer in `meta.json`; ein Lauf zählt nur mit bestandenem Funktionstest. Begründung: Der Startzustand der EDCs ist nicht deterministisch (Wettlauf, 404-Zustand); ohne Reparatur ginge bei einer nächtlichen Messreihe ein ganzer Lauf verloren, mit dokumentierter Reparatur vor der Messung bleibt der gemessene Zeitraum unberührt.
+
+## 2026-10-07 – Vorstudie 2: Aufwärmen wirkt; Kippen nach einem Sperrkonflikt zwischen den EDCs, nicht an der CPU-Grenze
+
+Nachgetragen am Abend; Grundlage: Laufordner `runs/2026-10-07_1500_vorstudie2_rep-1/` (Commit `063eb93`) und die Live-Beobachtung während des Laufs.
+
+**Gemacht:** `./lab run vorstudie2 1` auf der VM in `tmux`, zweiter Versuch nach dem hängenden Reset (13:50 UTC), aus Commit `7ec455f` (Sicherheitsnetz). Vorprüfung in Ordnung; Reset auf `s0-v2` 15:00:55–15:07:01 UTC (366 s, keine Reparatur); Funktionstest 3/3 in 33 s; TestRun `vorstudie2-r1-1500`, Runner ab 15:07:43 UTC. Stufen je 5 min: Aufwärmen 0,1 / 0,2 / 0,5 / 0,5 / 0,5 je s, dann 0,6 / 0,8 / 1 / 1,2 / 1,5 / 2 / 2,5 je s. Verlauf je Minute live über Loki und Prometheus beobachtet. **k6 um 15:35:29 UTC vorzeitig beendet** (REST-API des Runners, `stopped: true`; Zusammenfassung von k6 vorhanden), Entscheidung des Assistenten im Rahmen des Auftrags, wie im Plan vorgesehen („Abbruch nach eindeutigem Kippen“, wie Vorstudie 1): Die abgeschlossenen Transaktionen je Minute fielen weiter, die Threads im PURIS-Backend des Customers stiegen; die Stufen ab 0,8/s hätten nur das gekippte System gezeigt. Alle offenen Transaktionen bis 15:39:06 UTC beendet (offen 0); Laufordner 8,7M, 0 Abweichungen von `SHA256SUMS`.
+
+**Gültigkeit** (`meta.json`): gültig – `dropped_iterations` 0, k6 höchstens 0,009 Kerne, keine Neustarts, keine verworfenen Zeilen in Loki, Steal Time höchstes 1-min-Mittel 1,81 %, Mittel 0,80 %.
+
+**Gesamt:** 644 Auslösungen im PURIS-Log (641 von k6, 3 vom Funktionstest), 640 abgeschlossen, 4 gescheitert, 8 × „Invalidating …“.
+
+**Je Minute** (PURIS-Log des Customers und Prometheus aus dem Laufordner; Stufen nach dem Zeitplan von k6 ab Runner-Start, 0,6/s ab ca. 15:32:43 UTC):
+
+| Zeit (UTC) | Stufe | ausgelöst | abgeschlossen | „Invalidating …“ | CPU Control Plane Customer (Mittel / max) | Threads PURIS Customer (max) |
+|---|---|---|---|---|---|---|
+| 15:28–15:31 | 0,5/s | 30 | 29–31 | 0 | 0,12 / 0,13 | 40–42 |
+| 15:32 | 0,5/s, ab ca. 15:32:43 0,6/s | 32 | 23 | 1 | 0,15 / 0,17 | 41 |
+| 15:33 | 0,6/s | 36 | 15 | 0 | 0,38 / 0,48 | 65 |
+| 15:34 | 0,6/s | 36 | 11 | 0 | 0,47 / 0,47 | 86 |
+| 15:35 | 0,6/s bis 15:35:29 (Stopp) | 17 | 3 | 0 | 0,47 / 0,50 | 108 |
+| 15:36–15:38 | keine Last (Abarbeiten) | 0 | 14 / 9 / 44 | 0 / 0 / 7 | 0,41–0,50 / 0,50 | 93–108 |
+| 15:39 | keine Last | 0 | Rest bis 15:39:06 | 0 | 0,09 / 0,22 | 85 |
+
+- Aufwärmen (Mittel je 5-min-Stufe, `analysis/stage_summary.py`): CPU der Control Plane des Customers in den drei 0,5/s-Stufen 0,18 → 0,13 → 0,12 Kerne (Probelauf bei 0,5/s: 0,11); Dauer je Transaktion bei 0,5/s p50 ca. 3,4 s, p95 4,6–5,0 s.
+- In der Stufe 0,6/s waren die Control Plane und die Vault des Customers zu 99 % der Perioden gedrosselt, die PostgreSQL der EDC des Customers zu 94 %.
+
+**Auslöser des Kippens** (`loki/edc_warn_error.tsv.gz` und PURIS-Log im Laufordner):
+- 15:32:02 UTC, Control Plane des **Suppliers** – erste WARN/ERROR-Zeile der EDCs im ganzen Lauf, noch in der letzten 0,5/s-Stufe: „TransferProcess: ID … Attempt #1 failed to Dispatch TransferRequestMessage to: http://edc-controlplane.customer:8084/api/v1/dsp/2025-1. Fatal error occurred.“, Ursache `TransferError` mit `code` 409: „Entity … of kind edc_transfer_process is currently leased!“
+- 15:32:43 UTC, PURIS des Customers: „Failed to obtain EDR data for DigitalTwinRegistryId@…“; 15:32:45 UTC „Invalidating DTR contract data“ und „Error in ReportedMaterialItemStockRequest for MNR-7307-LT-008 …“.
+- Danach weitere 409 „currently leased“ (15:33:16, 15:35:18, 15:35:20, 15:36:14 UTC) und um 15:36:24 UTC ein 409 „Cannot process TransferStartMessage because transfer cannot be started“; insgesamt 7 WARN/ERROR-Zeilen der EDCs.
+- Zum Zeitpunkt des Auslösers lag die Control Plane des Customers bei 0,12–0,17 Kernen (Limit 0,5); an ihr Limit kam sie erst ab 15:33.
+
+**Beobachtungen / Deutung (Hypothesen):**
+- Das längere Aufwärmen senkt den CPU-Bedarf je Transaktion auf das Niveau des Probelaufs – stützt Hypothese 1 aus „Analyse nach Vorstudie 1“ (Aufwärmzustand der JVMs).
+- Das Kippen begann nicht an einer CPU-Grenze: Auslöser war ein einzelner Sperrkonflikt beim Austausch zwischen den EDCs (HTTP 409 „currently leased“), den die EDC beim ersten Versuch als endgültigen Fehler behandelt. PURIS verwirft daraufhin die Vertragsdaten und verhandelt neu; die Neuverhandlungen bringen die Control Plane des Customers an ihr Limit, weitere Zeitüberschreitungen folgen (dieselbe Rückkopplung wie in Vorstudie 1). Muster passt zu „metastabilen Ausfällen“ (Auslöser + Verstärkung) – Literatur vor der Übernahme am Original prüfen.
+- Der Kipppunkt ist damit keine feste Zahl: Nach diesem Aufwärmen lag er zwischen 0,5 und 0,6/s, ausgelöst durch ein zufälliges Ereignis. Wie stark er zwischen Wiederholungen streut, ist offen.
+- Ohne Last arbeitete das System den Rückstau ab (alle offenen Transaktionen bis 15:39:06 UTC beendet, danach CPU der Control Plane unter 0,1 Kernen). Ob es sich unter weiter anliegender geringer Last erholt, zeigt dieser Lauf nicht.
+
+**Hinweise zur Auswertung:**
+- Die Stufengrenzen in `meta.json` dieses Laufs beginnen mit der ersten Auslösung im Sammelfenster (15:07:06 UTC, eine Transaktion des Funktionstests) statt mit dem Start von k6 (Runner 15:07:43 UTC), also ca. 37 s zu früh. Folge in `analysis/stage_summary.py`: Das Kennzeichen `S` in `warmup2`/`warmup3` und „0/240 ausgelöst“ in `s2` kommen von der Verschiebung, nicht von einem Kippen; die Summen stimmen. Seit Commit `063eb93` nimmt der Sammler die Stufengrenzen aus k6 (`K6_STAGE`). Die Rohdaten dieses Laufs bleiben unverändert.
+- Commit `063eb93` (2026-10-07, 18:21 UTC) enthält den Laufordner dieser Vorstudie und die Überarbeitung von `lab` (Robustheit, `KONZEPT.md` Abschnitt 6); seine Nachricht („data: pre-study 1; …“) wiederholt die des Commits `c518438`. Nicht umgeschrieben (bereits gepusht).
+- Der Kopfkommentar von `experiments/plans/vorstudie2.env` nannte den Plan noch „zurückgestellt (nicht ausgeführt)“ – korrigiert.
+
+**Vorschlag des Assistenten (Entscheidung des Verfassers offen):** Keine dritte Vorstudie – beide Fragen der Vorstudie 2 sind beantwortet; Erholung unter geringer Last und Streuung des Kipppunkts klärt K0 mit Erholungsstufe und drei Wiederholungen. K0-Plan: Aufwärmen 0,1/s und 0,3/s je 10 min (nicht 0,5/s, dort lag heute der Auslöser), Stufen 0,2 / 0,3 / 0,4 / 0,5 / 0,6 / 0,7 / 0,8 / 1 je s zu je 10 min, zum Schluss 10 min 0,2/s als Erholungsstufe; je Wiederholung festhalten: Stufe des Kippens, Auslöser, Erholung ja/nein.
