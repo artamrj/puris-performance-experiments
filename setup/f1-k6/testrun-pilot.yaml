@@ -30,8 +30,9 @@ spec:
   # Metriken per Remote Write an Prometheus (b1, Empfänger eingeschaltet);
   # testid kennzeichnet den Lauf in allen k6-Metriken.
   arguments: --out experimental-prometheus-rw --tag testid=pilot
-  # Pods nach dem Lauf behalten (Log mit K6_SUMMARY_JSON); Aufräumen von Hand.
-  cleanup: ""
+  # Kein `cleanup`: Pods bleiben nach dem Lauf erhalten (Log mit
+  # K6_SUMMARY_JSON); Aufräumen von Hand. Die CRD erlaubt nur „post“ (löscht
+  # alles nach dem Lauf) oder kein Feld – ein leerer Wert wird abgelehnt.
 
   # ─── Initializer: prüft das Skript (k6 archive, k6 inspect) ────────────────
   # Bekommt nur nicht geheime Variablen; die Szenarien hängen von RATES und

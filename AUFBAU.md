@@ -41,6 +41,10 @@ Jeder Befehl ist mit dem Ort gekennzeichnet, an dem er ausgeführt wird: **`[VM]
 | puris (Helm-Chart) | 7.2.0 aus Git-Tag `puris-7.2.0` (Commit `d0027bb`); Sub-Chart `postgres` 0.18.3 (cloudpirates) | Cluster | d1, d2 |
 | PURIS-Backend | 6.2.0 (Java 21, `eclipse-temurin:21-jre-alpine`) | Cluster | d1, d2 |
 | PostgreSQL (PURIS) | 18.0 (Image `postgres:18.0`, per Digest festgelegt) | Cluster | d1, d2 |
+| k6-operator (Helm-Chart) | 4.6.0 | Cluster | f1 |
+| k6-Operator (`ghcr.io/grafana/k6-operator:controller-v1.6.0`) | 1.6.0 (Digest `sha256:ba7f0fc1…`) | Cluster | f1 |
+| k6 (Runner und Initializer, `grafana/k6`) | 2.2.0 (per Digest `sha256:9bd01d69…`; Version, gegen die der Operator gebaut ist) | Cluster | f1 |
+| k6-Starter (`ghcr.io/grafana/k6-operator:starter-v1.6.0`) | 1.6.0 (per Digest `sha256:b97b8e32…`) | Cluster | f1 |
 
 ---
 
@@ -85,20 +89,25 @@ CPU und Arbeitsspeicher aller Container im Cluster. Die Werte stehen in `setup/<
 | d2 | PURIS-Backend (`JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75`) | `d2-puris-supplier/values.yaml` › Backend | 400m | 400m | 1536Mi | 1536Mi | Guaranteed |
 | d2 | PostgreSQL: `postgresql` | › PostgreSQL | 100m | 100m | 512Mi | 512Mi | Guaranteed |
 | d2 | Frontend (0 Replikate, kein Pod) | › Frontend | 200m | 200m | 128Mi | 128Mi | – |
+| f1 | k6-Operator: `manager` | `f1-k6/values.yaml` › Operator | 50m | 50m | 100Mi | 100Mi | Guaranteed |
+| f1 | k6-Runner (nur während eines Laufs) | `f1-k6/testrun-pilot.yaml` › Runner | 500m | 500m | 512Mi | 512Mi | Guaranteed |
+| f1 | k6-Initializer (kurzlebig, vor dem Lauf) | › Initializer | 200m | 200m | 256Mi | 256Mi | Guaranteed |
+| f1 | k6-Starter (kurzlebig, ein HTTP-Aufruf) | › Starter | 50m | 50m | 64Mi | 64Mi | Guaranteed |
 
-*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM; c3: 150m CPU, 3328Mi RAM; c5: 300m CPU, 3328Mi RAM; d1: 800m CPU, 2048Mi RAM; d2: 500m CPU, 2048Mi RAM (Frontend ohne Pod).*
+*Die k3s-eigenen Pods werden nicht verändert (`KONZEPT.md`, Abschnitt 3); ihre Werte sind von k3s vorgegeben und nicht `Guaranteed`. Abgeschlossene Jobs zählen nicht zur Summe. Summe der laufenden b1-Container: 900m CPU, 3200Mi RAM; b2: 300m CPU, 1024Mi RAM; b3: 225m CPU, 320Mi RAM (NAS-Profil seit 2026-10-06; vorher b1 1650m, b2 500m, b3 350m CPU); c1: 600m CPU, 1280Mi RAM; c2: 1000m CPU, 2432Mi RAM; c4: 1200m CPU, 2688Mi RAM; c3: 150m CPU, 3328Mi RAM; c5: 300m CPU, 3328Mi RAM; d1: 800m CPU, 2048Mi RAM; d2: 500m CPU, 2048Mi RAM (Frontend ohne Pod); f1 dauerhaft nur der Operator: 50m CPU, 100Mi RAM – während eines Laufs zusätzlich der Runner (500m, 512Mi), Initializer und Starter nur kurz und nicht gleichzeitig mit dem Lauf.*
 
-**Summe gegenüber dem Knoten** (Stand 2026-10-07, nach Phase d):
+**Summe gegenüber dem Knoten** (Stand 2026-10-07, nach `f1`, ohne laufenden Test):
 
 | | CPU | RAM |
 |---|---|---|
 | Kapazität der VM (`Capacity`) | 8 (= 8000m) | 31807336Ki (≈ 30,3 GiB) |
 | Puffer für Betriebssystem und k3s (`system-reserved`, a2) | 1000m | 3Gi |
 | Zuteilbar (`Allocatable`) | 7 (= 7000m) | 28661608Ki (≈ 27,3 GiB) |
-| Summe aller requests | 6175m (88 %) | 21836Mi (78 %) |
-| Rest | 825m | ≈ 6,0 GiB |
+| Summe aller requests | 6225m (89 %) | 21936Mi (78 %) |
+| Rest | 775m | ≈ 5,9 GiB |
+| Während eines Laufs (+ Runner) | 6725m (96 %) | 22448Mi (80 %) |
 
-*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi; nach `c3`/`c5` 4875m / 17740Mi; nach `d1`/`d2` 6175m / 21836Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
+*Verlauf der requests: vor `b1` 200m / 140Mi (nur k3s-eigene Pods); nach `b1` 1850m / 3340Mi; nach `b2` 2350m / 4364Mi; nach `b3` 2700m / 4684Mi; nach dem NAS-Profil für `b1`–`b3` 1625m / 4684Mi; nach `c1` 2225m / 5964Mi; nach `c2` 3225m / 8396Mi; nach `c4` 4425m / 11084Mi; nach `c3`/`c5` 4875m / 17740Mi; nach `d1`/`d2` 6175m / 21836Mi; nach `f1` (Operator) 6225m / 21936Mi. Verlauf von `Allocatable`: bis 2026-10-06 gleich `Capacity` (8000m / 31807336Ki); seit dem Puffer (a2, Ergänzung 2026-10-06) 7000m / 28661608Ki.*
 
 **Prüfung `[Mac]`** (2026-10-06):
 ```bash
@@ -1018,6 +1027,58 @@ Stichprobe der Zeilenzahlen: je EDC `edc_transfer_process` 8, `edc_contract_nego
 **Hinweise:**
 - Die Datenbank des Wallet-Stubs liegt auf einem `emptyDir` (kein dauerhaftes Volume): Bei einem Neustart des Pods `wallet-postgres-0` ist sie leer. Ob der Reset sie wiederherstellt, wird beim Erproben des Resets entschieden (`CHECKLISTE.md`, Abschnitt 8).
 - Wiederherstellung (`pg_restore`) ist noch nicht erprobt (Abschnitt 8 der Checkliste).
+
+---
+
+## f1 – Lastgenerator (k6-Operator)
+
+**Datum:** 2026-10-07 (Installation 00:49 UTC)
+**Ziel:** k6 im Cluster über den k6-Operator; Lasttests als `TestRun` im eigenen Namespace `k6`, getrennt vom System unter Test.
+
+**Dateien:** [`setup/f1-k6/values.yaml`](setup/f1-k6/values.yaml), [`setup/f1-k6/namespace.yaml`](setup/f1-k6/namespace.yaml), [`setup/f1-k6/testrun-pilot.yaml`](setup/f1-k6/testrun-pilot.yaml), [`experiments/k6/stock-trigger.js`](experiments/k6/stock-trigger.js); Commit `8b7677a`.
+
+**Installation `[Mac]`** (im Terminal vorher `puris`):
+```bash
+helm upgrade --install k6-operator grafana/k6-operator --version 4.6.0 -n k6-operator --create-namespace -f "$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup/f1-k6/values.yaml"
+kubectl rollout status deploy -n k6-operator --timeout=300s
+```
+- Vorab lokal geprüft: `helm template … --kube-version 1.37.1` → 14 Objekte (2 CRDs `testruns.k6.io`, `privateloadzones.k6.io`; 1 Deployment), Operator 50m/100Mi requests = limits.
+
+**Namespace, API-Key, Skript `[Mac]`** (aus dem Repository-Ordner `6-experiment`; je Aufbau einmal, der API-Key wird nie ausgegeben):
+```bash
+kubectl apply -f setup/f1-k6/namespace.yaml
+kubectl get secret secret-puris-backend -n customer -o jsonpath='{.data.puris-api-key}' | base64 -d | kubectl create secret generic puris-api-key -n k6 --from-file=key=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -
+kubectl create configmap k6-stock-trigger -n k6 --from-file=stock-trigger.js=experiments/k6/stock-trigger.js --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Prüfung `[Mac]`:**
+```bash
+kubectl get pods -n k6-operator -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,QOS:.status.qosClass,IMAGE:.status.containerStatuses[0].imageID'
+kubectl get crd | grep k6.io
+# Secret-Kopie gleich dem Original (ohne Ausgabe des Werts):
+[ "$(kubectl get secret secret-puris-backend -n customer -o jsonpath='{.data.puris-api-key}')" = "$(kubectl get secret puris-api-key -n k6 -o jsonpath='{.data.key}')" ] && echo gleich
+diff <(kubectl get configmap k6-stock-trigger -n k6 -o jsonpath='{.data.stock-trigger\.js}') experiments/k6/stock-trigger.js && echo identisch
+kubectl apply --dry-run=server -f setup/f1-k6/testrun-pilot.yaml
+```
+Ergebnis:
+- Release `k6-operator` (Namespace `k6-operator`), Revision 1, `deployed`; Pod `Running`, `Guaranteed`, Image `ghcr.io/grafana/k6-operator@sha256:ba7f0fc1…` (`controller-v1.6.0`)
+- CRDs `testruns.k6.io` und `privateloadzones.k6.io` (`v1alpha1`) angelegt
+- Namespace `k6`, Secret `puris-api-key` (gleich dem Chart-Secret, 32 Zeichen), ConfigMap `k6-stock-trigger` (identisch mit der Datei im Commit)
+- Server-Trockenlauf des `TestRun`: zuerst abgelehnt („spec.cleanup: Unsupported value: "": supported values: "post"“) → Feld `cleanup` entfernt, danach „testrun.k6.io/pilot created (server dry run)“
+- Summe der requests: 6225m CPU (89 %), 21936Mi RAM (78 %); nicht `Guaranteed` nur die k3s-eigenen Pods
+
+**Ressourcen:** siehe Ressourcenübersicht (f1).
+
+**Rückbau `[Mac]`:**
+```bash
+kubectl delete testrun --all -n k6; kubectl delete namespace k6
+helm uninstall k6-operator -n k6-operator && kubectl delete namespace k6-operator
+kubectl delete crd testruns.k6.io privateloadzones.k6.io
+```
+
+**Hinweise:**
+- Ohne Angabe nutzt der Operator `grafana/k6:latest` (Initializer) und `latest-starter` (Starter); jeder `TestRun` gibt deshalb alle Images fest an.
+- Der Initializer erhält nur `spec.initializer.env`; die Variablen des Messplans (Raten, Dauer) stehen deshalb dort und beim Runner.
 
 ---
 

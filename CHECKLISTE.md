@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; DTR-CPU vorerst unverändert (Probelauf entscheidet); **`f1-k6` vorbereitet** (Dateien erstellt und geprüft, noch nicht committet/installiert); als Nächstes Commit, Installation, Probelauf. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-07 – Etappe 1, Phasen a und b abgeschlossen (`b1`, `b2-loki`, `b3-alloy`); Zeit geprüft, Swap aus, Puffer für k3s gesetzt, `b1`–`b3` auf dem NAS-Profil; `c1-identitaet` installiert und geprüft; `c2-customer-edc` installiert und geprüft (Identität funktioniert); `c4-supplier-edc` installiert und geprüft; **erste Katalogabfragen zwischen den Firmen erfolgreich**; `c3`/`c5` (DTRs) installiert und geprüft – **Phase c abgeschlossen** (bis auf DTR-Zugriff über EDC-Assets, folgt mit PURIS); **Phase d abgeschlossen** (PURIS läuft, Assets im EDC); Zustand geprüft 2026-10-07 (25 Pods bereit, Messsystem vollständig); **`e1` abgeschlossen** (Testdaten aus Commit `1d63e8a` in beiden PURIS; erste Datenübertragung zwischen den Firmen); **`e2` erfolgreich – Meilenstein 1 am 07.10. erreicht** (Bestandsabfrage ca. 4,4 s mit gespeicherten Verträgen, 2 Transferprozesse je EDC); DTRs CPU-gedrosselt (Entscheidung offen, Abschnitt 9); **Stand S0 gesichert** (7 Datenbanken, VM + Mac); **Phase e abgeschlossen**; DTR-CPU vorerst unverändert (Probelauf entscheidet); **`f1-k6` installiert** (Operator aus Commit `8b7677a`, `Guaranteed`; Namespace `k6`, Secret, ConfigMap; 6225m CPU = 89 %); Korrektur `testrun-pilot.yaml` (Feld `cleanup`) noch zu committen; als Nächstes Probelauf. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -25,7 +25,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 4 Phase c – Datenraum | erledigt (2026-10-06; DTR-Zugriff über EDC-Assets folgt in Phase e) | So 11.–Mi 14.10. |
 | 5 Phase d – PURIS | erledigt (2026-10-07) | Do 15.–Fr 16.10. |
 | 6 Phase e – Testdaten und Funktionstest | erledigt (2026-10-07; Meilenstein 1 erreicht, S0 gesichert) | Sa 17.–**So 18.10. (Meilenstein 1)** |
-| 7 Phase f – Lastgenerator und Probelauf | begonnen (2026-10-07: `f1` vorbereitet) | Mo 19.–Di 20.10. |
+| 7 Phase f – Lastgenerator und Probelauf | begonnen (2026-10-07: Operator installiert, Probelauf offen) | Mo 19.–Di 20.10. |
 | 8 Reset | offen | Mi 21.10. |
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
 | 10 Etappe 2 – Automatisieren | offen | Do 22.–Sa 24.10. (inkl. Neuaufbau mit Skripten) |
@@ -218,8 +218,10 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Genug vorab angelegte VUs, damit `dropped_iterations = 0` erreichbar ist
 - [ ] k6-Metriken per Remote Write in Prometheus
 - [x] `TestRun` als YAML-Datei im Baustein-Ordner – `setup/f1-k6/testrun-pilot.yaml`; 2026-10-07
-- [ ] Namespace `k6` anlegen und API-Key aus `customer` als Secret `puris-api-key` kopieren (je Aufbau; in Etappe 2 skripten) – gefunden 2026-10-07
+- [x] Namespace `k6` anlegen und API-Key aus `customer` als Secret `puris-api-key` kopieren (je Aufbau; in Etappe 2 skripten) – gefunden 2026-10-07 – angelegt 2026-10-07 (`AUFBAU.md`, f1); Skripten folgt in Etappe 2 (Abschnitt 10)
 - [ ] Starter-Image ohne Angabe `latest-starter`, Initializer `grafana/k6:latest` – in jedem TestRun fest angeben (erledigt für `testrun-pilot.yaml`) – gefunden 2026-10-07
+- [x] Operator installiert, Pod `Guaranteed`, CRDs vorhanden; Summe der requests 6225m (89 %) – 2026-10-07
+- [ ] `testrun-pilot.yaml`: leeres Feld `cleanup` von der CRD abgelehnt, entfernt – Korrektur committen, dann aus dem Commit anwenden – gefunden 2026-10-07
 - [ ] Definition „Baustein fertig“ erfüllt
 
 ### Probelauf (`pilot`)

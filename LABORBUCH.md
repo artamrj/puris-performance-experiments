@@ -641,3 +641,14 @@ Begründung: Der Probelauf ist genau für diese Prüfung vorgesehen; eine Änder
 - Runner-Pods bleiben nach dem Lauf erhalten (`cleanup` leer); die k6-Zusammenfassung steht als Zeile `K6_SUMMARY_JSON …` im Log.
 
 **Nächstes:** Dateien committen, dann Operator installieren, Namespace, Secret und ConfigMap anlegen, Probelauf starten.
+
+## 2026-10-07 – `f1` installiert: k6-Operator läuft
+
+**Gemacht:**
+- k6-Operator aus Commit `8b7677a` installiert (00:49 UTC; Release `k6-operator`, Revision 1), auf Wunsch des Verfassers vom Assistenten ausgeführt. Pod `Guaranteed`, CRDs `testruns.k6.io` und `privateloadzones.k6.io` vorhanden.
+- Namespace `k6`, Secret `puris-api-key` (Kopie aus `customer`, Gleichheit geprüft ohne Ausgabe des Werts) und ConfigMap `k6-stock-trigger` (identisch mit der Datei im Commit) angelegt.
+- Summe der requests nach `f1`: 6225m CPU (89 %), 21936Mi RAM (78 %); während eines Laufs mit Runner 6725m (96 %). Dokumentation in `AUFBAU.md`, „f1 – Lastgenerator“.
+
+**Problem:** Der Server-Trockenlauf lehnte `testrun-pilot.yaml` ab: `spec.cleanup` darf nur `post` sein oder fehlen, ein leerer Wert ist ungültig. Lösung: Feld entfernt (Pods bleiben nach dem Lauf erhalten, wie beabsichtigt); danach Trockenlauf erfolgreich. Die Änderung ist noch zu committen, bevor der Probelauf gestartet wird.
+
+**Nächstes:** Korrektur von `testrun-pilot.yaml` committen; danach Probelauf (nach Zustimmung des Verfassers).
