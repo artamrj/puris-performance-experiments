@@ -921,7 +921,58 @@ kubectl get --raw "/api/v1/namespaces/monitoring/services/http:monitoring-kube-p
 ```
 Ergebnis: DTR Customer (Limit 100m) 38 % der Perioden gedrosselt, höchster Verbrauch 0,099 Kerne (am Limit); DTR Supplier (Limit 200m) 16 % gedrosselt, höchstens 0,111 Kerne.
 
-**Umfang der Testdaten** (für Kapitel 4.3): je Firma 1 Partner, 1 Material, 1 Material-Partner-Beziehung; beim Supplier 1 Bestandszeile (100 Stück); je DTR 1 Zwilling.
+**Umfang der Testdaten** (für Kapitel 4.3): je Firma 1 Partner, 1 Material, 1 Material-Partner-Beziehung; beim Supplier 1 Bestandszeile (100 Stück); je DTR 1 Zwilling. *(Erweitert auf 20 Materialien, siehe nächster Abschnitt.)*
+
+### Erweiterung auf 20 Materialien
+
+**Datum:** 2026-10-07 (10:21:30–10:30:28 UTC), aus Commit `8538c6b`; vorher Reset auf S0 (Abschnitt „Reset“).
+**Ziel:** Mehrere Materialien für die Hauptmessungen (Entscheidung 2026-10-07, `KONZEPT.md` Abschnitt 12), damit gleichzeitige Aufträge selten dasselbe Material treffen.
+
+**Daten:** [`setup/e1-testdaten/materialien.tsv`](setup/e1-testdaten/materialien.tsv) – Nr. 01 = Material aus `e1`; Nr. 02–20 erfunden nach festem Muster (Customer `MNR-7307-LT-0NN`, Supplier `MNR-8101-LT-0NN`, Name „Semiconductor NN“), Catena-X-Nummer des Suppliers als UUIDv5 aus der Materialnummer (reproduzierbar). Die JSON-Dateien von Material 01 dienen als Vorlage; ersetzt werden nur Nummern und Name. Bestand je Material 100 Stück wie bei 01.
+
+**Anlegen `[Mac]`** (Port-Forwards und API-Keys wie oben in der Vorbereitung):
+```bash
+cd "$HOME/Downloads/2 Bachelorarbeit/6-experiment"
+CK="$CK" SK="$SK" setup/e1-testdaten/materialien-anlegen.sh supplier
+CK="$CK" SK="$SK" setup/e1-testdaten/materialien-anlegen.sh customer
+```
+Das Skript ([`materialien-anlegen.sh`](setup/e1-testdaten/materialien-anlegen.sh)) überspringt Vorhandenes (Material 01: Material und Bestand „vorhanden“, Beziehung HTTP 409) und wartet nach jedem Material, bis der Zwilling im DTR der Firma steht.
+
+Ergebnis:
+- Supplier (10:21:30–10:24:13): 19 × Produkt, Beziehung, Bestand je HTTP 200; Zwilling je 6–11 s nach dem Anlegen im DTR; danach **20 Zwillinge** im DTR des Suppliers.
+- Customer (10:24:13–10:30:28): 19 × Material, Beziehung je HTTP 200; je Material holt der Customer die Teileinformation beim Supplier („Initiating new PartTypeInformation Fetch“, 2 Transfers je Material, gespeicherte Verträge); Zwilling nach 11–41 s; danach **20 Zwillinge** im DTR des Customers.
+- Keine Fehler; Transferprozesse je EDC 8 → 46 (19 × 2 für die Teileinformation), Vertragsverhandlungen unverändert 3.
+
+**Funktionstest je Material `[Mac]`** (wie e2, für alle 20 Materialien; je Material eine Auslösung im Abstand von 3 s, danach Log, Bestand beim Customer und Zählung in den EDC-Datenbanken):
+```bash
+for m in $(grep -v '^#' setup/e1-testdaten/materialien.tsv | tail -n +2 | cut -f2); do
+  curl -s -o /dev/null -w "$m %{http_code}\n" -H "X-API-KEY: $CK" "http://127.0.0.1:18181/catena/stockView/update-reported-material-stocks?ownMaterialNumber=$(printf %s "$m" | base64)"; sleep 3
+done
+kubectl logs -n customer deploy/puris-backend --since=3m | grep -cE "Updated ReportedMaterialItemStocks"
+```
+Ergebnis (10:30:36–10:31:39 UTC): 20 × HTTP 200; **20 × „Updated ReportedMaterialItemStocks“, je Material genau 1**, 0 Fehler, keine WARN/ERROR-Zeilen; Bestand beim Customer je Material 100; Transferprozesse je EDC 46 → 86 (2 je Transaktion); Vertragsverhandlungen unverändert 3 (gespeicherte Verträge gelten für alle Materialien des Partners).
+
+**Stand S0-v2 sichern `[VM]`** (die bisherige Sicherung S0 bleibt erhalten):
+```bash
+cd ~/puris-performance-experiments && ./lab snapshot s0-v2
+```
+```bash
+scp -q -o ClearAllForwardings=yes -r puris-vm:puris-loadlab-state/s0-v2 "$HOME/.local/opt/puris-loadlab/s0-v2" && chmod -R go-rwx "$HOME/.local/opt/puris-loadlab/s0-v2"
+cd "$HOME/.local/opt/puris-loadlab/s0-v2" && shasum -a 256 -c SHA256SUMS
+```
+Ergebnis (10:32:28 UTC, Commit `8538c6b`): Kopie auf dem Mac 14 × `OK`.
+
+| Datei | Tabellen | Zeilen (S0 → S0-v2) | Größe |
+|---|---|---|---|
+| `c1-wallet` | 8 | 38 → 38 | 20K |
+| `c2-customer-edc` | 18 | 84 → 240 | 48K |
+| `c3-customer-dtr` | 22 | 83 → 919 | 80K |
+| `c4-supplier-edc` | 18 | 109 → 499 | 68K |
+| `c5-supplier-dtr` | 22 | 103 → 1319 | 92K |
+| `d1-puris-customer` | 69 | 135 → 211 | 128K |
+| `d2-puris-supplier` | 69 | 128 → 204 | 128K |
+
+**Umfang der Testdaten ab S0-v2** (für Kapitel 4.3): je Firma 1 Partner, 20 Materialien, 20 Material-Partner-Beziehungen; beim Supplier 20 Bestandszeilen (je 100 Stück); je DTR 20 Zwillinge; je EDC 3 ausgehandelte Verträge (DTR, Teileinformation, Item Stock).
 
 ---
 
@@ -1128,6 +1179,79 @@ Ergebnis:
 - Sammelskript: [`experiments/collect/collect_run.py`](experiments/collect/collect_run.py) (Entwurf; enthält zusätzlich den Export der EDC-Datenbank und die Prüfsummen, die im Probelauf getrennt ausgeführt wurden).
 - `cluster/pods.txt` enthält Pod-IP-Adressen des Clusters (10.42.x.x, nur intern).
 - Der API-Key kommt im Laufordner nicht vor (geprüft mit `grep -F`, ohne Ausgabe des Werts).
+
+---
+
+## Reset (`./lab reset`)
+
+**Datum:** 2026-10-07 (erste Ausführung 10:15:40–10:21:06 UTC, aus Commit `8538c6b`)
+**Ziel:** Vor jedem Messlauf denselben Ausgangszustand herstellen (`KONZEPT.md`, Abschnitte 4 und 6), ohne die DTRs neu zu starten.
+
+**Was zurückgesetzt wird** (Prüfung der Zeilen nach dem Probelauf, `LABORBUCH.md` 2026-10-07): Datenbanken und Pods von EDC (Control Plane, Data Plane) und PURIS-Backend beider Firmen. Wallet-Stub und DTRs ändern sich im Lauf nicht; ihre Zeilen werden nur geprüft (Wallet-Datenbank auf `emptyDir`: Pod nie neu starten).
+
+**Befehl `[VM]`** (Repository auf der VM; Stände unter `~/puris-loadlab-state/`):
+```bash
+cd ~/puris-performance-experiments && git pull --ff-only && ./lab reset s0
+```
+Ablauf im Skript ([`lab`](lab), [`lib/db.sh`](lib/db.sh)):
+1. Prüfsummen des Stands (`sha256sum -c`); kein TestRun aktiv.
+2. `kubectl scale deploy puris-backend edc-controlplane edc-dataplane --replicas=0` in `customer` und `supplier`; warten, bis die Pods beendet sind (laufende Hintergrundaufträge enden mit).
+3. `pg_restore --clean --if-exists --single-transaction --exit-on-error` der Datenbanken `c2`, `c4`, `d1`, `d2` (im Datenbank-Pod, Zugangsdaten aus der Pod-Umgebung).
+4. Zeilen aller Tabellen aller 7 Datenbanken gleich dem Stand – sonst Abbruch.
+5. EDC beider Firmen auf 1 Replikat, `kubectl rollout status`; danach PURIS (spricht beim Start den EDC an).
+6. Zeilen nach dem Start erneut verglichen; Ergebnis in `~/puris-loadlab-state/last-reset.json` (wird von `./lab run` in `meta.json` übernommen).
+
+Ergebnis der ersten Ausführung (Stand nach dem Probelauf → S0):
+
+| Schritt | Ende (UTC) | Dauer |
+|---|---|---|
+| PURIS und EDC angehalten | 10:16:18 | 38 s |
+| 4 Datenbanken zurückgesetzt, Zeilen aller 7 gleich S0 | 10:16:38 | 20 s |
+| EDC beider Firmen bereit | 10:17:55 | 77 s |
+| PURIS beider Firmen bereit | 10:20:56 | 181 s |
+| **gesamt** | 10:21:06 | **326 s** |
+
+- Nach dem Start keine Abweichung von S0 (`counts_diff_after_start: []`): PURIS und EDC schreiben beim Start nichts in die Datenbanken.
+- Alle Pods `Running`, 0 Neustarts; DTRs, Wallet-Stub und alle Datenbank-Pods unverändert weitergelaufen.
+
+**Hinweis:** `kubectl scale` ändert nur vorübergehend die Zahl der Replikate; danach gilt wieder der Wert aus dem Helm-Release (1). Keine Änderung an der Konfiguration.
+
+---
+
+## Messlauf (`./lab run`)
+
+**Datum:** 2026-10-07 (erster Lauf: Kurztest `smoke`, 10:32:37–10:46:53 UTC, aus Commit `8538c6b`)
+**Ziel:** Ein Messlauf mit einem Befehl, unbeaufsichtigt auf der VM (`KONZEPT.md`, Abschnitte 5 und 6).
+
+**Befehl `[VM]`** (in `tmux`, damit der Lauf ohne SSH-Verbindung weiterläuft; Ausgabe zusätzlich in eine Datei außerhalb des Repositorys):
+```bash
+tmux new-session -d -s lab -c ~/puris-performance-experiments "./lab run <plan> <wiederholung> 2>&1 | tee ~/puris-loadlab-state/logs/<plan>-<wiederholung>.log"
+```
+Ablauf im Skript ([`lab`](lab)):
+1. Nur auf der VM; Git-Stand sauber (keine Änderung an versionierten Dateien; neue Laufordner unter `runs/` erlaubt).
+2. Plan aus [`experiments/plans/<plan>.env`](experiments/plans/) (Stand für den Reset, Raten, Namen und Dauer der Stufen, Höchstdauer für das Abarbeiten, Grenzwert Steal Time).
+3. `./lab reset <Stand>` (Abschnitt „Reset“).
+4. Alte TestRuns löschen; ConfigMap `k6-stock-trigger` aus dem Skript im Commit; TestRun aus [`render_testrun.py`](experiments/k6/render_testrun.py) (Images und Ressourcen wie `testrun-pilot.yaml`, alle Materialien aus `materialien.tsv`, `testid` = Name des Laufordners) anwenden; warten, bis er `finished` meldet.
+5. [`collect_run.py`](experiments/collect/collect_run.py): warten, bis alle ausgelösten Transaktionen abgeschlossen oder gescheitert sind (Zählung über Loki alle 30 s; Abbruch nach 2 min ohne Fortschritt oder nach der Höchstdauer), dann sammeln (Inhalt siehe Kopf des Skripts) und Gültigkeit in `meta.json`.
+6. Zeilen aller 7 Datenbanken nach dem Lauf (`db/`), Prüfung auf den API-Key (Abbruch, falls gefunden), `SHA256SUMS`.
+
+**Übernahme ins Repository `[Mac]`** (Commit durch den Verfasser; auf der VM danach verschieben, nicht löschen):
+```bash
+cd "$HOME/Downloads/2 Bachelorarbeit/6-experiment" && scp -q -o ClearAllForwardings=yes -r puris-vm:puris-performance-experiments/runs/<laufordner> runs/ && (cd runs/<laufordner> && shasum -a 256 -c SHA256SUMS)
+```
+```bash
+ssh puris-vm 'mkdir -p ~/puris-loadlab-state/runs-vm && mv ~/puris-performance-experiments/runs/<laufordner> ~/puris-loadlab-state/runs-vm/'
+```
+
+**Kurztest `smoke`** (`experiments/plans/smoke.env`: 0,5/s und 1/s je 1 min) → `runs/2026-10-07_1032_smoke_rep-1/` (3,0M; Mac: 29 × `OK`; API-Key nicht enthalten):
+- Reset auf `s0-v2` 326 s; k6 91 Auslösungen, `dropped_iterations` 0, auf alle 20 Materialien verteilt (je 4–5); Gültigkeit nach allen Kriterien erfüllt (Steal Time höchstens 1,71 %).
+- **Ergebnis der Transaktionen:** während der Stufen 0 abgeschlossen; nach 5 min Abarbeiten 8 abgeschlossen, 40 gescheitert, 43 offen. Ursache: Last direkt nach dem Kaltstart (Einzelheiten in `LABORBUCH.md`, 2026-10-07, „Kurztest“) – daher Aufwärmstufen in der Vorstudie.
+
+**Kurzauswertung je Stufe `[Mac]`:**
+```bash
+python3 analysis/stage_summary.py runs/<laufordner>
+```
+[`analysis/stage_summary.py`](analysis/stage_summary.py): je Stufe Eingangslast, abgeschlossene Transaktionen/s, Fehler, „Invalidating …“ und neue Verhandlungen, Dauer je Transaktion nach zwei Verfahren (A: Auslösung → Ende je Material in Reihenfolge; B: erster EDC-Transfer → Ende je Pool-Thread), CPU, Drosselung, Threads, Steal Time.
 
 ---
 

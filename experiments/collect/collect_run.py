@@ -12,7 +12,9 @@ oder gescheitert sind (höchstens DRAIN_MAX_MIN Minuten), und sammelt dann:
   testrun.json              der angewendete TestRun
   prometheus/*.csv          CPU, RAM, Drosselung, Threads je Container; Steal Time; k6; Loki; Neustarts
   loki/*.tsv.gz             alle Logzeilen der PURIS-Backends (Customer, Supplier) im Zeitfenster
-  edc/*-transfer-times.csv  Transferprozesse aus den EDC-Datenbanken (Zeiten je Transfer)
+  edc/*-transfer-times.csv  Transferprozesse aus den EDC-Datenbanken (Zeiten, Zustand, Fehler je Transfer)
+  edc/*-negotiations.csv    Vertragsverhandlungen (Neuverhandlungen nach „Invalidating … contract data“)
+  loki/edc_warn_error.tsv.gz  WARN/ERROR-Zeilen der EDC Control Planes beider Firmen
   cluster/                  pods.txt, helm.txt, images.txt, logs/k6-runner.txt
 Die Dauer je Transaktion wird in der Auswertung rekonstruiert: Logzeilen eines
 Pool-Threads („Terminated transfer process with id …“ bis „Updated …“) und die
@@ -136,20 +138,27 @@ def loki_all(name, sel):
 
 cust = loki_all("customer_puris", CUST)
 loki_all("supplier_puris", SUPP)
+loki_all("edc_warn_error", '{namespace=~"customer|supplier", pod=~"edc-controlplane.*"} |~ "\\"level\\":\\"(WARN|ERROR)\\""')
 pick = lambda s: [r for r in cust if s in r[2]]
 trig, done = pick("Trigger Reported MaterialStockUpdate"), pick("Updated ReportedMaterialItemStocks")
-errs, inval = pick("Error in ReportedMaterialItemStockRequest"), pick("Invalidating Contract data")
+errs, inval = pick("Error in ReportedMaterialItemStockRequest"), pick("Invalidating ")
 locks = pick("ObjectOptimisticLockingFailureException")
 warn = [r for r in cust if re.search(r" (ERROR|WARN) ", r[2])]
 
 # --- EDC: Transferprozesse aus der Datenbank (die API liefert kein createdAt) ---
-SQL = ("select transferprocess_id, type, state, asset_id, contract_id, correlation_id, "
-       "created_at, state_time_stamp, updated_at from edc_transfer_process order by created_at;")
+EDC_SQL = {
+    "transfer-times": "select transferprocess_id, type, state, asset_id, contract_id, correlation_id, created_at, "
+                      "state_time_stamp, updated_at, state_count, left(error_detail, 300) as error_detail "
+                      "from edc_transfer_process order by created_at;",
+    "negotiations": "select id, type, state, state_count, counterparty_id, agreement_id, created_at, state_timestamp, "
+                    "updated_at, left(error_detail, 300) as error_detail from edc_contract_negotiation order by created_at;",
+}
 for side in ("customer", "supplier"):
-    out = subprocess.run(["kubectl", "exec", "-i", "-n", side, "edc-postgresql-0", "--", "sh", "-c",
-                          'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" --csv -f -'],
-                         input=SQL, check=True, capture_output=True, text=True).stdout
-    open(f"{RUN}/edc/{side}-transfer-times.csv", "w").write(out)
+    for name, sql in EDC_SQL.items():
+        out = subprocess.run(["kubectl", "exec", "-i", "-n", side, "edc-postgresql-0", "--", "sh", "-c",
+                              'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" --csv -f -'],
+                             input=sql, check=True, capture_output=True, text=True).stdout
+        open(f"{RUN}/edc/{side}-{name}.csv", "w").write(out)
 
 # --- Cluster ---
 allpods = json.loads(kubectl("get", "pods", "-A", "-o", "json"))["items"]

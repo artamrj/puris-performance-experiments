@@ -219,7 +219,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] k6-Metriken per Remote Write in Prometheus – `k6_*` mit `testid`/`stage`; 2026-10-07
 - [x] `TestRun` als YAML-Datei im Baustein-Ordner – `setup/f1-k6/testrun-pilot.yaml`; 2026-10-07
 - [x] Namespace `k6` anlegen und API-Key aus `customer` als Secret `puris-api-key` kopieren (je Aufbau; in Etappe 2 skripten) – gefunden 2026-10-07 – angelegt 2026-10-07 (`AUFBAU.md`, f1); Skripten folgt in Etappe 2 (Abschnitt 10)
-- [ ] Starter-Image ohne Angabe `latest-starter`, Initializer `grafana/k6:latest` – in jedem TestRun fest angeben (erledigt für `testrun-pilot.yaml`; für weitere TestRuns/Messpläne offen) – gefunden 2026-10-07
+- [x] Starter-Image ohne Angabe `latest-starter`, Initializer `grafana/k6:latest` – in jedem TestRun fest angeben (erledigt für `testrun-pilot.yaml`; für weitere TestRuns/Messpläne offen) – gefunden 2026-10-07 – 2026-10-07: `render_testrun.py` setzt alle Images mit Digest
 - [x] Operator installiert, Pod `Guaranteed`, CRDs vorhanden; Summe der requests 6225m (89 %) – 2026-10-07
 - [x] `testrun-pilot.yaml`: leeres Feld `cleanup` von der CRD abgelehnt, entfernt – Korrektur committen, dann aus dem Commit anwenden – gefunden 2026-10-07 – Commit `5ab5857`, daraus angewendet
 - [x] Definition „Baustein fertig“ erfüllt – 2026-10-07, aus Commits `8b7677a`/`5ab5857`; Funktionsprüfung = Probelauf (Punkt 11: mit dem Commit dieser Dokumentation)
@@ -229,26 +229,26 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Abgelegt wie ein Messlauf unter `runs/…_pilot_…/` – `runs/2026-10-07_0100_pilot_rep-1/` (mit `cluster/logs/` nach Änderung der `.gitignore`; Commit durch den Nutzer)
 - [x] `dropped_iterations = 0`, k6 unter seinem CPU-Limit – 0; höchstens 0,005 von 0,5 Kernen
 - [x] Abgeschlossene und fehlgeschlagene Transaktionen aus Loki zählbar – 328 ausgelöst, 324 abgeschlossen, 4 Fehler
-- [ ] Verfahren für die Dauer einer Transaktion festgelegt (Log-Zeitstempel oder EDC-Transferprozesse) *(2026-10-07: EDC-API ohne `createdAt`; EDC-Datenbank hat `created_at`/`state_time_stamp` je Transfer – Kandidat; Entscheidung offen)*
+- [ ] Verfahren für die Dauer einer Transaktion festgelegt (Log-Zeitstempel oder EDC-Transferprozesse) *(2026-10-07: zwei Verfahren in `analysis/stage_summary.py` – A Auslösung → Ende je Material, B erster EDC-Transfer → Ende je Pool-Thread; im Probelauf fast gleich (p50 2,9 s); Entscheidung nach der Vorstudie)*
 - [x] Laborbuch-Eintrag mit Beobachtungen – 2026-10-07
 - [x] **Etappe 1 abgeschlossen** – Laborbuch-Eintrag – 2026-10-07 (nach `KONZEPT.md`, Abschnitt 1; Reset folgt vor Etappe 2)
 - [x] `.gitignore` (`logs/`) schließt `runs/*/cluster/logs/` aus: auf `/logs/` (nur Wurzel) einschränken oder Ordner umbenennen – entscheiden; gefunden 2026-10-07 – auf `/logs/` eingeschränkt, 2026-10-07
 - [x] Sammelskript des Probelaufs (Entwurf, Python) ins Repository übernehmen – Grundlage für `./lab run` (Abschnitt 10) – `experiments/collect/collect_run.py`, 2026-10-07
 - [x] Anzahl der Materialien für die Hauptmessungen entscheiden (ein Material: Sperrkonflikte gehören zum Ergebnis; mehrere: realistischer) – gefunden 2026-10-07 – entschieden 2026-10-07: mehrere
 - [x] Anzahl der Materialien festlegen (für Kapitel 4.3 begründen) – 20, 2026-10-07 (`KONZEPT.md`, Abschnitt 12; `setup/e1-testdaten/materialien.tsv`)
-- [ ] `e1` erweitern: weitere Materialien je Firma (Material/Produkt, Beziehung, Bestand) als JSON-Dateien, aus dem Commit anlegen
-- [ ] k6-Skript: Auslösungen auf die Materialien verteilen (z. B. reihum), Kennzeichnung je Material *(2026-10-07: `MATERIAL_NUMBERS` reihum je Stufe, `STAGE_LABELS`; Material steht im PURIS-Log; Prüfung im Testlauf offen)*
-- [ ] S0 nach der Erweiterung neu sichern (bisherige Sicherung behalten)
+- [x] `e1` erweitern: weitere Materialien je Firma (Material/Produkt, Beziehung, Bestand) als JSON-Dateien, aus dem Commit anlegen – 2026-10-07, 19 weitere aus Commit `8538c6b` (`materialien.tsv` + Vorlagen); Funktionstest 20/20 (`AUFBAU.md`, e1)
+- [x] k6-Skript: Auslösungen auf die Materialien verteilen (z. B. reihum), Kennzeichnung je Material – 2026-10-07: `MATERIAL_NUMBERS` reihum je Stufe, Material im PURIS-Log; Kurztest: 91 Auslösungen auf alle 20 Materialien (je 4–5)
+- [x] S0 nach der Erweiterung neu sichern (bisherige Sicherung behalten) – 2026-10-07, `s0-v2` (VM und Mac, 14 × `OK`); `s0` bleibt
 
 ## 8 Reset
 
 - [x] Prüfen, was sich ansammelt (Zeilenzahlen in PURIS- und EDC-Datenbanken vor und nach dem Probelauf) – 2026-10-07: nur die EDC-Datenbanken wachsen; Wallet-Stub, DTRs, PURIS gleich (`LABORBUCH.md`)
-- [ ] Ablauf erprobt: Hintergrundaufträge beendet → Datenbanken auf S0 → PURIS- und EDC-Pods neu gestartet → Aufwärmphase
-- [ ] Prüfung nach dem Reset: Zeilenzahlen wie in S0, alle Pods `Ready`
-- [ ] PURIS beim Reset bzw. Neuaufbau nicht mit `helm uninstall` neu installieren, ohne das Datenbank-Volume zu löschen (neues Zufallspasswort passt sonst nicht zur Datenbank) – gefunden 2026-10-07
-- [ ] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`) *(2026-10-07: `./lab reset` geschrieben, noch nicht erprobt)*
+- [x] Ablauf erprobt: Hintergrundaufträge beendet → Datenbanken auf S0 → PURIS- und EDC-Pods neu gestartet → Aufwärmphase – 2026-10-07, `./lab reset s0` aus Commit `8538c6b`, 326 s (Aufwärmphase ist Teil des Messplans)
+- [x] Prüfung nach dem Reset: Zeilenzahlen wie in S0, alle Pods `Ready` – 2026-10-07: alle 7 Datenbanken gleich S0 (vor und nach dem Start), 0 Neustarts
+- [ ] PURIS beim Reset bzw. Neuaufbau nicht mit `helm uninstall` neu installieren, ohne das Datenbank-Volume zu löschen (neues Zufallspasswort passt sonst nicht zur Datenbank) – gefunden 2026-10-07 *(Reset: umgesetzt, kein `helm uninstall`; offen für den Neuaufbau in Etappe 2)*
+- [x] Ablauf in `AUFBAU.md` festgehalten (wird in Etappe 2 zu `./lab reset`) – 2026-10-07, `AUFBAU.md`, „Reset (`./lab reset`)“
 - [x] Wallet-Stub-Datenbank liegt auf `emptyDir` (Neustart leert sie): beim Reset wiederherstellen oder Wallet-Pod nie neu starten – entscheiden; gefunden 2026-10-07 – entschieden 2026-10-07: nie neu starten, nicht zurücksetzen, Zeilen bei jedem Reset prüfen (Daten ändern sich im Lauf nicht)
-- [ ] Wiederherstellung von S0 mit `pg_restore` erproben (Sicherungen: `~/puris-loadlab-state/s0/` auf der VM)
+- [x] Wiederherstellung von S0 mit `pg_restore` erproben (Sicherungen: `~/puris-loadlab-state/s0/` auf der VM) – 2026-10-07, 4 Datenbanken in 20 s
 - [ ] Vorläufige Entscheidung zu S0 (mit Verträgen) im Laborbuch bestätigt oder geändert
 
 ## 9 Offene Punkte klären
@@ -291,24 +291,24 @@ Noch offen:
 - [ ] `lib/` für gemeinsame Hilfsfunktionen
 - [ ] Je Baustein `up.sh`, `down.sh`, `check.sh` (`#!/usr/bin/env bash`, `set -euo pipefail`, kurz)
 - [ ] Phase a als Skripte (laufen nur auf der VM)
-- [ ] `./lab` mit `status`, `up`, `down`, `refresh`, `reset`, `run`
+- [ ] `./lab` mit `status`, `up`, `down`, `refresh`, `reset`, `run` *(2026-10-07 vorgezogen: `snapshot`, `reset`, `run` – erprobt mit `smoke`; `status`, `up`, `down`, `refresh` offen)*
 - [ ] Idempotenz geprüft: `up` zweimal hintereinander ohne Schaden
-- [ ] `./lab run` startet nur bei sauberem Git-Stand und schreibt einen vollständigen Laufordner (`KONZEPT.md`, Abschnitt 6):
-  - [ ] `meta.json` (Commit, Tag, Versionen, Messplan, Konfiguration, Wiederholung, Zeiten jeder Phase und Laststufe in UTC, Knoten, Gültigkeit)
-  - [ ] `k6-summary.json` (und `k6-raw.csv`, falls die Größe vertretbar ist)
-  - [ ] `prometheus/` (CPU, RAM, Drosselung je Pod im Messzeitraum)
-  - [ ] Transaktionen aus Loki (abgeschlossen, fehlgeschlagen, Zeitstempel)
-  - [ ] `edc/` (Transferprozesse)
-  - [ ] `cluster/` (`pods.txt`, `helm.txt`, `logs/*.txt`)
-  - [ ] Logs vor dem Ablegen automatisch auf Geheimnisse geprüft und maskiert
-- [ ] Messpläne in `experiments/plans/` (Laststufen, Dauer, Wiederholungen)
+- [x] `./lab run` startet nur bei sauberem Git-Stand und schreibt einen vollständigen Laufordner (`KONZEPT.md`, Abschnitt 6): – 2026-10-07, Kurztest `runs/2026-10-07_1032_smoke_rep-1/` (neue Laufordner unter `runs/` zählen nicht als unsauber)
+  - [x] `meta.json` (Commit, Tag, Versionen, Messplan, Konfiguration, Wiederholung, Zeiten jeder Phase und Laststufe in UTC, Knoten, Gültigkeit) – 2026-10-07 (Versionen der Images in `cluster/images.txt`)
+  - [x] `k6-summary.json` (und `k6-raw.csv`, falls die Größe vertretbar ist) – 2026-10-07 (`k6-raw.csv` entfällt: k6 misst nur das Auslösen)
+  - [x] `prometheus/` (CPU, RAM, Drosselung je Pod im Messzeitraum) – 2026-10-07, dazu Threads, CPU des Knotens je Modus
+  - [x] Transaktionen aus Loki (abgeschlossen, fehlgeschlagen, Zeitstempel) – 2026-10-07: alle Zeilen beider PURIS-Backends (`loki/*.tsv.gz`)
+  - [x] `edc/` (Transferprozesse) – 2026-10-07, ab der Vorstudie auch Verhandlungen und Fehler je Transfer
+  - [x] `cluster/` (`pods.txt`, `helm.txt`, `logs/*.txt`) – 2026-10-07 (Pod-Logs von PURIS aus Loki statt `kubectl logs`)
+  - [ ] Logs vor dem Ablegen automatisch auf Geheimnisse geprüft und maskiert *(2026-10-07: Prüfung auf den API-Key mit Abbruch umgesetzt; keine Maskierung)*
+- [ ] Messpläne in `experiments/plans/` (Laststufen, Dauer, Wiederholungen) *(2026-10-07: `smoke.env`, `vorstudie.env`; K0 folgt nach der Vorstudie)*
 - [ ] **Vollständiger Neuaufbau** mit den Skripten (`k3s` entfernt → `./lab up all` → `./lab status`); Abweichungen zu `AUFBAU.md` behoben; Dauer und manuelle Eingriffe im Laborbuch
 - [ ] `README.md` mit Schnellstart (Voraussetzungen, Klonen, `.env`, `./lab up all`)
 
 ## 11 Etappe 3 – Vorstudie und Einfrieren
 
 - [ ] Vorstudie: Lastbereiche gering / mäßig / stark bestimmt
-- [ ] Dauer der Aufwärmphase bestimmt
+- [ ] Dauer der Aufwärmphase bestimmt *(2026-10-07: Kurztest zeigt Kaltstart-Überlast; Vorstudie beginnt mit 0,1/s und 0,2/s je 5 min)*
 - [ ] Laststufen festgelegt (5–10 Stufen, je ca. 10 Minuten, plus Baseline)
 - [ ] Gültigkeitskriterien je Lauf festgelegt: `dropped_iterations = 0`, k6 unter CPU-Limit, keine `OOMKilled`/Neustarts, Reset-Prüfung bestanden
 - [ ] Grenzwert für Steal Time festgelegt (`node_cpu_seconds_total{mode="steal"}`, z. B. < 2 % der CPU-Zeit) – Läufe darüber sind ungültig
@@ -392,6 +392,8 @@ Zuordnung nach `KONZEPT.md`, Abschnitt 10:
 - [ ] DTR: Heap vom Image vorgegeben (`-Xmx2048m`), langer Start mit wenig CPU (9,6 bzw. 21,5 min) – ergänzt 2026-10-07
 - [ ] PURIS-Chart aus dem Git-Tag statt aus dem Helm-Repository (Paket 7.2.0 nicht abrufbar) – ergänzt 2026-10-07
 - [ ] Prüfungen, Batch-Aufträge und Speicher gegenüber den Chart-Standards angepasst (Gültigkeit der Messläufe) – ergänzt 2026-10-07
+- [ ] EDC Control Planes loggen auf Stufe DEBUG (Standard der Bundles, unverändert) – kostet CPU unter kleinen Limits – ergänzt 2026-10-07
+- [ ] Kaltstart nach jedem Reset (PURIS und EDC neu gestartet) – Aufwärmphase nötig; Last direkt nach dem Start löste im Kurztest Neuverhandlungen aus – ergänzt 2026-10-07
 
 ## 16 Veröffentlichung des Artefakts
 

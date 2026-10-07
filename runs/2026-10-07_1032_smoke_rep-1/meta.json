@@ -1,0 +1,125 @@
+{
+ "run": "2026-10-07_1032_smoke_rep-1",
+ "kind": "smoke",
+ "plan": "smoke",
+ "repetition": 1,
+ "git_commit": "8538c6b24d08d877d683fe5622cfc156554f1bb4",
+ "tag": null,
+ "testrun": "smoke-r1-1032",
+ "testid": "2026-10-07_1032_smoke_rep-1",
+ "script": "experiments/k6/stock-trigger.js",
+ "plan_values": {
+  "state": "s0-v2",
+  "rates_per_s": [
+   0.5,
+   1.0
+  ],
+  "stage_labels": [
+   "s1",
+   "s2"
+  ],
+  "stage_minutes": 1.0,
+  "materials_n": null,
+  "drain_max_min": 5.0,
+  "steal_max": 0.02
+ },
+ "times_utc": {
+  "apply": "2026-10-07T10:38:04Z",
+  "runner_start": "2026-10-07T10:38:09Z",
+  "runner_end": "2026-10-07T10:40:12Z",
+  "first_trigger": "2026-10-07T10:38:12Z",
+  "drain_end": "2026-10-07T10:45:20Z",
+  "collection_window": [
+   "2026-10-07T10:36:04Z",
+   "2026-10-07T10:46:20Z"
+  ]
+ },
+ "drain": {
+  "reason": "H\u00f6chstdauer 5 min erreicht",
+  "open_at_end": 43
+ },
+ "reset": {
+  "state": "s0-v2",
+  "start_utc": "2026-10-07T10:32:37Z",
+  "end_utc": "2026-10-07T10:38:03Z",
+  "duration_s": 326,
+  "counts_equal_after_restore": true,
+  "counts_diff_after_start": []
+ },
+ "stages": [
+  {
+   "stage": "s1",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-07T10:38:12Z",
+   "end_utc": "2026-10-07T10:39:12Z",
+   "planned": 30,
+   "triggered_log": 31,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0
+  },
+  {
+   "stage": "s2",
+   "rate_per_s": 1.0,
+   "start_utc": "2026-10-07T10:39:12Z",
+   "end_utc": "2026-10-07T10:40:12Z",
+   "planned": 60,
+   "triggered_log": 59,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 43,
+   "invalidating_contract": 11
+  }
+ ],
+ "totals": {
+  "triggered_log": 91,
+  "completed_log": 8,
+  "failed_log": 40,
+  "optimistic_lock": 0,
+  "error_warn_lines_customer": 327,
+  "invalidating_contract": 12,
+  "k6_iterations": 91,
+  "k6_dropped_iterations": 0,
+  "k6_http_req_failed_rate": 0
+ },
+ "validity": {
+  "dropped_iterations": 0,
+  "dropped_ok": true,
+  "k6_runner_cpu_max_cores": 0.01,
+  "k6_cpu_ok": true,
+  "restarts_during_run": {},
+  "restarts_ok": true,
+  "loki_discarded_delta": 0.0,
+  "loki_ok": true,
+  "steal_max_ratio": 0.0171,
+  "steal_limit": 0.02,
+  "steal_ok": true,
+  "reset_ok": true,
+  "valid": true
+ },
+ "node": {
+  "name": "puris-loadlab",
+  "cpu_model": "13th Gen Intel(R) Core(TM) i3-1315U",
+  "capacity": {
+   "cpu": "8",
+   "ephemeral-storage": "101859844096",
+   "hugepages-1Gi": "0",
+   "hugepages-2Mi": "0",
+   "memory": "31807336Ki",
+   "pods": "110"
+  },
+  "allocatable": {
+   "cpu": "7",
+   "ephemeral-storage": "96766851816",
+   "hugepages-1Gi": "0",
+   "hugepages-2Mi": "0",
+   "memory": "28661608Ki",
+   "pods": "110"
+  },
+  "kernel": "7.0.0-38-generic",
+  "kubelet": "v1.37.1+k3s1"
+ }
+}

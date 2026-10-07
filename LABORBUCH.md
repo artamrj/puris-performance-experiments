@@ -744,3 +744,41 @@ Begründung: Ihre Daten ändern sich im Lauf nicht; ein Neustart der DTRs dauert
 - `kubectl logs` liefert bei Log-Rotation nur die neueste Datei; daher Loki statt Pod-Logs (außer k6-Runner).
 - Kein Export über die Management-API der EDCs mehr (braucht Port-Forward; die Datenbank enthält die Zeiten).
 - Neu: Threads je Container (`container_threads`, sichtbar für den Thread-Pool ohne Obergrenze von PURIS; im Leerlauf 34 Threads im Customer-Backend), CPU des Knotens je Modus, Gültigkeit je Lauf in `meta.json`.
+
+## 2026-10-07 – Reset erprobt, 20 Materialien, Stand S0-v2
+
+**Gemacht:**
+- `./lab reset s0` auf der VM (aus Commit `8538c6b`): Stand nach dem Probelauf → S0 in 326 s (anhalten 38 s, Datenbanken 20 s, EDC 77 s, PURIS 181 s). Zeilen aller 7 Datenbanken gleich S0, auch nach dem Start; 0 Neustarts.
+- 19 weitere Materialien mit `materialien-anlegen.sh` angelegt (zuerst Supplier, dann Customer), Funktionstest je Material, Stand `s0-v2` gesichert (VM und Kopie auf dem Mac). Einzelheiten in `AUFBAU.md`, e1 „Erweiterung auf 20 Materialien“, und „Reset“.
+
+**Beobachtungen:**
+- PURIS und EDC schreiben beim Start nichts in ihre Datenbanken; der Vergleich der Zeilen nach dem Start ist damit eine strenge Prüfung.
+- Der Customer holt beim Anlegen jeder Beziehung die Teileinformation beim Supplier (2 Transfers je Material) – mit den gespeicherten Verträgen, ohne neue Verhandlung. Auch die Bestandsabfrage für die neuen Materialien braucht keine neue Verhandlung: Die Verträge gelten je Partner, nicht je Material.
+- Eintrag der Zwillinge in den DTR: Supplier 6–11 s, Customer 11–41 s je Material (DTR Customer 100m CPU); kein Zwilling fehlte.
+- Funktionstest: 20 von 20 Transaktionen abgeschlossen, je Material genau eine, 0 Fehler.
+
+**Nächstes:** Kurztest der Messkette (`./lab run smoke 1`), dann Vorstudie.
+
+## 2026-10-07 – Kurztest `./lab run smoke 1`: Messkette funktioniert, Kaltstart löst Neuverhandlungen aus
+
+**Gemacht:** `./lab run smoke 1` auf der VM in `tmux` (aus Commit `8538c6b`): Reset auf `s0-v2` (326 s, wie beim ersten Reset), TestRun mit 0,5/s und 1/s je 1 min, Abarbeiten abwarten (höchstens 5 min), Sammeln. Laufordner `runs/2026-10-07_1032_smoke_rep-1/` (3,0M, 29 Dateien, Prüfsummen auf dem Mac 29 × `OK`, API-Key nicht enthalten).
+
+**Ergebnis:** Die Messkette arbeitet vollständig (Reset, TestRun aus dem Plan, Verteilung auf 20 Materialien, Abarbeiten abwarten, Sammeln, Prüfsummen, Gültigkeit in `meta.json`; nach allen Kriterien gültig, Steal Time höchstens 1,71 %). **Aber:** 91 Auslösungen, während der Stufen 0 abgeschlossen; nach 5 min Warten 8 abgeschlossen, 40 gescheitert, 43 offen.
+
+**Problem und Ursache** (aus PURIS-Logs, EDC-Datenbanken und Prometheus):
+- Die Last begann 8 s nach dem Neustart von PURIS und EDC durch den Reset (kalte JVMs). Die EDC Control Plane des Customers lag ab der ersten Minute am CPU-Limit (0,50 von 0,5 Kernen, 100 % der Perioden gedrosselt); im Probelauf (warme JVMs) brauchte sie bei 1/s höchstens 0,19.
+- Je Transaktion dauerte der erste Transfer (DTR) ca. 5 s; der zweite (Item Stock) brach nach 60 s mit Zeitüberschreitung ab („Error in Submodel Transfer Request“, 95 × `timeout`/„Socket closed“).
+- Danach verwirft PURIS die gespeicherten Verträge („Invalidating Contract data for ITEM_STOCK_SUBMODEL“, „Invalidating DTR contract data“) und **verhandelt je Transaktion neu**: Verhandlungen im EDC des Customers 3 → 118 (91 abgeschlossen, 24 abgebrochen). Zusätzlich hingen Transfers in Zwischenzuständen (65 × `TERMINATING`, 13 × `STARTED`).
+- Die Neuverhandlungen erzeugen weitere Last: Noch 8 min nach dem Ende von k6 lag die Control Plane des Customers am Limit, beide EDC-Datenbanken nahe ihrem Limit (157m bzw. 191m von 200m). Das System erholte sich nicht von selbst, solange Aufträge offen waren (sich selbst verstärkende Überlast).
+
+**Beobachtungen:**
+- Die EDC Control Planes schreiben ihr Log auf Stufe DEBUG (Standard der Bundles; ca. 18 000 Zeilen in 15 min beim Customer). Das kostet CPU unter einem Limit von 0,5 Kernen; Konfiguration unverändert gelassen (gehört zum untersuchten Aufbau), für 6.5 vormerken.
+- „[Hashicorp Vault] Secret not found“ (DEBUG) tritt proportional zur Aktivität auf (bis 2260/min) – Teil der normalen Verarbeitung, nicht die Ursache.
+- Für die Arbeit wichtig (F2/F3): Die Kette Zeitüberschreitung → Verwerfen der Verträge → Neuverhandlung ist ein Sättigungsmechanismus von PURIS; Neuverhandlungen und „Invalidating …“ sind dafür geeignete Messgrößen.
+
+**Entscheidungen:**
+- Vorstudie mit zwei Aufwärmstufen geringer Last (0,1/s und 0,2/s je 5 min, nicht ausgewertet) vor den Laststufen; ihr Verlauf bestimmt die Dauer der Aufwärmphase für die Hauptmessungen (`KONZEPT.md`, Abschnitt 6: Aufwärmphase nach dem Reset).
+  Begründung: Der Funktionstest vor `s0-v2` (sequenziell, 9 min nach dem Neustart) lief fehlerfrei; die Überlast entstand nur bei Last direkt nach dem Kaltstart.
+- Sammelskript ergänzt: Vertragsverhandlungen (`edc/*-negotiations.csv`), Zustand und Fehler je Transfer, WARN/ERROR-Zeilen der EDC Control Planes aus Loki; „Invalidating …“ zählt jetzt beide Varianten (Item Stock und DTR).
+- `./lab run` prüft den Git-Stand ohne neue Laufordner unter `runs/` (eine Messreihe erzeugt mehrere Laufordner nacheinander; sie ändern den gemessenen Aufbau nicht).
+- Laufordner entstehen auf der VM; zum Commit werden sie auf den Mac kopiert (Prüfsummen geprüft), auf der VM danach nach `~/puris-loadlab-state/runs-vm/` verschoben (nicht gelöscht), damit `git pull` sie als versionierte Dateien übernimmt.

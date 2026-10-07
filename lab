@@ -122,7 +122,9 @@ cmd_run() {
   local pf="experiments/plans/$plan.env" commit tag stamp run_id run_dir name tmp t_apply n_stages total key
   [ -r /etc/rancher/k3s/k3s.yaml ] || die "Messläufe nur auf der VM (KONZEPT.md, Abschnitt 5)"
   [ -r "$pf" ] || die "$pf fehlt"
-  [ -z "$(git status --porcelain)" ] || die "Git-Stand nicht sauber (KONZEPT.md, Abschnitt 6)"
+  # Sauber = keine Änderung an versionierten Dateien und nichts Neues außerhalb von runs/
+  # (neue Laufordner einer Messreihe ändern den gemessenen Aufbau nicht)
+  [ -z "$(git status --porcelain | grep -v '^?? runs/' || true)" ] || die "Git-Stand nicht sauber (KONZEPT.md, Abschnitt 6)"
   set -a; # shellcheck disable=SC1090
   . "$pf"; set +a
   export PLAN="$plan" REP="$rep"
