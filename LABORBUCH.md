@@ -1009,3 +1009,32 @@ Nachgetragen am Abend; Grundlage: Laufordner `runs/2026-10-07_1500_vorstudie2_re
 - Der Kopfkommentar von `experiments/plans/vorstudie2.env` nannte den Plan noch „zurückgestellt (nicht ausgeführt)“ – korrigiert.
 
 **Vorschlag des Assistenten (Entscheidung des Verfassers offen):** Keine dritte Vorstudie – beide Fragen der Vorstudie 2 sind beantwortet; Erholung unter geringer Last und Streuung des Kipppunkts klärt K0 mit Erholungsstufe und drei Wiederholungen. K0-Plan: Aufwärmen 0,1/s und 0,3/s je 10 min (nicht 0,5/s, dort lag heute der Auslöser), Stufen 0,2 / 0,3 / 0,4 / 0,5 / 0,6 / 0,7 / 0,8 / 1 je s zu je 10 min, zum Schluss 10 min 0,2/s als Erholungsstufe; je Wiederholung festhalten: Stufe des Kippens, Auslöser, Erholung ja/nein.
+
+## 2026-10-07 – Entscheidung: Vorstudie 3 als Generalprobe für K0
+
+**Entscheidung** (Verfasser; abweichend vom Vorschlag im vorigen Eintrag): Vor der Hauptmessung K0 läuft eine dritte Vorstudie (`experiments/plans/vorstudie3.env`) mit genau den für K0 vorgeschlagenen Stufen: Aufwärmen 0,1/s und 0,3/s, dann 0,2 / 0,3 / 0,4 / 0,5 / 0,6 / 0,7 / 0,8 / 1 je s, zum Schluss 0,2/s als Erholungsstufe, je 10 min. **Kein vorzeitiger Abbruch**, auch nicht nach dem Kippen.
+Begründung: Vor der Hauptmessung soll der ganze Ablauf einmal vollständig geprüft sein. Vorstudie 2 wurde nach dem Kippen beendet, die Stufen danach fehlen; die überarbeitete Fassung von `lab` (Commit `063eb93`) lief auf der VM bisher nur im Kurztest. Vorstudie 3 prüft zusätzlich, ob das System mehrere Stufen im gekippten Zustand übersteht (Speicher, Threads, Neustarts) und ob es sich unter weiter anliegender geringer Last erholt.
+**Folge für den Zeitplan:** K0-NAS verschiebt sich voraussichtlich auf die Nacht 08./09.10., K1-NAS auf 09./10.10. (Meilenstein 3 bleibt So 01.11.).
+
+## 2026-10-07 – Robustheit von `lab` auf der VM geprüft: Fehler im Sammeln gefunden (`helm` ohne Kubeconfig)
+
+**Gemacht:** VM von Commit `7ec455f` auf `60bc604` gebracht (vorher die VM-Kopie des Laufordners der Vorstudie 2 nach `~/puris-loadlab-state/runs-vm/` verschoben; byte-gleich mit dem Commit, `SHA256SUMS` in Ordnung). Dann in `tmux` nacheinander:
+
+| Schritt | Zeit (UTC) | Ergebnis |
+|---|---|---|
+| `./lab status` | 18:59 | Sperre frei, PURIS und EDC 6/6 bereit, keine Last – bestanden |
+| `./lab reset s0-v2` | 18:59:49–19:05:47 | 358 s; Zeilen aller 7 Datenbanken gleich `s0-v2`, `ANALYZE`; geordneter Start ohne Reparatur – bestanden |
+| `./lab snapshot s0-v3` | 19:05:47–19:06:40 | 7 Datenbanken, Fingerabdrücke vor und nach `pg_dump` jeweils im ersten Versuch gleich; kein `.unfertig-*` übrig – bestanden (Stand nur auf der VM) |
+| `./lab run smoke 1` | 19:06:40–19:26:35 | Vorprüfung (Steal Time 0,6 %), Reset 371 s ohne Reparatur, Funktionstest 3/3 in 33 s, TestRun 2 × 1 min (0,5/s, 1/s); bei Lastende 64 von 92 offen, nach 2 min ohne Fortschritt 58 offen (Kaltstart wie im ersten Kurztest); **Sammeln abgebrochen:** `helm list -A` mit Code 1 – nicht bestanden |
+
+**Wie vorgesehen funktionierte:**
+- Stufengrenzen aus k6 (`k6-stages.json`): s1 ab 19:13:37,943 UTC, s2 ab 19:14:37,944 UTC – Abstand 60,0 s = Stufendauer.
+- Gescheiterter Versuch belegt: `attempt.json` mit `status: failed`, Phase `collecting`, Grund „Befehl fehlgeschlagen; recovery=restarted“; Diagnosen je Firma in `diagnostics/`.
+- Sicheres Ende nach einem echten Fehler: geordneter Neustart (Control Planes 19:22:18, Data Planes 19:23:33, PURIS 19:26:34 UTC); danach `./lab status`: Sperre frei, 6/6 bereit, keine Marken.
+
+**Problem:** Auf der VM ist `KUBECONFIG` nicht gesetzt. `kubectl` (k3s) liest `/etc/rancher/k3s/k3s.yaml` von selbst, `helm` sucht `~/.kube/config` und erreicht den Cluster nicht („kubernetes cluster unreachable: Get "http://localhost:8080/version": … connection refused“). Mit `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` liefert `helm list -A` die Releases. Der bisherige Sammler ignorierte den Fehler: `cluster/helm.txt` ist in allen mit `./lab run` auf der VM gesammelten Läufen leer (Kurztest 10:32, Vorstudie 1, Vorstudie 2); nur der Probelauf (vom Mac gesammelt) enthält die Liste (1703 Byte). Die Gültigkeit dieser Läufe hängt nicht davon ab; die Images stehen in `cluster/images.txt`, die Releases mit Revision in `AUFBAU.md`.
+
+**Entscheidung** (vom Assistenten umgesetzt; gilt mit dem Commit des Verfassers): `lab` setzt `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`, wenn die Variable leer und die Datei lesbar ist (VM; auf dem Mac setzt `puris` die Variable). Lokal: Syntax in Ordnung, 36 von 36 Tests bestanden. Danach Kurztest erneut; Vorstudie 3 erst nach bestandenem Kurztest.
+Begründung: Ursache ist die Umgebung, nicht der Sammler; so nutzen `kubectl` und `helm` dieselbe Kubeconfig.
+
+**Laufordner** `runs/2026-10-07_1906_smoke_rep-1/` (gescheiterter Versuch: ohne `meta.json` und `SHA256SUMS`; 1,9M, 28 Dateien) auf den Mac kopiert. Geprüft: keine IP-Adressen; die API-Keys beider PURIS sind nicht enthalten (die Prüfung in `lab` kommt nach dem Sammeln und lief deshalb nicht). Wird nach `KONZEPT.md` wie jeder Versuch committet und geht nicht in die Auswertung ein.

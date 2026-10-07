@@ -1,0 +1,12 @@
+{"time_utc": "2026-10-07T19:06:40.130099+00:00", "phase": "created", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:06:40.155121+00:00", "phase": "preflight", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:06:41.006670+00:00", "phase": "stopping", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:07:13.935704+00:00", "phase": "restoring", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:07:24.148573+00:00", "phase": "verifying_restore", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:07:40.384887+00:00", "phase": "starting", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:12:43.942131+00:00", "phase": "verifying_start", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:12:51.358495+00:00", "phase": "ready", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:12:51.422930+00:00", "phase": "function_test", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:13:29.698206+00:00", "phase": "load", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:15:41.446597+00:00", "phase": "collecting", "status": "running", "reason": ""}
+{"time_utc": "2026-10-07T19:26:35.454272+00:00", "phase": "collecting", "status": "failed", "reason": "Befehl fehlgeschlagen; recovery=restarted", "exit_code": 1}

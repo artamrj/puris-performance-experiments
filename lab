@@ -34,6 +34,9 @@
 # ══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+# Auf der VM findet kubectl (k3s) die Kubeconfig selbst, helm nicht (Standard ~/.kube/config):
+# ohne diese Zeile scheitert `helm list -A` im Sammler (bis 2026-10-07 unbemerkt, helm.txt leer).
+if [ -z "${KUBECONFIG:-}" ] && [ -r /etc/rancher/k3s/k3s.yaml ]; then export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; fi
 # shellcheck source=lib/db.sh
 . lib/db.sh
 

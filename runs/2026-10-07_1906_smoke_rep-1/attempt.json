@@ -1,0 +1,12 @@
+{
+  "run": "2026-10-07_1906_smoke_rep-1",
+  "git_commit": "60bc6041d859a63d4904f3c70cd8bcc6ff3c078e",
+  "plan": "smoke",
+  "repetition": "1",
+  "started_utc": "2026-10-07T19:06:40.130068+00:00",
+  "time_utc": "2026-10-07T19:26:35.454272+00:00",
+  "phase": "collecting",
+  "status": "failed",
+  "reason": "Befehl fehlgeschlagen; recovery=restarted",
+  "exit_code": 1
+}
