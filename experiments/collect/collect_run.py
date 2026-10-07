@@ -60,7 +60,7 @@ def prom_range(name, q, step="15s"):
     res = json.loads(kraw(f"{PROM}/api/v1/query_range?{qs}"))["data"]["result"]
     keys = sorted({k for r in res for k in r["metric"]})
     with open(f"{RUN}/prometheus/{name}.csv", "w", newline="") as f:
-        w = csv.writer(f); w.writerow(["timestamp_utc", *keys, "value"])
+        w = csv.writer(f, lineterminator="\n"); w.writerow(["timestamp_utc", *keys, "value"])
         for r in res:
             for t, v in r["values"]:
                 w.writerow([iso(datetime.fromtimestamp(t, timezone.utc)), *[r["metric"].get(k, "") for k in keys], v])
@@ -89,7 +89,7 @@ def loki(name, logql):
         if len(batch) < 5000: break
         start = batch[-1][0] + 1
     with open(f"{RUN}/loki/{name}.tsv", "w", newline="") as f:
-        w = csv.writer(f, delimiter="\t"); w.writerow(["timestamp_ns", "pod", "line"])
+        w = csv.writer(f, delimiter="\t", lineterminator="\n"); w.writerow(["timestamp_ns", "pod", "line"])
         w.writerows(out)
     return out
 

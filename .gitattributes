@@ -1,0 +1,3 @@
+# Rohdaten der Messläufe byte-genau speichern (keine Zeilenende-Umwandlung),
+# damit runs/*/SHA256SUMS auch in einem frischen Klon stimmt.
+runs/** -text

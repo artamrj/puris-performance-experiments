@@ -689,3 +689,12 @@ Begründung: Der Probelauf ist genau für diese Prüfung vorgesehen; eine Änder
   Folgen: Anzahl festlegen, `e1` um weitere Materialien erweitern (je Firma Material bzw. Produkt, Beziehung, Bestand), k6-Skript verteilt die Auslösungen auf die Materialien, S0 nach der Erweiterung neu sichern (die bisherige Sicherung bleibt erhalten). `KONZEPT.md`, Abschnitte 3 und 13, angepasst.
 
 **Nächstes:** Anzahl der Materialien festlegen und `e1` erweitern; danach Reset erproben und S0 neu sichern.
+
+## 2026-10-07 – Laufordner byte-genau in Git
+
+**Problem:** Beim Commit `e765631` wandelte Git (`core.autocrlf=input`) die Zeilenenden der 14 CSV/TSV-Dateien des Probelaufs von CRLF in LF um (das Sammelskript schrieb mit Pythons `csv`-Standard CRLF). Die Dateien im Repository wichen damit von den Originalen und von `SHA256SUMS` ab; in einem frischen Klon schlüge `shasum -c SHA256SUMS` fehl. Die Originale im Arbeitsordner sind unverändert.
+
+**Entscheidung:** `.gitattributes` mit `runs/** -text` (keine Umwandlung im Ordner `runs/`) und die Dateien mit `git add --renormalize runs` erneut aufnehmen, sodass Git die Originale byte-genau speichert. Das Sammelskript schreibt künftig LF (`lineterminator="\n"`).
+Begründung: Rohdaten dürfen nicht verändert werden; die Prüfsummen müssen zu den gespeicherten Dateien passen. Umwandeln der Originale oder neue Prüfsummen hätten die Rohdaten bzw. ihren Nachweis verändert.
+
+**Nächstes:** Nach dem Commit prüfen, dass die Dateien im Commit gleich `SHA256SUMS` sind.
