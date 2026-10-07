@@ -330,6 +330,10 @@ Noch offen:
 - [x] Laufordner byte-genau in Git (`.gitattributes`: `runs/** -text`); nach jedem Commit `SHA256SUMS` gegen den Commit prüfen – Probelauf: CRLF→LF beim ersten Commit, behoben 2026-10-07 – Commit `a4bb002`: 25/25 gleich, frischer Klon 25 × `OK`
 - [ ] Laufend: nach jedem Commit eines Laufordners `SHA256SUMS` gegen den Commit bzw. einen frischen Klon prüfen (in Etappe 2 in `./lab run` oder `check.sh`)
 - [ ] Änderungen nach `setup-v1` nur mit neuem Tag (`setup-v2`) und Laborbuch-Eintrag
+- [ ] *optional – nur wenn Zeit bleibt:* ergänzender Vergleich mit Reichweiten (Days of Supply, Sicht des Suppliers: Customer ruft beim Supplier ab) – kein Teil der Antwort auf F1–F3; Entscheidung **So 01.11.2026**, nur wenn Meilenstein 3 (alle Hauptmessungen K0 und Skalierungskonfigurationen) fristgerecht erreicht ist und die Betreuung zugestimmt hat, sonst „entfällt (Grund)“ (bleibt Ausblick, Thesis 7.3); Auslösung `GET /catena/days-of-supply/supplier/reported/refresh` (`SupplyController.java` Z. 135–153, Tag 6.2.0), Erfolg an der Protokollzeile „Updated ReportedSupply“ (`DaysOfSupplyRequestApiService.java` Z. 180); gleicher DTR des Suppliers und gleicher Aufbau wie beim Item-Stock-Exchange, Berechnung beim Datenanbieter über 28 Tage
+  - [ ] *optional:* Testdaten mit Zeitreihen (Produktion, Lieferungen, Bestand) beim Supplier; Datenmenge dokumentiert
+  - [ ] *optional:* k6-Skriptvariante für den neuen Endpunkt
+  - [ ] *optional:* wenige Laststufen und wenige Wiederholungen, nicht der vollständige Versuchsplan
 
 ## 13 Etappe 3 – Nachbau-Test
 
