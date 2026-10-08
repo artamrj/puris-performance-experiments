@@ -29,6 +29,8 @@ Prüfsummen schreibt `./lab run`.
 """
 import csv, gzip, json, math, os, re, subprocess, sys, time, urllib.parse
 from datetime import datetime, timezone, timedelta
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+import loki_read
 
 RUN, NAME, TESTID, T_APPLY, COMMIT, TAG, EXTRA = sys.argv[1:8]
 E = os.environ
@@ -41,13 +43,15 @@ STEAL_MEAN_MAX = float(E.get("STEAL_MEAN_MAX", "0.02"))  # Mittel über das Mess
 SUT_NS = {"customer", "supplier", "identity"}             # System unter Test
 PROM = "/api/v1/namespaces/monitoring/services/http:monitoring-kube-prometheus-prometheus:9090/proxy"
 LOKI = "/api/v1/namespaces/logging/services/http:loki:3100/proxy"
-CUST = '{namespace="customer", pod=~"puris-backend.*"}'
-SUPP = '{namespace="supplier", pod=~"puris-backend.*"}'
+CUST = loki_read.SELECTORS["customer_puris"]
+SUPP = loki_read.SELECTORS["supplier_puris"]
+P = loki_read.PATTERNS
 
 def kubectl(*args):
     return subprocess.run(["kubectl", "--request-timeout=30s", *args], check=True, capture_output=True, text=True, timeout=45).stdout
 def kraw(path): return kubectl("get", "--raw", path)
 def iso(dt): return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+def ns(dt): return (dt - datetime(1970, 1, 1, tzinfo=timezone.utc)) // timedelta(microseconds=1) * 1000
 def parse(s): return datetime.fromisoformat(s.replace("Z", "+00:00"))
 def log(msg): print(f"[{datetime.now(timezone.utc):%H:%M:%S}] {msg}", flush=True)
 def write(path, text):
@@ -123,8 +127,8 @@ def loki_count(filt):
 
 drain_t0, last, same = datetime.now(timezone.utc), None, 0
 while True:
-    trig_n = loki_count("Trigger Reported MaterialStockUpdate")
-    fin_n = loki_count("Updated ReportedMaterialItemStocks") + loki_count("Error in ReportedMaterialItemStockRequest")
+    trig_n = loki_count(P["triggered"])
+    fin_n = loki_count(P["completed"]) + loki_count(P["failed"])
     waited = (datetime.now(timezone.utc) - drain_t0).total_seconds() / 60
     if fin_n >= trig_n:
         drain_reason = "alle Transaktionen beendet"; break
@@ -167,31 +171,22 @@ prom_range("k6_http_req_duration", f'{{__name__=~"k6_http_req_duration_(p50|p95|
 disc = prom_range("loki_discarded_samples_total", 'sum(loki_discarded_samples_total)')
 rst = prom_range("container_restarts", 'sum by (namespace,pod,container)(kube_pod_container_status_restarts_total)', step="60s")
 
-# --- Loki: alle Zeilen der PURIS-Backends (seitenweise, ohne Doppelungen) ---
+# --- Loki: alle Zeilen der PURIS-Backends (feste Zeitfenster, lib/loki_read.py) ---
+# Bis 2026-10-08 seitenweise ab dem letzten Zeitstempel – übersprang bei mehreren Streams
+# Zeilen (`LABORBUCH.md`, „Richtigstellung“); Läufe bis dahin: Nachtrag unter nachtrag/.
 def loki_all(name, sel):
-    out, seen, start, end = [], set(), int(w_start.timestamp() * 1e9), int(w_end.timestamp() * 1e9)
-    while True:
-        qs = urllib.parse.urlencode({"query": sel, "start": start, "end": end, "limit": 5000, "direction": "forward"})
-        res = json.loads(kraw(f"{LOKI}/loki/api/v1/query_range?{qs}"))["data"]["result"]
-        batch = sorted((int(ts), s["stream"].get("pod", ""), l) for s in res for ts, l in s["values"])
-        new = [b for b in batch if b not in seen]
-        seen.update(new); out += new
-        if len(batch) < 5000: break
-        if not new or batch[-1][0] == start:
-            raise ValueError("Loki-Seitengrenze ohne Fortschritt; Vollständigkeit nicht nachweisbar")
-        start = batch[-1][0]  # gleicher Zeitstempel kann an der Seitengrenze mehrfach vorkommen
-    out.sort()
+    out = loki_read.read_all(kraw, LOKI, sel, ns(w_start), ns(w_end))
     with gzip.open(f"{RUN}/loki/{name}.tsv.gz", "wt", newline="") as f:
         w = csv.writer(f, delimiter="\t", lineterminator="\n"); w.writerow(["timestamp_ns", "pod", "line"]); w.writerows(out)
     return out
 
 cust = loki_all("customer_puris", CUST)
 loki_all("supplier_puris", SUPP)
-loki_all("edc_warn_error", '{namespace=~"customer|supplier", pod=~"edc-controlplane.*"} |~ "\\"level\\":\\"(WARN|ERROR)\\""')
+loki_all("edc_warn_error", loki_read.SELECTORS["edc_warn_error"])
 pick = lambda s: [r for r in cust if s in r[2]]
-trig, done = pick("Trigger Reported MaterialStockUpdate"), pick("Updated ReportedMaterialItemStocks")
-errs, inval = pick("Error in ReportedMaterialItemStockRequest"), pick("Invalidating ")
-locks = pick("ObjectOptimisticLockingFailureException")
+trig, done = pick(P["triggered"]), pick(P["completed"])
+errs, inval = pick(P["failed"]), pick(P["invalidating_contract"])
+locks = pick(P["optimistic_lock"])
 warn = [r for r in cust if re.search(r" (ERROR|WARN) ", r[2])]
 
 # --- EDC: Transferprozesse aus der Datenbank (die API liefert kein createdAt) ---
@@ -261,7 +256,13 @@ for r in rst:
 # Loki legt den Zähler erst bei der ersten Verwerfung an: keine Zeitreihe = nichts verworfen
 disc_delta = (float(disc[0]["values"][-1][1]) - float(disc[0]["values"][0][1])) if disc and disc[0].get("values") else 0.0
 reset = read_json(os.path.join(EXTRA, "reset.json"))
+# Vollständigkeit der Logs (2026-10-08): Jede von k6 ohne Fehler gesendete Anfrage schreibt im
+# Customer-PURIS genau eine Auslösezeile (StockViewController, im HTTP-Thread vor der Antwort).
+reqs = m.get("http_reqs", {}).get("values", {}).get("count", m.get("iterations", {}).get("values", {}).get("count"))
+expected_trig = reqs - m.get("http_req_failed", {}).get("values", {}).get("passes", 0) if reqs is not None else None
 validity = {
+    "log_triggers": len(trig), "log_triggers_expected": expected_trig,
+    "log_complete_ok": expected_trig is not None and len(trig) == expected_trig,
     "dropped_iterations": dropped, "dropped_ok": dropped == 0,
     "k6_runner_cpu_max_cores": round(runner_cpu, 3) if runner_cpu is not None else None, "k6_cpu_ok": runner_cpu is not None and math.isfinite(runner_cpu) and runner_cpu < 0.45,
     "restarts_invalidating": restarts, "restarts_ok": not restarts,

@@ -2,7 +2,9 @@
 """Kurzauswertung eines Laufordners je Laststufe (für Vorstudie und Prüfung nach jedem Lauf).
 
 Aufruf:  python3 analysis/stage_summary.py runs/<laufordner> [--csv out.csv]
-Liest nur aus dem Laufordner; schreibt nichts außer der optionalen CSV-Datei.
+Liest nur aus dem Laufordner; schreibt nichts außer der optionalen CSV-Datei. Gibt es einen
+Nachtrag (nachtrag/<laufordner>/, vollständige Logs aus Loki, LABORBUCH.md 2026-10-08), werden
+Logzeilen und Zählungen je Stufe daraus gelesen; der Laufordner bleibt die Quelle für alles andere.
 
 Je Stufe: Eingangslast (geplant, ausgelöst), abgeschlossene und gescheiterte Transaktionen
 je Sekunde, Dauer je Transaktion (p50, p95, max) nach zwei Verfahren, CPU, Drosselung und
@@ -24,12 +26,15 @@ from datetime import datetime
 
 RUN = sys.argv[1]
 meta = json.load(open(f"{RUN}/meta.json"))
+NT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(RUN))), "nachtrag", os.path.basename(os.path.abspath(RUN)))
+nachtrag = json.load(open(f"{NT}/nachtrag.json")) if os.path.exists(f"{NT}/nachtrag.json") else None
+LOGDIR = f"{NT}/loki" if nachtrag else f"{RUN}/loki"
 LINE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z)\s+(\w+)\s+\d+ --- \[\s*([^\]]+)\] \S+\s*: (.*)$")
 
 def ts(s): return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
 
 def lines():
-    gz = f"{RUN}/loki/customer_puris.tsv.gz"
+    gz = f"{LOGDIR}/customer_puris.tsv.gz"
     if os.path.exists(gz):
         with gzip.open(gz, "rt") as f:
             r = csv.reader(f, delimiter="\t"); next(r)
@@ -92,7 +97,7 @@ def q(v, p):
     return v[k]
 
 rows = []
-for s in meta["stages"]:
+for s in (nachtrag["stages"] if nachtrag else meta["stages"]):
     a, b = ts(s["start_utc"]), ts(s["end_utc"]); dur = b - a
     da = [e - t for t, e, ok in pairs if a <= t < b and ok]
     db = [e - min(created[i] for i in ids if i in created) for e, ok, ids in txb
@@ -128,6 +133,8 @@ for s in meta["stages"]:
 
 fmt = lambda x: "–" if x is None else (f"{x:.2f}" if isinstance(x, float) else str(x))
 print(f"Lauf {meta['run']} – gültig: {meta.get('validity', {}).get('valid')}")
+if nachtrag:
+    print(f"Logzeilen und Zählungen aus nachtrag/{meta['run']} (vollständig: {nachtrag['complete']['triggered_equals_k6_requests_ok']})")
 for r in rows:
     print(f"{'S' if r['saturated'] else ' '}{r['stage']:>8} {fmt(r['rate']):>5}/s  ausgelöst {r['triggered']:>5}/{r['planned']:<5} fertig {fmt(r['completed_per_s'])}/s  "
           f"Fehler {r['failed']:>3}  Inval./Verh. {r['invalidations']}/{r['negotiations']}  A p50/p95/max {fmt(r['A_p50_s'])}/{fmt(r['A_p95_s'])}/{fmt(r['A_max_s'])} s  "

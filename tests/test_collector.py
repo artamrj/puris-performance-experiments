@@ -21,14 +21,15 @@ def iso(t): return datetime.fromtimestamp(t,timezone.utc).isoformat().replace('+
 def puris(t, msg): return f'{iso(t)} INFO 1 --- [ http] example : {msg}'
 
 class CollectorTests(unittest.TestCase):
-    def run_collector(self, missing=False, markers=None, raw=False, labels='s1', rates='0.1', expect_error=False):
+    def run_collector(self, missing=False, markers=None, raw=False, labels='s1', rates='0.1', expect_error=False, requests=1):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); run=root/'run'; run.mkdir(); extra=root/'extra'; extra.mkdir()
             (run/'attempt.json').write_text('{}')
             reset=dict(counts_equal_after_restore=True,function_test={'passed':True})
             (extra/'reset.json').write_text(json.dumps(reset))
             inventory=[dict(namespace='customer',pod='puris-backend-a',uid='u1',containers=[dict(name='backend')])]
-            summary={'metrics':{'iterations':{'values':{'count':1}},'dropped_iterations':{'values':{'count':0}}}}
+            summary={'metrics':{'iterations':{'values':{'count':requests}},'http_reqs':{'values':{'count':requests}},
+                                'http_req_failed':{'values':{'passes':0,'fails':requests}},'dropped_iterations':{'values':{'count':0}}}}
             rlog='K6_SUMMARY_JSON '+json.dumps(summary)+'\n'
             # Standard-Textlog von k6; zwei VUs melden denselben Start
             if markers is None: markers=[('s1',T0),('s1',T0)]
@@ -46,7 +47,10 @@ class CollectorTests(unittest.TestCase):
                         from urllib.parse import urlparse,parse_qs
                         url=args[-1]; query=parse_qs(urlparse(url).query); q=query['query'][0]
                         if '/query_range?' in url and '/loki/' in url:
-                            rows=[] if 'supplier' in q or 'edc-controlplane' in q else [{'stream':{'pod':'puris-backend-a'},'values':[[str(int(t*1e9)),puris(t,m)] for t,m in events]}]
+                            # wie Loki: nur Zeilen im angefragten Zeitraum (start bis end, beide einschließlich)
+                            s0,s1=int(query['start'][0]),int(query['end'][0])
+                            vals=[[str(int(t*1e9)),puris(t,m)] for t,m in events if s0<=int(t*1e9)<=s1]
+                            rows=[] if 'supplier' in q or 'edc-controlplane' in q or not vals else [{'stream':{'pod':'puris-backend-a'},'values':vals}]
                         elif '/loki/' in url:
                             rows=[{'value':[START, '0' if 'Error in' in q else '1']}]
                         else:
@@ -80,6 +84,15 @@ class CollectorTests(unittest.TestCase):
         meta=self.run_collector()
         self.assertTrue(meta['validity']['valid'],meta['validity'])
         self.assertEqual(meta['stages'][0]['boundary_source'],'k6.scenario.startTime')
+    def test_log_complete_when_triggers_match_k6(self):
+        v=self.run_collector()['validity']
+        self.assertTrue(v['log_complete_ok'],v)
+        self.assertEqual((v['log_triggers'],v['log_triggers_expected']),(1,1))
+    def test_missing_trigger_lines_fail(self):
+        # k6 meldet 2 erfolgreiche Anfragen, im Log steht nur eine Auslösung
+        v=self.run_collector(requests=2)['validity']
+        self.assertFalse(v['log_complete_ok'])
+        self.assertFalse(v['valid'])
     def test_missing_steal_fails(self):
         meta=self.run_collector(missing=True)
         self.assertFalse(meta['validity']['valid'])
