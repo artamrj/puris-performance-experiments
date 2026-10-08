@@ -1,6 +1,6 @@
 # `reproduce` – Design and Build Specification
 
-**Status:** draft v2, 2026-10-08 · decisions taken in the design discussion of 2026-10-08 · v2 adds §22 (robustness) · open points are marked **❓** and listed in §21.
+**Status:** v3, 2026-10-08 · implemented in `reproduce` (statically checked, **not yet run on a cluster**, §23) · open points are marked **❓** and listed in §21.
 **Use:** this document is the single source for building the script. Anything not described here is out of scope (§19).
 **Relation to `KONZEPT.md`:** `KONZEPT.md` is binding. Some decisions here deviate from it; they are listed in §20 and must be written into `KONZEPT.md` **before** implementation starts.
 
@@ -199,7 +199,7 @@ Installed only with `helm upgrade --install <release> <chart> --version <v> -n <
 
 ### 7.4 `original`
 
-- `original-k0`: for the system under test (blocks `c1`–`d2`) the script removes every key named `resources` and `resourcesPreset` from the values before rendering, so the **resource settings of the charts apply exactly as shipped**. All other settings (wiring, identities, disabled components) stay as in `values.yaml`. Monitoring (`b1`–`b3`) and the k6 operator (`f1`) stay as in `compact`, so the measuring equipment is the same in both profiles. In both profiles Alloy drops log lines the evaluation never uses before they reach Loki (§22.8).
+- `original-k0`: for the system under test (blocks `c1`–`d2`) the script removes every key named `resources` and `resourcesPreset`, and the JVM setting `JAVA_TOOL_OPTIONS` (`-XX:MaxRAMPercentage=75`, part of the compact profile), from the values before rendering, so the **resource settings of the charts apply exactly as shipped**. All other settings (wiring, identities, disabled components) stay as in `values.yaml`. Monitoring (`b1`–`b3`) and the k6 operator (`f1`) stay as in `compact`, so the measuring equipment is the same in both profiles. In both profiles Alloy drops log lines the evaluation never uses before they reach Loki (§22.8).
 - `original-k1`: `original-k0` plus the PostgreSQL of both EDCs with the Bitnami preset `small` instead of `nano` ❓ (§21, item 1), as files `setup/c2-customer-edc/original-k1.yaml` and `setup/c4-supplier-edc/original-k1.yaml`.
 - **DTR as shipped:** the chart limits the DTR to 1 GiB RAM, but the DTR image sets a Java heap of up to 2 GB and the supplier DTR used 1.42 GiB in K0. A container that goes over its RAM limit is killed by the kernel (`OOMKilled`) and restarted by Kubernetes, which costs 10–20 min of start-up each time. Behaviour of the script:
   - crash during `deploy` (the DTR never becomes ready): stop with the message "original configuration as shipped is not runnable: DTR OOMKilled", diagnostics saved; this is itself a result.
@@ -241,9 +241,12 @@ Expected values (calculated 2026-10-08 from the pinned charts; the script recalc
 
 | Configuration | needed CPU incl. reserve | needed RAM incl. reserve | machine at least |
 |---|---|---|---|
-| `compact-k0` / `compact-k1` | ≈ 7.7 | ≈ 25.0 GiB | 8 vCPU, MemTotal ≥ 25 GiB (≈ 28 GB; 32 GB recommended) |
-| `original-k0` | ≈ 18.7 | ≈ 22.2 GiB | |
-| `original-k1` (preset `small`) | ≈ 19.9 | ≈ 23.4 GiB | 20 vCPU, MemTotal ≥ 23.4 GiB (24 vCPU / 32 GB recommended) |
+| `compact-k0` | 7.7 | 25.0 GiB | |
+| `compact-k1` | 7.9 | 25.0 GiB | 8 vCPU, MemTotal ≥ 25 GiB (≈ 28 GB; 32 GB recommended) |
+| `original-k0` | 18.8 | 22.3 GiB | |
+| `original-k1` (preset `small`) | 20.0 | 23.4 GiB | 20 vCPU, MemTotal ≥ 23.4 GiB (24 vCPU / 32 GB recommended) |
+
+Values from `reproduce` itself (2026-10-08, rendered charts). `compact-k1` with the k6 runner uses 6.93 of the 7 allocatable cores of an 8-vCPU machine.
 
 ---
 
@@ -288,25 +291,25 @@ already correct? ── yes ──► ↷ skip
    - amd64; Ubuntu; `bash`, `curl`, `git`, `python3`, `tar`, `gzip` present.
    - `sudo` available (non-interactively or after one password prompt).
    - Internet: `github.com`, `get.k3s.io`, `get.helm.sh`, `dl.k8s.io`, `ghcr.io`, `registry-1.docker.io`, `quay.io` reachable.
-   - Free disk ≥ 100 GB (as in `KONZEPT.md`, §8).
+   - Free disk ≥ 50 GB (the disk itself as in `KONZEPT.md`, §8: 100 GB).
    - No foreign cluster: k3s present **without** the marker `/etc/rancher/k3s/reproduce-owner` → stop; other Kubernetes (`kubelet`, `microk8s`, `kind`, `minikube` processes) → stop; port 6443 taken by something else → stop.
 4. Noise check: steal time for 60 s; mean above 2 % → warning "shared and busy machine, expect waiting or invalid runs" (no stop) (§22.10).
 5. Calculator (§8) → `state/profile`.
 
 ### Phase 3 – `install` (sudo)
 
-1. Save current settings to `state/system-before.json`: `apt-daily.timer`, `apt-daily-upgrade.timer`, snap refresh hold.
-2. Switch off automatic updates: disable both timers; `snap refresh --hold`.
+1. Save current settings to `state/system-before.json`: `apt-daily.timer`, `apt-daily-upgrade.timer`, snap refresh hold, swap.
+2. Switch off automatic updates (both timers, `snap refresh --hold`) and swap (`swapoff -a`, swap lines in `/etc/fstab` commented out, backup `/etc/fstab.reproduce-bak`), as in `AUFBAU.md`, a1.
 3. Install k3s: `/etc/rancher/k3s/config.yaml` from `src/setup/a2-k3s/config.yaml`, then
    `curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.37.1+k3s1" INSTALL_K3S_EXEC="--disable traefik" sh -`.
 4. Write the marker `/etc/rancher/k3s/reproduce-owner` (time, work folder).
 5. Copy the kubeconfig to `state/kubeconfig` (mode 600).
-6. Verify: node `Ready`; `allocatable` = capacity − 1 CPU / 3 GiB; version `v1.37.1+k3s1`.
-- Already correct: marker present, version matches, node `Ready`.
+6. Verify: node `Ready`; `allocatable` = capacity − 1 CPU; version `v1.37.1+k3s1`.
+7. Pull every image of the profile once, one after another (`k3s crictl pull`, needs `sudo`, therefore here and not in `deploy`), with back-off on rate limits (§22.9).
+- Already correct: marker present, version matches, node `Ready`; images already present are skipped.
 
 ### Phase 4 – `deploy`
 
-0. Images: list every image of all configurations of the profile (`helm template`), pull them one after another into k3s before any release is installed, with back-off on rate limits; from `bundle/` if present (§22.9, §22.11).
 1. Namespaces: `monitoring`, `logging`, `identity`, `customer`, `supplier`, `k6-operator`, `k6`.
 2. Secrets: `edc-vault-secrets` (from `state/keys/`, generated if missing), test passwords, PURIS API key; `puris-api-key` in `k6`.
 3. PURIS chart: `git clone --depth 1 --branch puris-7.2.0 https://github.com/eclipse-tractusx/puris.git state/charts/puris` (once).
@@ -383,7 +386,7 @@ Built from the lessons of the experiment (`LABORBUCH.md`, 2026-10-07):
 7. Wallet and DTRs are **never** reset or restarted (no change during a run; DTR start takes 10–21 min; the wallet database is in memory); only their row counts are compared with S0.
 8. Results → `reset.json` (duration, row counts equal, repairs, function test).
 
-Known repair (applied at most once per reset, recorded in `reset.json`): Data Plane not ready after 5 min → scale it to 0, delete its registration, start it again.
+Known repairs (each at most once per reset, recorded in `reset.json`, same as `lab`): Control Plane not ready after 5 min → stop it, delete the Data Plane registration, start it again (happened in K0 `rep-7`); Data Plane not ready after 4 min → stop both planes, delete the registration, start them in order again; PURIS not ready after 10 min → restart once.
 
 ### 10.3 Load
 
@@ -573,9 +576,9 @@ Rules for the implementation: one Bash file (`#!/usr/bin/env bash`, `set -euo pi
 
 1. **`original-k1`:** EDC PostgreSQL of both companies with the Bitnami preset `small` (0.5/0.75 CPU, 512/768 MiB) instead of `nano` (0.1/0.15 CPU, 128/192 MiB)? Only the EDC databases, or also the DTR databases?
 2. **Rebuild test on the NAS** after the NAS K1 runs (§17): agreed?
-3. **Saturation criterion**, third condition ("Invalidating …"): keep, drop, or report both (§11.2)?
+3. **Saturation criterion**, third condition ("Invalidating …"): keep, drop, or report both (§11.2)? Evidence (2026-10-08, `reference/compact-k0.json`): with it the K0 tipping stage is 0.5–0.6/s, without it 0.6–0.7/s – one stage apart.
 4. **Test passwords in the public repository** as documented exception (§7.5, §20): agreed?
-5. **Short test plan for building the script** (stages of 2 min, results marked "not valid"): needed for step 5 of §18, otherwise every test takes ≥ 2 h.
+5. **Short test mode for building the script:** implemented as environment variable `REPRODUCE_SMOKE=1` (stages of 2 min, `PLAN_KIND=smoke`, not for the thesis) and `REPRODUCE_REPS=<n>`; keep, or remove before the final runs?
 6. **With the supervisor:** `sudo` on the VM; access to GitHub and the container registries (the script checks it in `check`); whether results from the VM may be published.
 7. **Publishing the offline bundle** (§22.11) with the final results (e.g. Zenodo): only after checking the licences of all images; size several GB. Local use needs no decision.
 
@@ -625,7 +628,7 @@ Write-ahead markers in `state/markers/`:
 ### 22.6 Partially created test data
 
 - `prepare` reads all partners, materials, relations and stocks first and creates only what is missing.
-- An object that exists but differs from the files (e.g. different stock value) → before S0 the PURIS databases are disposable: both PURIS databases are recreated empty (possible because of the fixed passwords, §7.5) and `prepare` starts again from the beginning.
+- A material that exists with a different name than in the files → stop with the message "test data were changed outside this script" (only this script creates test data; a mismatch means manual changes, which must not be overwritten silently).
 - The first transaction per material is harmless to repeat (contracts are reused).
 
 ### 22.7 Disk filling up
@@ -645,7 +648,7 @@ Cause: Alloy collects the logs of every pod, including the EDC logs at the chart
 
 ### 22.9 Download limits of container registries
 
-- All images are known in advance (`helm template`) and pulled once, one after another, before the first release is installed (phase 4, step 0). k3s keeps them; later steps never wait for a download.
+- All images are known in advance (`helm template`) and pulled once, one after another, at the end of `install` (phase 3, step 7). k3s keeps them; later steps never wait for a download.
 - Rate limit (HTTP 429 / `toomanyrequests`) → wait 1, 2, 4, 8, 16, 32 min, showing the waiting time; afterwards stop with the message "registry download limit reached, try again later or use a bundle (§22.11)".
 - Already pulled images are never pulled again.
 
@@ -668,3 +671,24 @@ Cause: Alloy collects the logs of every pod, including the EDC logs at the chart
 - No automatic check (no CI workflow – deliberately kept simple).
 - Rule: a change to `reproduce` is tested on the machine before it is pushed to `main`.
 - Every result records the commit hash, so a broken commit can be identified afterwards.
+
+---
+
+## 23. Implementation status (2026-10-08)
+
+`reproduce` (≈ 1,500 lines: Bash with an embedded Python helper) implements §1–§22. Checked without a cluster:
+
+| Check | Result |
+|---|---|
+| `shellcheck` (warning level), `bash -n`, Python compile | clean |
+| `tools`: all 8 charts in their pinned versions, PURIS chart from Git tag `puris-7.2.0` | downloaded and packaged |
+| Calculator (§8) on all four configurations | values of §8; `compact` matches the resource table of `AUFBAU.md` |
+| Profile `original`: no `resources`/`resourcesPreset`/`JAVA_TOOL_OPTIONS` left in the system under test | yes |
+| k6 `TestRun` rendered from `k0.env` | identical to `runs/2026-10-08_0340_k0_rep-3/testrun.json` (plus label `reproduce`) |
+| `evaluate` and `make-reference` on the NAS runs K0 `rep-2`–`rep-4` (complete logs from `nachtrag/`) | tipping stage strict 0.5–0.6/s, relaxed 0.6–0.7/s; comparison "reproduced" |
+| Watchdog of the load (§22.5) with a simulated `kubectl` | stall, on schedule and finished detected |
+
+**Not yet run on a cluster** (first run on the supervisor's VM, §18 step 7): install, deploy, prepare, reset, collection, conformance check, reboot repair (§22.4 – wallet restore untested), Alloy filter (§22.8), log capacity probe, bundle, uninstall.
+
+Reference files: `reference/compact-k0.json` from `rep-2`–`rep-4`; to be rebuilt after `rep-5`–`rep-7` are copied into `runs/`:
+`./reproduce make-reference compact-k0 "<source>" runs/<run>… > reference/compact-k0.json`. `reference/compact-k1.json` follows after the NAS K1 runs.

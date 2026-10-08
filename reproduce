@@ -1,0 +1,1497 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2024,SC2030,SC2031,SC2094  # sudo output into own files; probe in a subshell; log appended while read
+# ══════════════════════════════════════════════════════════════════════════════
+# reproduce – repeats the PURIS saturation experiment on one machine, from an
+# empty Ubuntu server to finished, checked results. Specification: REPRODUCE.md.
+#
+#   curl -fsSLO https://raw.githubusercontent.com/artamrj/puris-performance-experiments/main/reproduce
+#   chmod +x reproduce && ./reproduce
+#
+# Commands
+#   ./reproduce                      everything (phases 0–9)
+#   ./reproduce status               state of every phase, profile, runs (read-only)
+#   ./reproduce fetch | tools | check | install | deploy | prepare | verify
+#   ./reproduce measure [config]     runs; without argument all configurations of the profile
+#   ./reproduce evaluate [folder]    tipping stage, metric, comparison with the reference
+#   ./reproduce package [folder]     results folder complete, with checksums
+#   ./reproduce watch                follow the background job (Ctrl-C leaves only the view)
+#   ./reproduce stop                 end the background job at the next safe point
+#   ./reproduce bundle               offline bundle of the running build (needs sudo)
+#   ./reproduce uninstall [--yes]    remove the own cluster, restore system settings
+#
+# Exit codes: 0 success · 1 error · 2 precondition missing · 3 machine too small or
+# foreign cluster · 4 stopped by the user.
+#
+# Test values: the database passwords and the PURIS API key below are fixed, public
+# test values ("test only"). They are never used outside this test environment.
+# ══════════════════════════════════════════════════════════════════════════════
+set -euo pipefail
+umask 077
+
+# ── Fixed versions and sources (REPRODUCE.md §7.2) ────────────────────────────────
+REPO_URL="https://github.com/artamrj/puris-performance-experiments.git"
+K3S_VERSION="v1.37.1+k3s1"
+HELM_VERSION="v4.3.0"
+KUBECTL_VERSION="v1.37.1"
+PURIS_GIT="https://github.com/eclipse-tractusx/puris.git"
+PURIS_TAG="puris-7.2.0"
+TX_REPO="https://eclipse-tractusx.github.io/charts/dev"
+GF_REPO="https://grafana.github.io/helm-charts"
+# block release namespace chart repo version system-under-test
+RELEASES="b1-monitoring monitoring monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack - 91.9.0 0
+b2-loki loki logging loki GF 7.3.0 0
+b3-alloy alloy logging alloy GF 1.13.0 0
+c1-identitaet identity identity identity-and-trust-bundle TX 1.1.3 1
+c2-customer-edc edc customer dataspace-connector-bundle TX 1.3.0 1
+c4-supplier-edc edc supplier dataspace-connector-bundle TX 1.3.0 1
+c3-customer-dtr dtr customer digital-twin-bundle TX 1.3.0 1
+c5-supplier-dtr dtr supplier digital-twin-bundle TX 1.3.0 1
+d1-puris-customer puris customer PURIS - 7.2.0 1
+d2-puris-supplier puris supplier PURIS - 7.2.0 1
+f1-k6 k6-operator k6-operator k6-operator GF 4.6.0 0"
+# shellcheck disable=SC2034  # read through configs_of
+CONFIGS_compact="compact-k0 compact-k1"
+# shellcheck disable=SC2034
+CONFIGS_original="original-k0 original-k1"
+# test only – public, fixed values (REPRODUCE.md §7.5)
+TEST_API_KEY="reproduce-test-only-puris-api-key"
+TEST_DB_PASSWORD="reproduce-test-only-db"
+REPS="${REPRODUCE_REPS:-3}"           # valid runs per configuration
+MAX_REPLACEMENTS=2
+
+# ── Paths ─────────────────────────────────────────────────────────────────────────
+SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+WORK="${REPRODUCE_HOME:-$(dirname "$SCRIPT")/puris-repro}"
+SRC="$WORK/src"; TOOLS="$WORK/tools"; STATE="$WORK/state"; RESULTS="$WORK/results"; BUNDLE="$WORK/bundle"
+LOGF="$STATE/logs/reproduce.log"; MARKERS="$STATE/markers"
+export KUBECONFIG="$STATE/kubeconfig"
+export HELM_CACHE_HOME="$STATE/helm/cache" HELM_CONFIG_HOME="$STATE/helm/config" HELM_DATA_HOME="$STATE/helm/data"
+export PATH="$TOOLS:$PATH"
+mkdir -p "$STATE/logs" "$MARKERS" "$RESULTS"
+
+# ── Output ────────────────────────────────────────────────────────────────────────
+BG="${REPRODUCE_BG:-0}"
+if [ "$BG" = 1 ]; then exec >>"$LOGF" 2>&1; fi
+say() {  # symbol text
+  local line; line="$(date -u +%H:%M:%S) $1 $2"
+  if [ "$BG" = 1 ]; then echo "$line"; else echo "$line"; echo "$line" >> "$LOGF"; fi
+}
+ok()   { say "✓" "$*"; }
+skip() { say "↷" "$*"; }
+step() { say "…" "$*"; }
+warn() { say "!" "$*"; }
+fail() { say "✗" "$*"; }
+q()    { "$@" >>"$LOGF" 2>&1; }          # long output only into the log file
+die()  { fail "$1"; diagnostics || true; exit "${2:-1}"; }
+need_fail() { fail "$1"; echo "  next: $2"; exit 2; }
+now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# ── Embedded helper (Python 3, standard library + PyYAML) ─────────────────────────
+IFS= read -r -d '' PY <<'PYCODE' || true
+import sys, os, json, re, csv, gzip, math, time, hashlib, subprocess, statistics, shutil, platform
+import urllib.parse, urllib.request, urllib.error, base64
+from datetime import datetime, timezone, timedelta
+
+def kubectl(*a, timeout=60, inp=None):
+    r = subprocess.run(["kubectl", "--request-timeout=30s", *a], capture_output=True, text=True, timeout=timeout, input=inp)
+    if r.returncode:
+        raise RuntimeError("kubectl %s: %s" % (" ".join(a[:3]), r.stderr.strip()[-300:]))
+    return r.stdout
+def kraw(path): return kubectl("get", "--raw", path)
+def iso(dt): return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+def parse(s): return datetime.fromisoformat(s.replace("Z", "+00:00"))
+def nsec(dt): return (dt - datetime(1970, 1, 1, tzinfo=timezone.utc)) // timedelta(microseconds=1) * 1000
+def wjson(path, obj):
+    with open(path, "w") as f: json.dump(obj, f, indent=1)
+def rjson(path):
+    with open(path) as f: return json.load(f)
+def log(msg): print("%s … %s" % (datetime.now(timezone.utc).strftime("%H:%M:%S"), msg), flush=True)
+
+def cpu_q(v):
+    if v is None: return None
+    s = str(v)
+    return float(s[:-1]) / 1000 if s.endswith("m") else float(s)
+def mem_q(v):
+    if v is None: return None
+    s = str(v); units = {"Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40, "k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9, "T": 1e12}
+    for u in sorted(units, key=len, reverse=True):
+        if s.endswith(u): return float(s[:-len(u)]) * units[u]
+    return float(s)
+
+# ---------- values: profile original = chart defaults for resources ----------
+def cmd_strip(src, dst):
+    import yaml
+    def s(n):
+        if isinstance(n, dict):
+            return {k: s(v) for k, v in n.items() if k not in ("resources", "resourcesPreset", "JAVA_TOOL_OPTIONS")}
+        if isinstance(n, list):
+            return [s(x) for x in n if not (isinstance(x, dict) and x.get("name") == "JAVA_TOOL_OPTIONS")]
+        return n
+    with open(src) as f: data = yaml.safe_load(f) or {}
+    with open(dst, "w") as f: yaml.safe_dump(s(data), f, sort_keys=False)
+
+def docs(path):
+    import yaml
+    with open(path) as f: return [d for d in yaml.safe_load_all(f) if isinstance(d, dict)]
+
+def pod_specs(d):
+    kind = d.get("kind"); hook = ((d.get("metadata") or {}).get("annotations") or {}).get("helm.sh/hook")
+    if hook: return
+    name = (d.get("metadata") or {}).get("name", "")
+    if kind in ("Deployment", "StatefulSet", "DaemonSet"):
+        reps = 1 if kind == "DaemonSet" else d["spec"].get("replicas", 1)
+        yield kind, name, reps, d["spec"]["template"]["spec"]
+    elif kind == "Prometheus":
+        sp = d.get("spec") or {}
+        yield kind, name, sp.get("replicas", 1), {"containers": [
+            {"name": "prometheus", "resources": sp.get("resources") or {}},
+            {"name": "config-reloader", "resources": {"requests": {"cpu": "50m", "memory": "64Mi"}, "limits": {"cpu": "50m", "memory": "64Mi"}}}]}
+
+ASSUMED_CPU, ASSUMED_MEM = 0.1, 0.25 * 2**30          # containers without limit (REPRODUCE.md §8)
+def cmd_footprint(*manifests):
+    tot = {"limits_cpu": 0.0, "limits_mem": 0.0, "requests_cpu": 0.0, "requests_mem": 0.0}
+    unlimited = []
+    for m in manifests:
+        for d in docs(m):
+            for kind, name, reps, spec in pod_specs(d):
+                if not reps: continue
+                agg = {}
+                for group in ("containers", "initContainers"):
+                    vals = []
+                    for c in spec.get(group) or []:
+                        r = c.get("resources") or {}; rq = r.get("requests") or {}; lm = r.get("limits") or {}
+                        lc, lmem = cpu_q(lm.get("cpu")), mem_q(lm.get("memory"))
+                        if lc is None or lmem is None:
+                            unlimited.append("%s/%s" % (name, c.get("name")))
+                        vals.append((cpu_q(rq.get("cpu")) or 0, mem_q(rq.get("memory")) or 0,
+                                     lc if lc is not None else ASSUMED_CPU, lmem if lmem is not None else ASSUMED_MEM))
+                    agg[group] = vals
+                for i, key in enumerate(("requests_cpu", "requests_mem", "limits_cpu", "limits_mem")):
+                    app = sum(v[i] for v in agg["containers"]); init = max([v[i] for v in agg["initContainers"]] or [0])
+                    tot[key] += max(app, init) * reps
+    # k3s pods (CoreDNS, metrics-server) and the k6 runner during a run
+    tot["limits_cpu"] += 0.2 + 0.5; tot["limits_mem"] += 0.25 * 2**30 + 0.5 * 2**30
+    print(json.dumps({"limits_cpu": round(tot["limits_cpu"], 3), "limits_mem_gib": round(tot["limits_mem"] / 2**30, 3),
+                      "requests_cpu": round(tot["requests_cpu"], 3), "requests_mem_gib": round(tot["requests_mem"] / 2**30, 3),
+                      "unlimited_assumed": sorted(set(unlimited))}))
+
+def cmd_images(*manifests):
+    out = set()
+    for m in manifests:
+        for d in docs(m):
+            sp = d.get("spec") or {}
+            if d.get("kind") == "Prometheus" and sp.get("image"): out.add(sp["image"])
+            tpl = ((sp.get("template") or {}).get("spec")) or {}
+            for c in (tpl.get("containers") or []) + (tpl.get("initContainers") or []):
+                if c.get("image"): out.add(c["image"])
+                for a in c.get("args") or []:
+                    if isinstance(a, str) and a.startswith("--prometheus-config-reloader="): out.add(a.split("=", 1)[1])
+    print("\n".join(sorted(out)))
+
+def norm(r):
+    r = r or {}; o = {}
+    for k in ("requests", "limits"):
+        x = r.get(k) or {}
+        o[k] = (round(cpu_q(x.get("cpu")) or 0, 4) if x.get("cpu") is not None else None,
+                int(mem_q(x.get("memory"))) if x.get("memory") is not None else None)
+    return o
+def cmd_conformance(ns, manifest):
+    expected = {}
+    for d in docs(manifest):
+        for kind, name, reps, spec in pod_specs(d):
+            if kind == "Prometheus":
+                expected[("Prometheus", name, "prometheus")] = norm(spec["containers"][0]["resources"]); continue
+            for c in (spec.get("containers") or []):
+                expected[(kind, name, c["name"])] = norm(c.get("resources"))
+    live = {}
+    for kind, res in (("Deployment", "deploy"), ("StatefulSet", "sts"), ("DaemonSet", "ds")):
+        for it in json.loads(kubectl("get", res, "-n", ns, "-o", "json"))["items"]:
+            for c in it["spec"]["template"]["spec"]["containers"]:
+                live[(kind, it["metadata"]["name"], c["name"])] = norm(c.get("resources"))
+    if any(k[0] == "Prometheus" for k in expected):
+        for it in json.loads(kubectl("get", "prometheus", "-n", ns, "-o", "json"))["items"]:
+            live[("Prometheus", it["metadata"]["name"], "prometheus")] = norm((it.get("spec") or {}).get("resources"))
+    diffs = ["%s/%s/%s: expected %s, running %s" % (k[0], k[1], k[2], v, live.get(k)) for k, v in sorted(expected.items()) if live.get(k) != v]
+    print("\n".join(diffs)); sys.exit(1 if diffs else 0)
+
+# ---------- machine ----------
+def cpu_score(seconds=10.0):
+    data, n, t0 = b"puris-reproduce-benchmark" * 3, 0, time.perf_counter()
+    while time.perf_counter() - t0 < seconds:
+        for _ in range(1000): data = hashlib.sha256(data).digest()
+        n += 1000
+    return int(n / (time.perf_counter() - t0))
+def disk_free_gib(path):
+    while not os.path.exists(path): path = os.path.dirname(path)
+    return round(shutil.disk_usage(path).free / 2**30, 1)
+def cmd_machine(out, work):
+    mem = next(int(l.split()[1]) for l in open("/proc/meminfo") if l.startswith("MemTotal:")) * 1024
+    model = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")), "unknown")
+    osr = dict(l.rstrip("\n").split("=", 1) for l in open("/etc/os-release") if "=" in l)
+    run = lambda *c: subprocess.run(c, capture_output=True, text=True).stdout.strip()
+    m = {"time_utc": iso(datetime.now(timezone.utc)), "cpu_model": model, "vcpu": os.cpu_count(),
+         "mem_total_gib": round(mem / 2**30, 2), "os": osr.get("PRETTY_NAME", "").strip('"'),
+         "os_id": osr.get("ID", ""), "kernel": platform.release(), "arch": platform.machine(),
+         "virtualization": run("systemd-detect-virt") or "none", "time_synchronized": run("timedatectl", "show", "-p", "NTPSynchronized", "--value"),
+         "disk_free_gib": {"work": disk_free_gib(work), "rancher": disk_free_gib("/var/lib/rancher")},
+         "boot_id": open("/proc/sys/kernel/random/boot_id").read().strip(),
+         "cpu_single_core_score": cpu_score()}
+    wjson(out, m); print(json.dumps(m))
+
+def cmd_steal(seconds):
+    def snap():
+        f = [int(x) for x in open("/proc/stat").readline().split()[1:9]]
+        return f[7], sum(f)
+    s0, t0 = snap(); time.sleep(float(seconds)); s1, t1 = snap()
+    print("%.4f" % ((s1 - s0) / max(t1 - t0, 1)))
+
+# ---------- PURIS REST (setup only, through the ClusterIP of the service) ----------
+def puris(role, key):
+    ip = kubectl("get", "svc", "puris-backend", "-n", role, "-o", "jsonpath={.spec.clusterIP}").strip()
+    base = "http://%s:8081/catena/" % ip
+    def req(method, path, body=None):
+        r = urllib.request.Request(base + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                   headers={"X-API-KEY": key, "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(r, timeout=30) as resp: return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as e: return e.code, e.read().decode()[:300]
+    return req
+def b64(s): return base64.b64encode(s.encode()).decode()
+def materials(tsv):
+    rows = []
+    for l in open(tsv):
+        if l.startswith("#") or not l.strip(): continue
+        p = l.rstrip("\n").split("\t")
+        if p[0] == "nr": continue
+        rows.append({"nr": p[0], "mc": p[1], "ms": p[2], "cx": p[3], "name": p[4]})
+    return rows
+def cmd_testdata(role, src, key, wait_s="180"):
+    req, wait_s = puris(role, key), int(wait_s)
+    base = os.path.join(src, "setup/e1-testdaten")
+    tpl = lambda f: json.load(open(os.path.join(base, role, f)))
+    def post(path, body):
+        code, txt = req("POST", path, body)
+        if code not in (200, 201, 409): raise SystemExit("POST %s -> HTTP %s: %s" % (path, code, txt[:300]))
+        return code
+    def get(path):
+        code, txt = req("GET", path)
+        if code != 200: raise SystemExit("GET %s -> HTTP %s" % (path, code))
+        return json.loads(txt)
+    dtr = "/api/v1/namespaces/%s/services/http:dtr:8080/proxy/api/v3/shell-descriptors?limit=1000" % role
+    twins = lambda: json.loads(kraw(dtr)).get("result", [])
+    partner = tpl("1-partner.json")
+    if any(p.get("bpnl") == partner["bpnl"] for p in get("partners/all")): print("partner present")
+    else: post("partners", partner); print("partner created")
+    for k, m in enumerate(materials(os.path.join(base, "materialien.tsv")), 1):
+        t0 = time.time(); own = m["ms"] if role == "supplier" else m["mc"]
+        existing = [x for x in get("materials/all") if x.get("ownMaterialNumber") == own]
+        if existing:
+            if existing[0].get("name") != m["name"]:
+                raise SystemExit("material %s exists with a different name (%s) – test data were changed outside this script" % (own, existing[0].get("name")))
+            c_mat = "present"
+        else:
+            body = tpl("2-material.json"); body["ownMaterialNumber"] = own; body["name"] = m["name"]
+            if role == "supplier": body["materialNumberCx"] = m["cx"]
+            c_mat = post("materials", body)
+        rel = tpl("3-relation.json"); rel["ownMaterialNumber"] = own; rel["partnerMaterialNumber"] = m["mc"] if role == "supplier" else m["ms"]
+        c_rel = post("materialpartnerrelations", rel)
+        if role == "supplier":
+            if get("stockView/product-stocks?ownMaterialNumber=" + urllib.parse.quote(b64(own))): c_stk = "present"
+            else:
+                st = tpl("4-product-stock.json"); mat = st["material"]
+                mat.update(materialNumberCustomer=m["mc"], materialNumberSupplier=m["ms"], materialNumberCx=m["cx"], name=m["name"])
+                c_stk = post("stockView/product-stocks", st)
+            done = lambda: len(twins()) >= k
+        else:
+            c_stk = "-"; done = lambda: any(t.get("id") == m["cx"] for t in twins())
+        while not done() and time.time() - t0 < wait_s: time.sleep(3)
+        if not done(): raise SystemExit("twin of material %s not in the DTR of %s after %s s" % (own, role, wait_s))
+        print("%s %s: material %s, relation %s, stock %s, twin ok (%d s)" % (m["nr"], own, c_mat, c_rel, c_stk, time.time() - t0), flush=True)
+
+def cmd_trigger(key, material):
+    req = puris("customer", key)
+    code, _ = req("GET", "stockView/update-reported-material-stocks?ownMaterialNumber=" + urllib.parse.quote(b64(material)))
+    print(code)
+
+# ---------- k6 TestRun ----------
+K6_IMAGE = "grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6"
+STARTER_IMAGE = "ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6"
+def cmd_render_testrun(name, testid, tsv):
+    E = os.environ; mats = [m["mc"] for m in materials(tsv)][: int(E.get("MATERIALS_N") or 1000)]
+    res = lambda c, m: {"requests": {"cpu": c, "memory": m}, "limits": {"cpu": c, "memory": m}}
+    common = [{"name": "BASE_URL", "value": "http://puris-backend.customer:8081"},
+              {"name": "MATERIAL_NUMBERS", "value": ",".join(mats)},
+              {"name": "RATES", "value": E["RATES"]}, {"name": "STAGE_DURATION", "value": E["STAGE_DURATION"]}]
+    if E.get("STAGE_LABELS"): common.append({"name": "STAGE_LABELS", "value": E["STAGE_LABELS"]})
+    tr = {"apiVersion": "k6.io/v1alpha1", "kind": "TestRun",
+          "metadata": {"name": name, "namespace": "k6", "labels": {"lab-run-id": testid, "reproduce": "1"}},
+          "spec": {"parallelism": 1, "script": {"configMap": {"name": "k6-stock-trigger", "file": "stock-trigger.js"}},
+                   "arguments": "--out experimental-prometheus-rw --tag testid=%s" % testid,
+                   "initializer": {"image": K6_IMAGE, "resources": res("200m", "256Mi"), "env": common},
+                   "runner": {"image": K6_IMAGE, "resources": res("500m", "512Mi"), "env": common + [
+                       {"name": "PURIS_API_KEY", "valueFrom": {"secretKeyRef": {"name": "puris-api-key", "key": "key"}}},
+                       {"name": "K6_PROMETHEUS_RW_SERVER_URL", "value": "http://monitoring-kube-prometheus-prometheus.monitoring:9090/api/v1/write"},
+                       {"name": "K6_PROMETHEUS_RW_TREND_STATS", "value": "p(50),p(95),p(99),max"}]},
+                   "starter": {"image": STARTER_IMAGE, "resources": res("50m", "64Mi")}}}
+    print(json.dumps(tr, indent=1))
+
+MARK = re.compile(r'msg="K6_STAGE ((?:[^"\\]|\\.)*)"|^K6_STAGE (\{.*\})$')
+def stage_markers(text):
+    starts = {}
+    for l in text.splitlines():
+        m = MARK.search(l.strip())
+        if not m: continue
+        row = json.loads(json.loads('"%s"' % m[1]) if m[1] is not None else m[2])
+        if starts.setdefault(row["stage"], row["start_ms"]) != row["start_ms"]:
+            raise ValueError("conflicting start times for stage %s" % row["stage"])
+    return starts
+def runner_pod(name):
+    pods = json.loads(kubectl("get", "pods", "-n", "k6", "-o", "json"))["items"]
+    return next((p for p in pods if p["metadata"]["name"].startswith(name + "-1-")), None)
+def cmd_watchdog(name, t_apply, labels, stage_min):
+    """exit 0 = finished, 10 = still running and on schedule, 11 = stalled (message on stdout)"""
+    labels = labels.split(","); stage_ms = float(stage_min) * 60000; now = time.time() * 1000
+    apply_ms0 = parse(t_apply).timestamp() * 1000
+    try: st = json.loads(kubectl("get", "testrun", name, "-n", "k6", "-o", "json")).get("status", {}).get("stage")
+    except Exception as e:
+        if now - apply_ms0 > len(labels) * stage_ms + 25 * 60000: print("TestRun not readable: %s" % e); sys.exit(11)
+        print("TestRun status not readable yet"); sys.exit(10)
+    if st == "finished": sys.exit(0)
+    if st == "error": print("TestRun in state error"); sys.exit(11)
+    apply_ms = parse(t_apply).timestamp() * 1000
+    pod = runner_pod(name); starts = {}
+    if pod and pod["status"].get("phase") in ("Running", "Succeeded", "Failed"):
+        try: starts = stage_markers(kubectl("logs", "-n", "k6", pod["metadata"]["name"]))
+        except RuntimeError: starts = {}
+    if not starts:
+        if now - apply_ms > 10 * 60000: print("no load stage started 10 min after start"); sys.exit(11)
+        print("waiting for the first stage"); sys.exit(10)
+    t0 = starts.get(labels[0])
+    for i, l in enumerate(labels):
+        planned = t0 + i * stage_ms
+        if now > planned + 120000 and l not in starts: print("stage %s missing 2 min after its planned start" % l); sys.exit(11)
+    end = t0 + len(labels) * stage_ms
+    if now > end + 15 * 60000: print("load did not end 15 min after its planned end"); sys.exit(11)
+    cur = max((i for i, l in enumerate(labels) if l in starts), default=0)
+    el = (now - (t0 + cur * stage_ms)) / 1000
+    print("stage %s (%d/%d) · %02d:%02d / %02d:00" % (labels[cur], cur + 1, len(labels), el // 60, el % 60, float(stage_min)))
+    sys.exit(10)
+
+# ---------- Loki ----------
+PROM = "/api/v1/namespaces/monitoring/services/http:monitoring-kube-prometheus-prometheus:9090/proxy"
+LOKI = "/api/v1/namespaces/logging/services/http:loki:3100/proxy"
+SEL = {"customer_puris": '{namespace="customer", pod=~"puris-backend.*"}',
+       "supplier_puris": '{namespace="supplier", pod=~"puris-backend.*"}',
+       "edc_warn_error": '{namespace=~"customer|supplier", pod=~"edc-controlplane.*"} |~ "\\"level\\":\\"(WARN|ERROR)\\""'}
+PAT = {"triggered": "Trigger Reported MaterialStockUpdate", "completed": "Updated ReportedMaterialItemStocks",
+       "failed": "Error in ReportedMaterialItemStockRequest", "invalidating_contract": "Invalidating ",
+       "optimistic_lock": "ObjectOptimisticLockingFailureException"}
+LIMIT = 5000
+def loki_range(sel, s, e):
+    qs = urllib.parse.urlencode({"query": sel, "start": s, "end": e - 1, "limit": LIMIT, "direction": "forward"})
+    res = json.loads(kraw("%s/loki/api/v1/query_range?%s" % (LOKI, qs)))["data"]["result"]
+    return [(int(ts), st["stream"].get("pod", ""), line) for st in res for ts, line in st["values"] if s <= int(ts) < e]
+def loki_window(sel, s, e):
+    rows = loki_range(sel, s, e)
+    if len(rows) < LIMIT: return rows
+    mid = (s + e) // 2
+    if mid <= s: raise ValueError("Loki window not divisible – completeness not provable")
+    return loki_window(sel, s, mid) + loki_window(sel, mid, e)
+def loki_all(sel, s, e, w=60 * 10**9):
+    out, t = [], s
+    while t < e:
+        x = min(t + w, e); out += loki_window(sel, t, x); t = x
+    out.sort(); return out
+def loki_count(sel, filt, start):
+    end = datetime.now(timezone.utc); rng = int((end - start).total_seconds()) + 1
+    qs = urllib.parse.urlencode({"query": 'sum(count_over_time(%s |= "%s" [%ds]))' % (sel, filt, rng), "time": end.timestamp()})
+    res = json.loads(kraw("%s/loki/api/v1/query?%s" % (LOKI, qs)))["data"]["result"]
+    return int(float(res[0]["value"][1])) if res else 0
+def prom_query(q):
+    res = json.loads(kraw("%s/api/v1/query?%s" % (PROM, urllib.parse.urlencode({"query": q}))))["data"]["result"]
+    return float(res[0]["value"][1]) if res else None
+def cmd_prom(q):
+    v = prom_query(q); print("" if v is None else v)
+
+def cmd_probe(name, t_apply):
+    """log capacity probe: every request must arrive in Loki, nothing discarded"""
+    pod = runner_pod(name); rlog = kubectl("logs", "-n", "k6", pod["metadata"]["name"])
+    summary = json.loads(next(l for l in rlog.splitlines() if "K6_SUMMARY_JSON " in l).split("K6_SUMMARY_JSON ", 1)[1])
+    m = summary["metrics"]; reqs = m.get("http_reqs", {}).get("values", {}).get("count", 0)
+    failed = m.get("http_req_failed", {}).get("values", {}).get("passes", 0)
+    time.sleep(75)
+    start = parse(t_apply); trig = loki_count(SEL["customer_puris"], PAT["triggered"], start)
+    disc = prom_query('sum(increase(loki_discarded_samples_total[%ds]))' % int((datetime.now(timezone.utc) - start).total_seconds() + 60)) or 0.0
+    ok = trig == reqs - failed and disc == 0
+    print(json.dumps({"ok": ok, "requests": reqs, "requests_failed": failed, "triggers_in_loki": trig, "loki_discarded": disc}))
+    sys.exit(0 if ok else 1)
+
+# ---------- collect one run (format of runs/, REPRODUCE.md §12) ----------
+def cmd_collect(run, name, testid, t_apply, commit, extra, machine_json, profile, configuration, cp_limit):
+    E = os.environ
+    RATES = [float(r) for r in E["RATES"].split(",")]; STAGE_MIN = float(E["STAGE_DURATION"])
+    LABELS = E["STAGE_LABELS"].split(",") if E.get("STAGE_LABELS") else ["s%d" % (i + 1) for i in range(len(RATES))]
+    DRAIN_MAX = float(E.get("DRAIN_MAX_MIN", "15")); STEAL_MAX = float(E.get("STEAL_MAX", "0.05")); STEAL_MEAN_MAX = float(E.get("STEAL_MEAN_MAX", "0.02"))
+    SUT_NS = {"customer", "supplier", "identity"}
+    for d in ("prometheus", "loki", "edc", "cluster/logs"): os.makedirs(os.path.join(run, d), exist_ok=True)
+    pod = runner_pod(name); rstat = pod["status"]["containerStatuses"][0]
+    r_start = parse(rstat["state"]["terminated"]["startedAt"]); r_end = parse(rstat["state"]["terminated"]["finishedAt"])
+    rlog = kubectl("logs", "-n", "k6", pod["metadata"]["name"])
+    open(os.path.join(run, "cluster/logs/k6-runner.txt"), "w").write(rlog)
+    summary = json.loads(next(l for l in rlog.splitlines() if "K6_SUMMARY_JSON " in l).split("K6_SUMMARY_JSON ", 1)[1])
+    wjson(os.path.join(run, "k6-summary.json"), summary)
+    k6s = stage_markers(rlog)
+    if set(k6s) != set(LABELS): raise ValueError("k6 stage markers missing (expected %s, found %s)" % (LABELS, sorted(k6s)))
+    STAGE_MS = STAGE_MIN * 60000; t0 = k6s[LABELS[0]]
+    for i, l in enumerate(LABELS):
+        if abs(k6s[l] - t0 - i * STAGE_MS) > 2000: raise ValueError("start of %s differs by more than 2 s from the plan" % l)
+    wjson(os.path.join(run, "k6-stages.json"), {l: {"start_ms": k6s[l], "start_utc": iso(datetime.fromtimestamp(k6s[l] / 1000, timezone.utc)), "duration_ms_plan": STAGE_MS} for l in LABELS})
+    first = w_start = datetime.fromtimestamp(t0 / 1000, timezone.utc)
+    CUST = SEL["customer_puris"]; drain_t0, last, same = datetime.now(timezone.utc), None, 0
+    while True:
+        trig_n = loki_count(CUST, PAT["triggered"], w_start)
+        fin_n = loki_count(CUST, PAT["completed"], w_start) + loki_count(CUST, PAT["failed"], w_start)
+        waited = (datetime.now(timezone.utc) - drain_t0).total_seconds() / 60
+        if fin_n >= trig_n: reason = "all transactions finished"; break
+        same = same + 1 if (trig_n, fin_n) == last else 0; last = (trig_n, fin_n)
+        if same >= 4: reason = "no progress for 2 min"; break
+        if waited >= DRAIN_MAX: reason = "maximum of %g min reached" % DRAIN_MAX; break
+        log("drain: %d of %d open (%.1f min)" % (trig_n - fin_n, trig_n, waited)); time.sleep(30)
+    drain_end = datetime.now(timezone.utc); w_end = drain_end + timedelta(minutes=1)
+    log("drain: %s; open %d" % (reason, trig_n - fin_n)); time.sleep(75)
+    def prom_range(fname, q, step="15s"):
+        qs = urllib.parse.urlencode({"query": q, "start": iso(w_start), "end": iso(w_end), "step": step})
+        res = json.loads(kraw("%s/api/v1/query_range?%s" % (PROM, qs)))["data"]["result"]
+        keys = sorted({k for r in res for k in r["metric"]})
+        with open(os.path.join(run, "prometheus", fname + ".csv"), "w", newline="") as f:
+            w = csv.writer(f, lineterminator="\n"); w.writerow(["timestamp_utc", *keys, "value"])
+            for r in res:
+                for t, v in r["values"]: w.writerow([iso(datetime.fromtimestamp(t, timezone.utc)), *[r["metric"].get(k, "") for k in keys], v])
+        return res
+    C = 'container!="",container!="POD"'; T = 'testid="%s"' % testid
+    cpu = prom_range("cpu_cores", 'sum by (namespace,pod,container)(rate(container_cpu_usage_seconds_total{%s}[1m]))' % C)
+    prom_range("memory_working_set_bytes", 'sum by (namespace,pod,container)(container_memory_working_set_bytes{%s})' % C)
+    prom_range("cpu_throttled_ratio", 'sum by (namespace,pod,container)(rate(container_cpu_cfs_throttled_periods_total{%s}[1m])) / sum by (namespace,pod,container)(rate(container_cpu_cfs_periods_total{%s}[1m]))' % (C, C))
+    prom_range("container_threads", 'sum by (namespace,pod,container)(container_threads{%s})' % C)
+    steal = prom_range("node_steal_ratio", 'sum(rate(node_cpu_seconds_total{mode="steal"}[1m])) / sum(rate(node_cpu_seconds_total[1m]))')
+    prom_range("node_cpu_by_mode", 'sum by (mode)(rate(node_cpu_seconds_total[1m]))')
+    prom_range("k6_iterations_rate", 'sum by (stage)(rate(k6_iterations_total{%s}[1m]))' % T)
+    prom_range("k6_dropped_iterations_total", 'sum by (stage)(k6_dropped_iterations_total{%s})' % T)
+    prom_range("k6_http_req_duration", '{__name__=~"k6_http_req_duration_(p50|p95|p99|max)",%s}' % T)
+    disc = prom_range("loki_discarded_samples_total", 'sum(loki_discarded_samples_total)')
+    rst = prom_range("container_restarts", 'sum by (namespace,pod,container)(kube_pod_container_status_restarts_total)', step="60s")
+    def dump(fname, sel):
+        out = loki_all(sel, nsec(w_start), nsec(w_end))
+        with gzip.open(os.path.join(run, "loki", fname + ".tsv.gz"), "wt", newline="") as f:
+            w = csv.writer(f, delimiter="\t", lineterminator="\n"); w.writerow(["timestamp_ns", "pod", "line"]); w.writerows(out)
+        return out
+    cust = dump("customer_puris", CUST); dump("supplier_puris", SEL["supplier_puris"]); dump("edc_warn_error", SEL["edc_warn_error"])
+    pick = lambda s: [r for r in cust if s in r[2]]
+    trig, done, errs, inval, locks = pick(PAT["triggered"]), pick(PAT["completed"]), pick(PAT["failed"]), pick(PAT["invalidating_contract"]), pick(PAT["optimistic_lock"])
+    warnl = [r for r in cust if re.search(r" (ERROR|WARN) ", r[2])]
+    EDC_SQL = {"transfer-times": "select transferprocess_id, type, state, asset_id, contract_id, correlation_id, created_at, state_time_stamp, updated_at, state_count, left(error_detail, 300) as error_detail from edc_transfer_process order by created_at;",
+               "negotiations": "select id, type, state, state_count, counterparty_id, agreement_id, created_at, state_timestamp, updated_at, left(error_detail, 300) as error_detail from edc_contract_negotiation order by created_at;"}
+    for side in ("customer", "supplier"):
+        for fname, sql in EDC_SQL.items():
+            out = kubectl("exec", "-i", "-n", side, "edc-postgresql-0", "--", "sh", "-c",
+                          'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" --csv -f -', timeout=180, inp=sql)
+            open(os.path.join(run, "edc", "%s-%s.csv" % (side, fname)), "w").write(out)
+    allpods = json.loads(kubectl("get", "pods", "-A", "-o", "json"))["items"]
+    wjson(os.path.join(run, "cluster/pods.json"), [{"namespace": p["metadata"]["namespace"], "pod": p["metadata"]["name"], "uid": p["metadata"]["uid"], "phase": p["status"]["phase"],
+            "containers": [{"name": c["name"], "restarts": c.get("restartCount", 0), "ready": c.get("ready", False)} for c in p["status"].get("containerStatuses", [])]}
+           for p in allpods if p["status"]["phase"] == "Running"])
+    open(os.path.join(run, "cluster/helm.txt"), "w").write(subprocess.run(["helm", "list", "-A"], capture_output=True, text=True, check=True, timeout=45).stdout)
+    images = sorted({(p["metadata"]["namespace"], c["name"], c["image"], c.get("imageID", "")) for p in allpods for c in p["status"].get("containerStatuses", [])})
+    open(os.path.join(run, "cluster/images.txt"), "w").write("".join("\t".join(i) + "\n" for i in images))
+    stages = []
+    for label, rate in zip(LABELS, RATES):
+        s0 = datetime.fromtimestamp(k6s[label] / 1000, timezone.utc); s1 = s0 + timedelta(milliseconds=STAGE_MS)
+        n = lambda rows: sum(1 for ts, _, _ in rows if s0.timestamp() * 1e9 <= ts < s1.timestamp() * 1e9)
+        stages.append({"stage": label, "rate_per_s": rate, "start_utc": iso(s0), "end_utc": iso(s1), "boundary_source": "k6.scenario.startTime",
+                       "planned": round(rate * STAGE_MIN * 60), "triggered_log": n(trig), "completed_log": n(done), "failed_log": n(errs),
+                       "optimistic_lock": n(locks), "error_warn_lines": n(warnl), "invalidating_contract": n(inval)})
+    m = summary["metrics"]; dropped = m.get("dropped_iterations", {}).get("values", {}).get("count", 0)
+    runner_cpu = max((float(v) for r in cpu if r["metric"].get("pod", "").startswith(name + "-1-") for _, v in r["values"]), default=None)
+    sv = [float(v) for r in steal for _, v in r["values"] if math.isfinite(float(v))]
+    smax = max(sv, default=None); smean = sum(sv) / len(sv) if sv else None
+    warm_end = max((parse(s["end_utc"]) for s in stages if s["stage"].startswith("warmup")), default=first)
+    restarts, sut_restarts = {}, {}
+    for r in rst:
+        ns = r["metric"].get("namespace")
+        if ns == "k6" or not r["values"]: continue
+        v0 = float(r["values"][0][1]); inc = [(t, float(v)) for t, v in r["values"] if float(v) > v0]
+        if not inc: continue
+        key = "%s/%s/%s" % (ns, r["metric"].get("pod"), r["metric"].get("container"))
+        entry = {"count": int(float(r["values"][-1][1]) - v0), "first_utc": iso(datetime.fromtimestamp(inc[0][0], timezone.utc))}
+        (sut_restarts if ns in SUT_NS and datetime.fromtimestamp(inc[0][0], timezone.utc) >= warm_end else restarts)[key] = entry
+    disc_delta = (float(disc[0]["values"][-1][1]) - float(disc[0]["values"][0][1])) if disc and disc[0].get("values") else 0.0
+    reset = rjson(os.path.join(extra, "reset.json"))
+    reqs = m.get("http_reqs", {}).get("values", {}).get("count", m.get("iterations", {}).get("values", {}).get("count"))
+    exp_trig = reqs - m.get("http_req_failed", {}).get("values", {}).get("passes", 0) if reqs is not None else None
+    validity = {"log_triggers": len(trig), "log_triggers_expected": exp_trig, "log_complete_ok": exp_trig is not None and len(trig) == exp_trig,
+                "dropped_iterations": dropped, "dropped_ok": dropped == 0,
+                "k6_runner_cpu_max_cores": round(runner_cpu, 3) if runner_cpu is not None else None,
+                "k6_cpu_ok": runner_cpu is not None and math.isfinite(runner_cpu) and runner_cpu < 0.45,
+                "restarts_invalidating": restarts, "restarts_ok": not restarts, "sut_restarts_after_warmup": sut_restarts,
+                "loki_discarded_delta": disc_delta, "loki_ok": disc_delta == 0,
+                "steal_max_ratio": round(smax, 4) if smax is not None else None, "steal_limit": STEAL_MAX,
+                "steal_mean_ratio": round(smean, 4) if smean is not None else None, "steal_mean_limit": STEAL_MEAN_MAX,
+                "steal_ok": smax is not None and smean is not None and smax < STEAL_MAX and smean < STEAL_MEAN_MAX,
+                "reset_ok": bool(reset.get("counts_equal_after_restore")) and reset.get("function_test", {}).get("passed") is True}
+    validity["valid"] = all(v is True for k, v in validity.items() if k.endswith("_ok"))
+    node = json.loads(kubectl("get", "nodes", "-o", "json"))["items"][0]
+    mach = rjson(machine_json)
+    meta = {"run": os.path.basename(run), "kind": E.get("PLAN_KIND"), "plan": E.get("PLAN"), "repetition": int(E.get("REP", "0")),
+            "git_commit": commit, "tag": None, "testrun": name, "testid": testid, "script": "experiments/k6/stock-trigger.js",
+            "plan_values": {"state": E.get("STATE"), "rates_per_s": RATES, "stage_labels": LABELS, "stage_minutes": STAGE_MIN,
+                            "materials_n": int(E.get("MATERIALS_N") or 0) or None, "drain_max_min": DRAIN_MAX, "steal_max": STEAL_MAX, "steal_mean_max": STEAL_MEAN_MAX},
+            "times_utc": {"apply": t_apply, "runner_start": iso(r_start), "runner_end": iso(r_end), "load_start": iso(first),
+                          "stage_boundary_source": "k6.scenario.startTime", "drain_end": iso(drain_end), "collection_window": [iso(w_start), iso(w_end)]},
+            "drain": {"reason": reason, "open_at_end": trig_n - fin_n}, "reset": reset, "stages": stages,
+            "totals": {"triggered_log": len(trig), "completed_log": len(done), "failed_log": len(errs), "optimistic_lock": len(locks),
+                       "error_warn_lines_customer": len(warnl), "invalidating_contract": len(inval),
+                       "k6_iterations": m.get("iterations", {}).get("values", {}).get("count"), "k6_dropped_iterations": dropped,
+                       "k6_http_req_failed_rate": m.get("http_req_failed", {}).get("values", {}).get("rate")},
+            "validity": validity,
+            "node": {"cpu_model": mach.get("cpu_model"), "capacity": node["status"]["capacity"], "allocatable": node["status"]["allocatable"],
+                     "kernel": node["status"]["nodeInfo"]["kernelVersion"], "kubelet": node["status"]["nodeInfo"]["kubeletVersion"]},
+            "tool": {"name": "reproduce", "commit": commit}, "profile": profile, "configuration": configuration,
+            "edc_controlplane_customer_cpu_limit": float(cp_limit),
+            "machine": {k: mach.get(k) for k in ("cpu_model", "vcpu", "mem_total_gib", "cpu_single_core_score", "os", "virtualization")}}
+    wjson(os.path.join(run, "meta.json"), meta)
+    print(json.dumps({"valid": validity["valid"], "steal_ok": validity["steal_ok"], "stages": len(stages)}))
+
+def cmd_attempt(root, phase, status, reason):
+    p = os.path.join(root, "attempt.json")
+    rec = rjson(p) if os.path.exists(p) else {"run": os.path.basename(root), "git_commit": os.environ.get("ATTEMPT_COMMIT"),
+                                              "plan": os.environ.get("ATTEMPT_PLAN"), "repetition": os.environ.get("ATTEMPT_REP"),
+                                              "started_utc": datetime.now(timezone.utc).isoformat()}
+    ev = {"time_utc": datetime.now(timezone.utc).isoformat(), "phase": phase, "status": status, "reason": reason}
+    with open(os.path.join(root, "events.jsonl"), "a") as f: f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    rec.update(ev); wjson(p + ".tmp", rec); os.replace(p + ".tmp", p)
+
+# ---------- evaluation (REPRODUCE.md §11, §13) ----------
+def saturated(s, strict):
+    planned = s.get("planned") or 1
+    trig = max(s.get("triggered_log", 0), 1)
+    return (s.get("completed_log", 0) < 0.95 * planned or s.get("failed_log", 0) / trig > 0.01
+            or (strict and s.get("invalidating_contract", 0) >= 1))
+def judge_run(meta):
+    st = [s for s in meta["stages"] if not s["stage"].startswith("warmup") and s["stage"] != "recovery"]
+    rec = next((s for s in meta["stages"] if s["stage"] == "recovery"), None)
+    out = {}
+    for mode, strict in (("strict", True), ("relaxed", False)):
+        tip = next((s for s in st if saturated(s, strict)), None)
+        before = [s for s in st if tip is None or st.index(s) < st.index(tip)]
+        out[mode] = {"tipping_stage": tip["stage"] if tip else None, "tipping_rate": tip["rate_per_s"] if tip else None,
+                     "capacity_rate": before[-1]["rate_per_s"] if before else None,
+                     "recovered": (not saturated(rec, strict)) if rec else None}
+    return out
+CP_DEFAULT = {"compact-k0": 0.5, "compact-k1": 1.0, "original-k0": 1.5, "original-k1": 1.5}
+def summarize(cfg, metas):
+    valid = [m for m in metas if m.get("validity", {}).get("valid")]
+    grid = [s["rate_per_s"] for s in (valid or metas or [{"stages": []}])[0]["stages"] if not s["stage"].startswith("warmup") and s["stage"] != "recovery"]
+    res = {"configuration": cfg, "runs_total": len(metas), "runs_valid": len(valid), "stage_grid": grid, "runs": []}
+    for m in valid:
+        j = judge_run(m); cp = m.get("edc_controlplane_customer_cpu_limit") or CP_DEFAULT.get(cfg)
+        res["runs"].append({"run": m["run"], "machine": (m.get("machine") or {}).get("cpu_model") or (m.get("node") or {}).get("cpu_model"), **j,
+                            "tx_per_s_per_core": round(j["strict"]["capacity_rate"] / cp, 3) if cp and j["strict"]["capacity_rate"] else None})
+    for mode in ("strict", "relaxed"):
+        rates = [r[mode]["tipping_rate"] for r in res["runs"]]
+        num = [r if r is not None else math.inf for r in rates]
+        res[mode] = {"tipping_rates": rates, "tipping_min": min(num) if num else None, "tipping_max": max(num) if num else None,
+                     "tipping_median": statistics.median(num) if num else None,
+                     "recovered": [r[mode]["recovered"] for r in res["runs"]]}
+    return res
+def compare(summary, ref, mode="strict"):
+    grid = summary["stage_grid"]
+    if not ref or not grid: return {"verdict": "no reference"}
+    lo, hi = ref[mode]["tipping_min"], ref[mode]["tipping_max"]
+    med = summary[mode]["tipping_median"]
+    if med is None: return {"verdict": "no valid runs"}
+    def idx(v): return len(grid) if v == math.inf or v is None else min(range(len(grid)), key=lambda i: abs(grid[i] - v))
+    i_lo, i_hi, i_med = idx(lo) - 1, idx(hi) + 1, idx(med)
+    ok = i_lo <= i_med <= i_hi
+    return {"verdict": "reproduced" if ok else "not reproduced", "reference_range": [lo, hi],
+            "accepted_range": [grid[max(i_lo, 0)], grid[min(i_hi, len(grid) - 1)]], "median": med}
+def load_metas(folder):
+    out = []
+    for d in sorted(os.listdir(folder)):
+        p = os.path.join(folder, d, "meta.json")
+        if os.path.isfile(p): out.append(rjson(p))
+    return out
+def fmt(v): return "–" if v is None else ("not saturated" if v == math.inf else "%g/s" % v)
+def cmd_evaluate(folder, refdir):
+    metas = load_metas(folder); cfgs = sorted({m.get("configuration") for m in metas if m.get("configuration")})
+    summary = {"results": os.path.basename(folder), "configurations": {}}
+    lines = ["# Result – %s" % os.path.basename(folder), ""]
+    mach = rjson(os.path.join(folder, "machine.json")) if os.path.exists(os.path.join(folder, "machine.json")) else {}
+    if mach: lines += ["Machine: %s · %s vCPU · %s GiB · single-core score %s" % (mach.get("cpu_model"), mach.get("vcpu"), mach.get("mem_total_gib"), mach.get("cpu_single_core_score")), ""]
+    lines += ["| Configuration | valid runs | tipping stage (median, range) | capacity | tx/s per core | recovery | comparison |", "|---|---|---|---|---|---|---|"]
+    for cfg in cfgs:
+        s = summarize(cfg, [m for m in metas if m.get("configuration") == cfg])
+        rp = os.path.join(refdir, cfg + ".json"); ref = rjson(rp) if os.path.exists(rp) else None
+        s["comparison"] = compare(s, ref); s["comparison_relaxed"] = compare(s, ref, "relaxed")
+        summary["configurations"][cfg] = s; st = s["strict"]
+        caps = [r["strict"]["capacity_rate"] for r in s["runs"] if r["strict"]["capacity_rate"]]
+        tps = [r["tx_per_s_per_core"] for r in s["runs"] if r["tx_per_s_per_core"]]
+        rec = st["recovered"]
+        lines.append("| %s | %d of %d | %s (%s – %s) | %s | %s | %s | %s |" % (cfg, s["runs_valid"], s["runs_total"], fmt(st["tipping_median"]), fmt(st["tipping_min"]), fmt(st["tipping_max"]),
+                     fmt(statistics.median(caps)) if caps else "–", ("%.2f" % statistics.median(tps)) if tps else "–",
+                     "%d of %d" % (sum(1 for x in rec if x), len(rec)) if rec else "–", s["comparison"]["verdict"]))
+    lines += ["", "Saturation criterion: completed < 95 % of the input rate, or > 1 % failed, or ≥ 1 \"Invalidating …\" (strict).",
+              "The relaxed reading without the third condition is in summary.json (`relaxed`, `comparison_relaxed`)."]
+    wjson(os.path.join(folder, "summary.json"), summary)
+    open(os.path.join(folder, "verdict.md"), "w").write("\n".join(lines) + "\n")
+    print("\n".join(lines))
+def cmd_make_reference(cfg, source, *runs):
+    metas = []
+    for r in runs:
+        m = rjson(os.path.join(r, "meta.json"))
+        # runs collected before the collector fix: complete stage counts from nachtrag/ (raw data unchanged)
+        nt = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(r))), "nachtrag", os.path.basename(os.path.normpath(r)), "nachtrag.json")
+        if os.path.isfile(nt):
+            n = rjson(nt); m["stages"] = n["stages"]; m["stage_source"] = "nachtrag/%s/nachtrag.json" % m["run"]
+        metas.append(m)
+    s = summarize(cfg, metas); s["source"] = source
+    s["criterion"] = "reproduced if the median tipping stage of new runs lies within [lowest − 1 stage, highest + 1 stage] of this reference (REPRODUCE.md §13)"
+    print(json.dumps(s, indent=1))
+
+if __name__ == "__main__":
+    cmd = sys.argv[1].replace("-", "_"); globals()["cmd_" + cmd](*sys.argv[2:])
+PYCODE
+py() { python3 -c "$PY" "$@"; }
+
+# ── Lock, job, markers ────────────────────────────────────────────────────────────
+LOCKED=0
+lock() {
+  exec 9>"$STATE/lock"
+  if ! flock -n 9; then
+    fail "already running: $(cat "$STATE/job" 2>/dev/null || echo unknown) – use ./reproduce watch"
+    exit 1
+  fi
+  LOCKED=1
+  printf 'pid=%s command=%s phase=%s started=%s\n' "$$" "${CMD:-}" "start" "$(now_iso)" > "$STATE/job"
+}
+unlock() { [ "$LOCKED" = 1 ] || return 0; flock -u 9; exec 9>&-; LOCKED=0; }
+set_phase() { CURRENT_PHASE="$1"; [ -f "$STATE/job" ] && sed -i.bak "s/phase=[^ ]*/phase=$1/" "$STATE/job" && rm -f "$STATE/job.bak"; return 0; }
+job_pid() { sed -n 's/^pid=\([0-9]*\).*/\1/p' "$STATE/job" 2>/dev/null; }
+job_alive() { local p; p=$(job_pid); [ -n "$p" ] && [ "$p" != "$$" ] && kill -0 "$p" 2>/dev/null; }
+marker_set()   { printf '%s\n' "${2:-$(now_iso)}" > "$MARKERS/$1"; }
+marker_clear() { rm -f "$MARKERS/$1"; }
+marker_has()   { [ -f "$MARKERS/$1" ]; }
+marker_get()   { cat "$MARKERS/$1" 2>/dev/null; }
+
+# Background job: survives a lost SSH connection (REPRODUCE.md §22.1).
+detach() {
+  [ "$BG" = 1 ] && return 0
+  unlock
+  REPRODUCE_BG=1 setsid nohup "$SCRIPT" "$@" </dev/null >/dev/null 2>&1 &
+  local pid=$!
+  sleep 2
+  ok "running in the background (PID $pid) – closing this terminal does not stop it"
+  echo "  follow: ./reproduce watch    stop: ./reproduce stop    state: ./reproduce status"
+  cmd_watch
+  exit 0
+}
+
+# ── Common helpers ────────────────────────────────────────────────────────────────
+profile() { cat "$STATE/profile" 2>/dev/null; }
+configs_of() { local v="CONFIGS_$1"; echo "${!v:-}"; }
+commit() { git -C "$SRC" rev-parse HEAD 2>/dev/null; }
+k() { kubectl --request-timeout=30s "$@"; }
+release_line() { echo "$RELEASES" | awk -v b="$1" '$1 == b'; }
+chart_ref() {  # block → local chart archive
+  local b="$1" _r _n chart _repo ver _s
+  read -r _ _r _n chart _repo ver _s <<<"$(release_line "$b")"
+  case "$chart" in PURIS) echo "$STATE/charts/puris-$ver.tgz" ;; *) echo "$STATE/charts/$(basename "$chart")-$ver.tgz" ;; esac
+}
+cp_limit_of() { case "$1" in compact-k0) echo 0.5 ;; compact-k1) echo 1.0 ;; *) echo 1.5 ;; esac; }
+plan_of() { case "$1" in compact-k0) echo k0 ;; compact-k1) echo k1 ;; *) echo "$1" ;; esac; }
+
+# values files of one release in one configuration (REPRODUCE.md §7)
+values_files() {  # block configuration → one path per line
+  local b="$1" cfg="$2" prof="${2%%-*}" sut base out
+  sut=$(release_line "$b" | awk '{print $7}')
+  base="$SRC/setup/$b/values.yaml"
+  if [ "$prof" = original ] && [ "$sut" = 1 ]; then
+    out="$STATE/values/$cfg/$b.yaml"; mkdir -p "$(dirname "$out")"
+    py strip "$base" "$out"; echo "$out"
+  else
+    echo "$base"
+  fi
+  [ "$b" != b3-alloy ] || echo "$SRC/setup/b3-alloy/reproduce.yaml"
+  case "$b" in d1-*|d2-*) passwords_file; ;; esac
+  case "$cfg" in
+    compact-k1)  [ ! -f "$SRC/setup/$b/k1-nas.yaml" ] || echo "$SRC/setup/$b/k1-nas.yaml" ;;
+    original-k1) [ ! -f "$SRC/setup/$b/original-k1.yaml" ] || echo "$SRC/setup/$b/original-k1.yaml" ;;
+  esac
+}
+passwords_file() {
+  local f="$STATE/values/puris-test-passwords.yaml"; mkdir -p "$STATE/values"
+  [ -f "$f" ] || cat > "$f" <<EOF
+# test only – fixed public values (REPRODUCE.md §7.5)
+backend:
+  puris:
+    api: { key: "$TEST_API_KEY" }
+    datasource: { password: "$TEST_DB_PASSWORD" }
+    erpadapter: { authsecret: "$TEST_DB_PASSWORD" }
+postgresql:
+  auth: { password: "$TEST_DB_PASSWORD" }
+  customUser: { password: "$TEST_DB_PASSWORD" }
+EOF
+  echo "$f"
+}
+render() {  # block configuration out-file
+  local b="$1" cfg="$2" out="$3" ns args=() f
+  ns=$(release_line "$b" | awk '{print $3}')
+  while IFS= read -r f; do [ -f "$f" ] || { echo "values file missing: $f" >>"$LOGF"; return 1; }; args+=(-f "$f"); done < <(values_files "$b" "$cfg")
+  helm template "$(release_line "$b" | awk '{print $2}')" "$(chart_ref "$b")" -n "$ns" --kube-version "${KUBECTL_VERSION#v}" "${args[@]}" > "$out" 2>>"$LOGF"
+}
+desired_hash() {  # block configuration
+  local b="$1" cfg="$2" f
+  { chart_ref "$b"; while IFS= read -r f; do cat "$f"; done < <(values_files "$b" "$cfg"); } | sha256sum | cut -c1-16
+}
+
+# ── Databases (pod environment holds the credentials) ─────────────────────────────
+DB_LIST='identity wallet-postgres-0 c1-wallet POSTGRES_USER POSTGRES_PASSWORD postgres
+customer edc-postgresql-0 c2-customer-edc POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+customer dtr-postgresql-0 c3-customer-dtr POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+supplier edc-postgresql-0 c4-supplier-edc POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+supplier dtr-postgresql-0 c5-supplier-dtr POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE
+customer puris-postgresql-0 d1-puris-customer CUSTOM_USER CUSTOM_PASSWORD CUSTOM_DB
+supplier puris-postgresql-0 d2-puris-supplier CUSTOM_USER CUSTOM_PASSWORD CUSTOM_DB'
+RESET_DBS="c2-customer-edc c4-supplier-edc d1-puris-customer d2-puris-supplier"
+ROWS_SQL="select table_schema||'.'||table_name, (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text from information_schema.tables where table_schema not in ('pg_catalog','information_schema') and table_type='BASE TABLE' order by 1;"
+db_names() { echo "$DB_LIST" | awk '{print $3}'; }
+db_cmd() {  # name program "args"
+  local ns pod _n uv pv dv db
+  read -r ns pod _n uv pv dv <<<"$(echo "$DB_LIST" | awk -v n="$1" '$3 == n')"
+  if [ "$dv" = postgres ]; then db=postgres; else db="\$$dv"; fi
+  kubectl --request-timeout=180s exec -i -n "$ns" "$pod" -- sh -c "PGPASSWORD=\"\$$pv\" exec $2 -h 127.0.0.1 -U \"\$$uv\" -d \"$db\" ${3:-}"
+}
+db_counts() { db_cmd "$1" psql "-v ON_ERROR_STOP=1 -At -F ' ' -f -" <<<"$ROWS_SQL"; }
+counts_diff() {  # dbs... → prints differences against S0
+  local n out
+  for n in "$@"; do
+    out=$(diff <(LC_ALL=C sort "$STATE/s0/$n.rows.txt") <(db_counts "$n" | LC_ALL=C sort) | grep '^[<>]' || true)
+    [ -z "$out" ] || echo "$n: $(echo "$out" | tr '\n' ' ')"
+  done
+}
+
+# ── System under test: stop and ordered start (lessons of LABORBUCH.md 2026-10-07) ─
+SUT_NS="customer supplier"; SUT_APPS="puris-backend edc-dataplane edc-controlplane"
+scale() { k scale deploy "$2" -n "$1" --replicas="$3" >/dev/null; }
+wait_ready() { kubectl --request-timeout=30s rollout status "deploy/$2" -n "$1" --timeout="${3}s" >/dev/null 2>&1; }
+wait_gone() {
+  local i
+  for i in $(seq 1 60); do
+    [ -z "$(k get pods -n "$1" -o name 2>/dev/null | grep "pod/$2-" || true)" ] && return 0
+    sleep 5
+  done
+  return 1
+}
+dp_clear() { local db=c2-customer-edc; [ "$1" = supplier ] && db=c4-supplier-edc; db_cmd "$db" psql "-v ON_ERROR_STOP=1 -q -c 'DELETE FROM edc_data_plane_instance'" >/dev/null; }
+stop_sut() {
+  local ns a
+  for ns in $SUT_NS; do for a in $SUT_APPS; do scale "$ns" "$a" 0; done; done
+  for ns in $SUT_NS; do for a in $SUT_APPS; do wait_gone "$ns" "$a" || return 1; done; done
+}
+REPAIRS=""
+start_sut() {  # control planes → data planes → PURIS; per stage at most one known repair (REPRODUCE.md §10.2)
+  local ns
+  for ns in $SUT_NS; do scale "$ns" edc-controlplane 1; done
+  for ns in $SUT_NS; do
+    wait_ready "$ns" edc-controlplane 300 && continue
+    warn "repair: control plane $ns not ready after 5 min – restart without data plane registration"
+    REPAIRS="$REPAIRS controlplane-$ns"
+    scale "$ns" edc-dataplane 0; wait_gone "$ns" edc-dataplane || return 1
+    scale "$ns" edc-controlplane 0; wait_gone "$ns" edc-controlplane || return 1
+    dp_clear "$ns"; scale "$ns" edc-controlplane 1; wait_ready "$ns" edc-controlplane 300 || return 1
+  done
+  for ns in $SUT_NS; do scale "$ns" edc-dataplane 1; done
+  for ns in $SUT_NS; do
+    wait_ready "$ns" edc-dataplane 240 && continue
+    warn "repair: data plane $ns not ready after 4 min – restart both planes without registration"
+    REPAIRS="$REPAIRS dataplane-$ns"
+    scale "$ns" edc-dataplane 0; wait_gone "$ns" edc-dataplane || return 1
+    scale "$ns" edc-controlplane 0; wait_gone "$ns" edc-controlplane || return 1
+    dp_clear "$ns"; scale "$ns" edc-controlplane 1; wait_ready "$ns" edc-controlplane 300 || return 1
+    scale "$ns" edc-dataplane 1; wait_ready "$ns" edc-dataplane 240 || return 1
+  done
+  for ns in $SUT_NS; do scale "$ns" puris-backend 1; done
+  for ns in $SUT_NS; do
+    wait_ready "$ns" puris-backend 600 && continue
+    warn "repair: PURIS $ns not ready after 10 min – restart"
+    REPAIRS="$REPAIRS puris-$ns"
+    scale "$ns" puris-backend 0; wait_gone "$ns" puris-backend || return 1
+    scale "$ns" puris-backend 1; wait_ready "$ns" puris-backend 600 || return 1
+  done
+}
+
+# function test: n real transactions one after another (REPRODUCE.md §10.2)
+FT_JSON='{}'
+function_test() {
+  local n="${1:-3}" okn=0 m t0 s0 code deadline logs
+  t0=$(now_iso); s0=$(date +%s)
+  local before
+  for m in $(grep -v '^#' "$SRC/setup/e1-testdaten/materialien.tsv" | tail -n +2 | cut -f2 | head -n "$n"); do
+    before=$okn
+    code=$(py trigger "$TEST_API_KEY" "$m" 2>>"$LOGF" || echo error)
+    [ "$code" = 200 ] || break
+    deadline=$(( $(date +%s) + 120 ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      logs=$(k logs -n customer deploy/puris-backend --since-time="$t0" 2>/dev/null || true)
+      if grep -q "Updated ReportedMaterialItemStocks for $m and" <<<"$logs"; then okn=$((okn + 1)); break; fi
+      grep -q "Error in ReportedMaterialItemStockRequest for $m and" <<<"$logs" && break
+      sleep 2
+    done
+    [ "$okn" -gt "$before" ] || break
+  done
+  FT_JSON="{\"transactions\": $n, \"completed\": $okn, \"seconds\": $(( $(date +%s) - s0 )), \"passed\": $([ "$okn" -eq "$n" ] && echo true || echo false)}"
+  [ "$okn" -eq "$n" ]
+}
+
+load_active() { k get testrun -n k6 -o jsonpath='{range .items[*]}{.metadata.name}={.status.stage}{"\n"}{end}' 2>/dev/null | grep -v '=finished$' | grep -q .; }
+stop_own_load() { k delete testrun -n k6 -l reproduce=1 --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true; }
+
+reset_sut() {  # → state/last-reset.json
+  local t0 diffs after
+  t0=$(date +%s); REPAIRS=""
+  ( cd "$STATE/s0" && sha256sum -c --quiet SHA256SUMS ) || die "S0 checksums do not match – run ./reproduce prepare"
+  load_active && stop_own_load
+  marker_set reset
+  step "reset: stop PURIS and EDC"
+  stop_sut || die "reset: PURIS/EDC did not stop"
+  step "reset: restore 4 databases from S0, ANALYZE, clear data plane registration"
+  for n in $RESET_DBS; do db_cmd "$n" pg_restore "--clean --if-exists --single-transaction --exit-on-error" < "$STATE/s0/$n.dump" || die "reset: restore failed: $n"; done
+  # shellcheck disable=SC2046
+  diffs=$(counts_diff $(db_names)); [ -z "$diffs" ] || die "reset: rows differ from S0: $diffs"
+  for n in $RESET_DBS; do db_cmd "$n" psql "-v ON_ERROR_STOP=1 -q -c 'SET client_min_messages TO error; ANALYZE'" >/dev/null || die "reset: ANALYZE failed: $n"; done
+  dp_clear customer; dp_clear supplier
+  step "reset: start control planes → data planes → PURIS"
+  start_sut || die "reset: PURIS/EDC not ready"
+  # shellcheck disable=SC2046
+  after=$(counts_diff $(db_names))
+  marker_clear reset
+  python3 -c 'import json,sys; print(json.dumps({"state":"s0","start_utc":sys.argv[1],"end_utc":sys.argv[2],"duration_s":int(sys.argv[3]),"counts_equal_after_restore":True,"counts_diff_after_start":[l for l in sys.argv[4].split("\n") if l],"repairs":sys.argv[5].split()}, indent=1))' \
+    "$(date -u -d "@$t0" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)" "$(now_iso)" "$(( $(date +%s) - t0 ))" "$after" "$REPAIRS" > "$STATE/last-reset.json"
+  ok "reset done in $(( $(date +%s) - t0 )) s${REPAIRS:+ (repairs:$REPAIRS)}"
+}
+
+diagnostics() {
+  [ -s "$KUBECONFIG" ] || return 0
+  local d; d="$STATE/diagnostics/$(date -u +%Y%m%d-%H%M%S)"; mkdir -p "$d"
+  k get pods -A -o wide > "$d/pods.txt" 2>&1 || true
+  k get events -A --sort-by=.lastTimestamp > "$d/events.txt" 2>&1 || true
+  helm list -A > "$d/helm.txt" 2>&1 || true
+  tail -n 200 "$LOGF" > "$d/reproduce-log-tail.txt" 2>/dev/null || true
+  echo "  diagnostics: $d"
+}
+
+# ── Phase 0: fetch ────────────────────────────────────────────────────────────────
+phase_fetch() {
+  set_phase fetch
+  if [ -e "$SRC/.git" ]; then
+    [ -z "$(git -C "$SRC" status --porcelain)" ] || die "src/ has local changes – not touched:"$'\n'"$(git -C "$SRC" status --short)"
+    if q git -C "$SRC" pull --ff-only origin main; then ok "repository updated: $(commit | cut -c1-7)"
+    elif [ -f "$BUNDLE/src.bundle" ]; then warn "no network – using src/ as it is ($(commit | cut -c1-7))"
+    else die "git pull failed (network?)"; fi
+  else
+    if ! q git clone "$REPO_URL" "$SRC"; then
+      [ -f "$BUNDLE/src.bundle" ] || die "git clone failed (network?)"
+      q git clone "$BUNDLE/src.bundle" "$SRC" || die "clone from bundle failed"
+    fi
+    ok "repository cloned: $(commit | cut -c1-7)"
+  fi
+  commit > "$STATE/commit"
+}
+
+# ── Phase 1: tools and charts ─────────────────────────────────────────────────────
+phase_tools() {
+  set_phase tools
+  [ -e "$SRC/.git" ] || need_fail "repository missing" "./reproduce fetch"
+  mkdir -p "$TOOLS" "$STATE/charts"
+  local t; t=$(mktemp -d)
+  if helm version --short 2>/dev/null | grep -q "^${HELM_VERSION}+"; then skip "helm $HELM_VERSION"
+  elif [ -x "$BUNDLE/tools/helm" ]; then cp "$BUNDLE/tools/helm" "$TOOLS/helm"; ok "helm from bundle"
+  else
+    ( cd "$t" && curl -fsSLO "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz" && curl -fsSLO "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz.sha256sum" \
+      && sha256sum -c --quiet "helm-$HELM_VERSION-linux-amd64.tar.gz.sha256sum" && tar -xzf "helm-$HELM_VERSION-linux-amd64.tar.gz" ) >>"$LOGF" 2>&1 || die "helm download or checksum failed"
+    install -m 755 "$t/linux-amd64/helm" "$TOOLS/helm"; ok "helm $HELM_VERSION (checksum verified)"
+  fi
+  if kubectl version --client 2>/dev/null | grep -q "$KUBECTL_VERSION"; then skip "kubectl $KUBECTL_VERSION"
+  elif [ -x "$BUNDLE/tools/kubectl" ]; then cp "$BUNDLE/tools/kubectl" "$TOOLS/kubectl"; ok "kubectl from bundle"
+  else
+    ( cd "$t" && curl -fsSLO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl" && curl -fsSLO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl.sha256" \
+      && echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c --quiet ) >>"$LOGF" 2>&1 || die "kubectl download or checksum failed"
+    install -m 755 "$t/kubectl" "$TOOLS/kubectl"; ok "kubectl $KUBECTL_VERSION (checksum verified)"
+  fi
+  rm -rf "$t"
+  local b _r _n chart repo ver _s url f
+  while read -r b _r _n chart repo ver _s; do
+    f=$(chart_ref "$b")
+    if [ -s "$f" ]; then continue; fi
+    if [ -s "$BUNDLE/charts/$(basename "$f")" ]; then cp "$BUNDLE/charts/$(basename "$f")" "$f"; continue; fi
+    case "$repo" in TX) url="$TX_REPO" ;; GF) url="$GF_REPO" ;; *) url="" ;; esac
+    if [ "$chart" = PURIS ]; then
+      rm -rf "$STATE/puris-src"
+      q git clone -q --depth 1 --branch "$PURIS_TAG" "$PURIS_GIT" "$STATE/puris-src" || die "PURIS chart: git clone failed"
+      q helm dependency build "$STATE/puris-src/charts/puris" || die "PURIS chart: dependencies failed"
+      q helm package "$STATE/puris-src/charts/puris" -d "$STATE/charts" || die "PURIS chart: package failed"
+    elif [ -n "$url" ]; then q helm pull "$chart" --repo "$url" --version "$ver" -d "$STATE/charts" || die "chart $chart $ver not available"
+    else q helm pull "$chart" --version "$ver" -d "$STATE/charts" || die "chart $chart $ver not available"; fi
+    [ -s "$f" ] || die "chart archive missing after download: $f"
+  done <<<"$RELEASES"
+  ok "charts present (${STATE/#$WORK\//})"
+}
+
+# ── Phase 2: check ────────────────────────────────────────────────────────────────
+phase_check() {
+  set_phase check
+  [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] || need_fail "tools missing" "./reproduce tools"
+  local c host steal cfg fp need_cpu need_mem vcpu mem prof="" b line
+  [ "$(uname -m)" = x86_64 ] || die "architecture $(uname -m) – amd64 (x86_64) required" 3
+  grep -qi ubuntu /etc/os-release || die "Ubuntu required" 3
+  for c in bash curl git python3 tar gzip openssl sha256sum flock setsid; do command -v "$c" >/dev/null || die "missing program: $c" 3; done
+  python3 -c 'import yaml' 2>/dev/null || die "Python module yaml missing – install it with: sudo apt-get install -y python3-yaml" 3
+  sudo -n true 2>/dev/null || sudo -v || die "sudo not available" 3
+  for host in github.com get.k3s.io get.helm.sh dl.k8s.io ghcr.io registry-1.docker.io quay.io; do
+    curl -s -o /dev/null --max-time 10 "https://$host" || { [ -d "$BUNDLE" ] && warn "$host not reachable (bundle present)" || die "$host not reachable – internet access required" 3; }
+  done
+  if [ -x /usr/local/bin/k3s ] && [ ! -f /etc/rancher/k3s/reproduce-owner ]; then die "a k3s installation not created by this script exists – not touched" 3; fi
+  if pgrep -x kubelet >/dev/null || pgrep -f 'microk8s|minikube|kind-control-plane' >/dev/null; then die "another Kubernetes is running on this machine" 3; fi
+  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ':6443$' && [ ! -f /etc/rancher/k3s/reproduce-owner ]; then die "port 6443 is in use by another program" 3; fi
+  step "machine scan (10 s CPU speed test)"
+  py machine "$STATE/machine.json" "$WORK" > /dev/null
+  vcpu=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["vcpu"])' "$STATE/machine.json")
+  mem=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mem_total_gib"])' "$STATE/machine.json")
+  ok "machine: $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print("%s · %s vCPU · %s GiB · %s · score %s" % (m["cpu_model"], m["vcpu"], m["mem_total_gib"], m["os"], m["cpu_single_core_score"]))' "$STATE/machine.json")"
+  [ "$(python3 -c 'import json,sys; print(min(json.load(open(sys.argv[1]))["disk_free_gib"].values()))' "$STATE/machine.json" | cut -d. -f1)" -ge 50 ] || die "at least 50 GB free disk space required" 3
+  steal=$(py steal 60)
+  if python3 -c "import sys; sys.exit(0 if float('$steal') > 0.02 else 1)"; then warn "steal time $steal over 60 s – shared and busy machine, expect waiting or invalid runs"; else ok "steal time $steal over 60 s"; fi
+  # calculator (REPRODUCE.md §8)
+  for p in original compact; do
+    need_cpu=0; need_mem=0
+    for cfg in $(configs_of "$p"); do
+      mkdir -p "$STATE/render/$cfg"
+      while read -r line; do b=${line%% *}; render "$b" "$cfg" "$STATE/render/$cfg/$b.yaml" || die "rendering $b ($cfg) failed – see log"; done <<<"$RELEASES"
+      fp=$(py footprint "$STATE/render/$cfg"/*.yaml)
+      echo "$fp" > "$STATE/render/$cfg/footprint.json"
+      need_cpu=$(python3 -c "import json,sys; f=json.loads(sys.argv[1]); print(max(float(sys.argv[2]), f['limits_cpu'] + 1))" "$fp" "$need_cpu")
+      need_mem=$(python3 -c "import json,sys; f=json.loads(sys.argv[1]); print(max(float(sys.argv[2]), f['limits_mem_gib'] + 3))" "$fp" "$need_mem")
+    done
+    if python3 -c "import sys; sys.exit(0 if $need_cpu <= $vcpu and $need_mem <= $mem else 1)"; then
+      ok "profile $p fits: needs $(printf %.1f "$need_cpu") vCPU / $(printf %.1f "$need_mem") GiB (incl. reserve)"
+      [ -n "$prof" ] || prof=$p
+    else
+      say "·" "profile $p does not fit: needs $(printf %.1f "$need_cpu") vCPU / $(printf %.1f "$need_mem") GiB, machine has $vcpu / $mem"
+    fi
+  done
+  [ -n "$prof" ] || die "machine too small for every profile (minimum: profile compact, see above)" 3
+  if [ -f "$STATE/profile" ] && [ "$(profile)" != "$prof" ] && [ -f /etc/rancher/k3s/reproduce-owner ]; then
+    die "profile changed from $(profile) to $prof on an installed cluster – run ./reproduce uninstall first" 3
+  fi
+  echo "$prof" > "$STATE/profile"
+  ok "profile: $prof (configurations: $(configs_of "$prof"))"
+}
+
+# ── Phase 3: install (sudo) ───────────────────────────────────────────────────────
+phase_install() {
+  set_phase install
+  [ -f "$STATE/profile" ] || need_fail "machine not checked" "./reproduce check"
+  if [ -f /etc/rancher/k3s/reproduce-owner ] && [ "$(/usr/local/bin/k3s --version 2>/dev/null | awk 'NR==1{print $3}')" = "$K3S_VERSION" ] && k get nodes >/dev/null 2>&1; then
+    skip "k3s $K3S_VERSION (own installation)"
+  else
+    sudo -v || die "sudo not available"
+    step "saving system settings, switching off automatic updates and swap"
+    if [ ! -f "$STATE/system-before.json" ]; then
+      python3 - "$STATE/system-before.json" <<'EOF'
+import json, subprocess, sys
+run = lambda *c: subprocess.run(c, capture_output=True, text=True).stdout.strip()
+json.dump({"apt-daily.timer": run("systemctl", "is-enabled", "apt-daily.timer"), "apt-daily-upgrade.timer": run("systemctl", "is-enabled", "apt-daily-upgrade.timer"),
+           "snap_hold": "hold" in run("snap", "refresh", "--time"), "swap_active": bool(run("swapon", "--show", "--noheadings"))}, open(sys.argv[1], "w"), indent=1)
+EOF
+    fi
+    q sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
+    command -v snap >/dev/null && { q sudo snap refresh --hold || true; }
+    q sudo swapoff -a; q sudo sed -i.reproduce-bak -E 's|^([^#][^ ]*[[:space:]]+[^ ]+[[:space:]]+swap[[:space:]].*)$|#\1|' /etc/fstab
+    q sudo install -D -m 644 "$SRC/setup/a2-k3s/config.yaml" /etc/rancher/k3s/config.yaml
+    step "installing k3s $K3S_VERSION"
+    if [ -x "$BUNDLE/k3s/k3s" ]; then
+      q sudo install -m 755 "$BUNDLE/k3s/k3s" /usr/local/bin/k3s
+      q sudo install -D -m 644 "$BUNDLE/k3s/k3s-airgap-images-amd64.tar.zst" /var/lib/rancher/k3s/agent/images/k3s-airgap-images-amd64.tar.zst
+      [ ! -f "$BUNDLE/images.tar" ] || q sudo install -D -m 644 "$BUNDLE/images.tar" /var/lib/rancher/k3s/agent/images/reproduce-images.tar
+      sudo env INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable traefik" sh "$BUNDLE/k3s/install.sh" >>"$LOGF" 2>&1 || die "k3s installation (bundle) failed"
+    else
+      curl -sfL https://get.k3s.io | sudo env INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable traefik" sh - >>"$LOGF" 2>&1 || die "k3s installation failed"
+    fi
+    printf 'installed by reproduce %s, work folder %s\n' "$(now_iso)" "$WORK" | sudo tee /etc/rancher/k3s/reproduce-owner >/dev/null
+    sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG"; chmod 600 "$KUBECONFIG"
+    q k wait --for=condition=Ready node --all --timeout=300s || die "node not ready"
+    ok "k3s $K3S_VERSION installed"
+  fi
+  sudo -n test -r /etc/rancher/k3s/k3s.yaml 2>/dev/null && sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG" 2>/dev/null && chmod 600 "$KUBECONFIG" || true
+  local alloc cap
+  cap=$(k get node -o jsonpath='{.items[0].status.capacity.cpu}'); alloc=$(k get node -o jsonpath='{.items[0].status.allocatable.cpu}')
+  [ "$((cap - 1))" = "$alloc" ] || die "allocatable CPU $alloc ≠ capacity $cap − 1 (system-reserved missing)"
+  cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"
+  # images once, one after another, with back-off on rate limits (REPRODUCE.md §22.9)
+  local img n=0 total wait_s
+  total=$(py images "$STATE/render"/"$(profile)"-k*/*.yaml | wc -l)
+  step "pulling $total images (once)"
+  while read -r img; do
+    n=$((n + 1))
+    if sudo k3s crictl inspecti "$img" >/dev/null 2>&1; then continue; fi
+    wait_s=60
+    until sudo k3s crictl pull "$img" >>"$LOGF" 2>&1; do
+      if tail -n 5 "$LOGF" | grep -qiE 'toomanyrequests|429'; then
+        [ "$wait_s" -le 1920 ] || die "registry download limit reached – try again later or use a bundle (REPRODUCE.md §22.11)"
+        warn "download limit of the registry – waiting $((wait_s / 60)) min ($n/$total)"; sleep "$wait_s"; wait_s=$((wait_s * 2))
+      else
+        die "image pull failed: $img"
+      fi
+    done
+  done < <(py images "$STATE/render"/"$(profile)"-k*/*.yaml; printf '%s\n' "grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6" "ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6")
+  ok "images present"
+}
+
+# ── Reboot detection and repair (REPRODUCE.md §22.4) ──────────────────────────────
+ensure_boot() {
+  [ -f "$STATE/boot_id" ] || return 0
+  [ "$(cat /proc/sys/kernel/random/boot_id)" != "$(cat "$STATE/boot_id")" ] || return 0
+  warn "reboot detected – repairing before anything else"
+  q k wait --for=condition=Ready node --all --timeout=600s || die "node not ready after reboot"
+  wait_namespaces 2100 monitoring logging identity customer supplier k6-operator || die "pods not ready after reboot"
+  if [ -f "$STATE/s0/SHA256SUMS" ] && [ -n "$(counts_diff c1-wallet)" ]; then
+    step "wallet database lost with the reboot – restoring from S0"
+    scale identity ssi-dim-wallet-stub 0; wait_gone identity ssi-dim-wallet-stub || die "wallet did not stop"
+    db_cmd c1-wallet pg_restore "--clean --if-exists --single-transaction --exit-on-error" < "$STATE/s0/c1-wallet.dump" || die "wallet restore failed"
+    scale identity ssi-dim-wallet-stub 1; wait_ready identity ssi-dim-wallet-stub 600 || die "wallet not ready"
+    [ -z "$(counts_diff c1-wallet)" ] || die "wallet rows differ from S0 after restore"
+    marker_set reset
+  fi
+  [ ! -f "$STATE/s0/SHA256SUMS" ] || reset_sut
+  cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"
+  ok "reboot repaired"
+}
+
+# open multi-step changes are completed first (REPRODUCE.md §22.3)
+resume_markers() {
+  if marker_has run; then
+    local d; d=$(marker_get run)
+    warn "a run was interrupted: $(basename "$d") – closed as invalid"
+    stop_own_load
+    [ ! -d "$d" ] || py attempt "$d" interrupted failed "interrupted (stop, crash or reboot)" || true
+    marker_clear run
+  fi
+  if marker_has s0; then rm -rf "$STATE/s0.tmp"; marker_clear s0; fi
+  if marker_has apply; then warn "a configuration change was interrupted – applying again"; apply_config "$(marker_get apply)"; fi
+  if marker_has reset && [ -f "$STATE/s0/SHA256SUMS" ]; then warn "a reset was interrupted – repeating it"; reset_sut; fi
+}
+
+wait_namespaces() {  # timeout ns... → all pods (except completed ones) ready
+  local to="$1"; shift
+  python3 - "$to" "$@" <<'EOF'
+import json, subprocess, sys, time
+to, nss = int(sys.argv[1]), sys.argv[2:]; t0 = time.time(); oom = {}
+while True:
+    bad = []
+    for ns in nss:
+        pods = json.loads(subprocess.run(["kubectl", "get", "pods", "-n", ns, "-o", "json"], capture_output=True, text=True).stdout or '{"items":[]}')["items"]
+        for p in pods:
+            if p["status"].get("phase") == "Succeeded": continue
+            cs = p["status"].get("containerStatuses") or []
+            for c in cs:
+                t = (c.get("lastState") or {}).get("terminated") or {}
+                if t.get("reason") == "OOMKilled": oom["%s/%s/%s" % (ns, p["metadata"]["name"], c["name"])] = c.get("restartCount", 0)
+            if not cs or not all(c.get("ready") for c in cs): bad.append("%s/%s" % (ns, p["metadata"]["name"]))
+    if not bad: sys.exit(0)
+    hard = [k for k, v in oom.items() if v >= 3]
+    if hard: print("OOMKilled repeatedly: " + ", ".join(hard)); sys.exit(2)
+    if time.time() - t0 > to: print("not ready: " + ", ".join(bad)); sys.exit(1)
+    time.sleep(10)
+EOF
+}
+
+# ── Phase 4: deploy ───────────────────────────────────────────────────────────────
+deploy_release() {  # block configuration
+  local b="$1" cfg="$2" rel ns args=() f h
+  rel=$(release_line "$b" | awk '{print $2}'); ns=$(release_line "$b" | awk '{print $3}')
+  h=$(desired_hash "$b" "$cfg")
+  if [ "$(cat "$STATE/releases/$ns-$rel" 2>/dev/null)" = "$h" ] && helm status "$rel" -n "$ns" >/dev/null 2>&1; then skip "$b ($cfg)"; return 0; fi
+  while IFS= read -r f; do args+=(-f "$f"); done < <(values_files "$b" "$cfg")
+  q helm upgrade --install "$rel" "$(chart_ref "$b")" -n "$ns" --create-namespace --timeout 60m "${args[@]}" || die "helm install of $b failed – see log"
+  mkdir -p "$STATE/releases"; echo "$h" > "$STATE/releases/$ns-$rel"
+  ok "$b ($cfg)"
+}
+phase_deploy() {
+  set_phase deploy
+  [ -f /etc/rancher/k3s/reproduce-owner ] && k get nodes >/dev/null 2>&1 || need_fail "k3s not installed" "./reproduce install"
+  ensure_boot
+  local cfg ns d line b rc
+  cfg="$(profile)-k0"
+  [ -f "$STATE/config" ] && cfg=$(cat "$STATE/config")
+  for ns in monitoring logging identity customer supplier k6-operator k6; do k create namespace "$ns" --dry-run=client -o yaml | q k apply -f -; done
+  for ns in customer supplier; do
+    d="$STATE/keys/$ns"; mkdir -p "$d"
+    [ -f "$d/tokenSignerPrivateKey" ] || openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$d/tokenSignerPrivateKey" 2>/dev/null
+    [ -f "$d/tokenSignerPublicKey" ] || openssl pkey -in "$d/tokenSignerPrivateKey" -pubout -out "$d/tokenSignerPublicKey"
+    for f in client-secret aesKey tokenEncryptionAesKey; do [ -f "$d/$f" ] || openssl rand -base64 32 | tr -d '\n' > "$d/$f"; done
+    k create secret generic edc-vault-secrets -n "$ns" --from-file="$d/client-secret" --from-file="$d/aesKey" --from-file="$d/tokenEncryptionAesKey" \
+      --from-file="$d/tokenSignerPrivateKey" --from-file="$d/tokenSignerPublicKey" --dry-run=client -o yaml | q k apply -f -
+  done
+  k create secret generic puris-api-key -n k6 --from-literal=key="$TEST_API_KEY" --dry-run=client -o yaml | q k apply -f -
+  while read -r line; do
+    b=${line%% *}; ns=$(echo "$line" | awk '{print $3}')
+    deploy_release "$b" "$cfg"
+    case "$b" in c3-*|c5-*) step "waiting until $b is ready (DTR start with little CPU can take 20 min)" ;; *) step "waiting until $b is ready" ;; esac
+    rc=0; wait_namespaces "$( [ "${b:0:1}" = c ] && echo 2100 || echo 900 )" "$ns" >>"$LOGF" 2>&1 || rc=$?
+    if [ "$rc" = 2 ]; then die "$b: container killed repeatedly for exceeding its RAM limit (OOMKilled) – configuration $cfg as shipped is not runnable on its own; this is a result (REPRODUCE.md §7.4)"; fi
+    [ "$rc" = 0 ] || die "$b: pods not ready in time – see diagnostics"
+  done <<<"$RELEASES"
+  echo "$cfg" > "$STATE/config"
+  ok "all components deployed ($cfg)"
+}
+
+# ── Phase 5: prepare ──────────────────────────────────────────────────────────────
+phase_prepare() {
+  set_phase prepare
+  [ -f "$STATE/config" ] || need_fail "components not deployed" "./reproduce deploy"
+  ensure_boot; resume_markers
+  if [ -f "$STATE/s0/SHA256SUMS" ] && ( cd "$STATE/s0" && sha256sum -c --quiet SHA256SUMS ) 2>/dev/null; then skip "S0 present"; return 0; fi
+  step "test data: supplier"; py testdata supplier "$SRC" "$TEST_API_KEY" >>"$LOGF" 2>&1 || die "test data (supplier) failed – see log"
+  step "test data: customer"; py testdata customer "$SRC" "$TEST_API_KEY" >>"$LOGF" 2>&1 || die "test data (customer) failed – see log"
+  ok "test data: 20 materials in both companies"
+  step "first transaction per material (contracts are negotiated once)"
+  local m t0 okn=0 total=0
+  t0=$(now_iso)
+  for m in $(grep -v '^#' "$SRC/setup/e1-testdaten/materialien.tsv" | tail -n +2 | cut -f2); do
+    total=$((total + 1)); [ "$(py trigger "$TEST_API_KEY" "$m" 2>>"$LOGF")" = 200 ] || die "trigger for $m failed"
+    if [ "$total" = 1 ]; then   # first one alone: the item-stock contract is negotiated exactly once
+      for _ in $(seq 1 36); do k logs -n customer deploy/puris-backend --since-time="$t0" 2>/dev/null | grep -q "Updated ReportedMaterialItemStocks for $m and" && break; sleep 5; done
+    else sleep 3; fi
+  done
+  for _ in $(seq 1 60); do
+    okn=$(k logs -n customer deploy/puris-backend --since-time="$t0" 2>/dev/null | grep -c "Updated ReportedMaterialItemStocks" || true)
+    [ "$okn" -ge "$total" ] && break; sleep 5
+  done
+  [ "$okn" -ge "$total" ] || die "only $okn of $total first transactions completed"
+  ok "$total first transactions completed"
+  step "saving S0 (7 databases)"
+  marker_set s0; rm -rf "$STATE/s0.tmp"; mkdir -p "$STATE/s0.tmp"
+  stop_sut || die "PURIS/EDC did not stop"
+  for n in $(db_names); do
+    db_cmd "$n" pg_dump "-Fc" > "$STATE/s0.tmp/$n.dump" || die "pg_dump failed: $n"
+    db_counts "$n" > "$STATE/s0.tmp/$n.rows.txt"; [ -s "$STATE/s0.tmp/$n.rows.txt" ] || die "row count failed: $n"
+  done
+  ( cd "$STATE/s0.tmp" && sha256sum ./*.dump ./*.rows.txt > SHA256SUMS ) || die "checksums failed"
+  rm -rf "$STATE/s0"; mv "$STATE/s0.tmp" "$STATE/s0"; marker_clear s0
+  for n in $RESET_DBS; do db_cmd "$n" psql "-v ON_ERROR_STOP=1 -q -c 'SET client_min_messages TO error; ANALYZE'" >/dev/null; done
+  dp_clear customer; dp_clear supplier
+  start_sut || die "PURIS/EDC not ready after S0"
+  ok "S0 saved"
+}
+
+# ── Phase 6: verify ───────────────────────────────────────────────────────────────
+phase_verify() {
+  set_phase verify
+  [ -f "$STATE/s0/SHA256SUMS" ] || need_fail "S0 missing" "./reproduce prepare"
+  ensure_boot; resume_markers
+  local cfg b ns out line diffs
+  cfg=$(cat "$STATE/config")
+  while read -r line; do
+    b=${line%% *}; ns=$(echo "$line" | awk '{print $3}')
+    render "$b" "$cfg" "$STATE/render/current-$b.yaml" || die "rendering $b failed"
+    out=$(py conformance "$ns" "$STATE/render/current-$b.yaml" 2>&1) || die "running $b differs from configuration $cfg:"$'\n'"$out"
+  done <<<"$RELEASES"
+  ok "conformance: running resources = configuration $cfg"
+  wait_namespaces 600 monitoring logging identity customer supplier k6-operator >>"$LOGF" 2>&1 || die "not all pods ready"
+  diffs=$(counts_diff c1-wallet c3-customer-dtr c5-supplier-dtr); [ -z "$diffs" ] || die "wallet/DTR rows differ from S0: $diffs"
+  function_test 1 || die "test transaction failed: $FT_JSON"
+  cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"; now_iso > "$STATE/verified"
+  ok "verified (pods ready, wallet/DTR = S0, test transaction ok)"
+}
+
+# ── Phase 7: measure ──────────────────────────────────────────────────────────────
+apply_config() {  # configuration
+  local cfg="$1" line b changed=""
+  [ "$(cat "$STATE/config" 2>/dev/null)" = "$cfg" ] && ! marker_has apply && return 0
+  marker_set apply "$cfg"
+  step "applying configuration $cfg"
+  stop_sut || die "PURIS/EDC did not stop"
+  while read -r line; do
+    b=${line%% *}
+    if [ "$(cat "$STATE/releases/$(echo "$line" | awk '{print $3"-"$2}')" 2>/dev/null)" != "$(desired_hash "$b" "$cfg")" ]; then deploy_release "$b" "$cfg"; changed="$changed $b"; fi
+  done <<<"$RELEASES"
+  for b in $SUT_NS; do for a in $SUT_APPS; do scale "$b" "$a" 0; done; done
+  for b in $SUT_NS; do q k rollout status sts -n "$b" --timeout=900s || die "databases in $b not ready after the configuration change"; done
+  echo "$cfg" > "$STATE/config"
+  reset_sut
+  marker_clear apply
+  ok "configuration $cfg applied (changed:${changed:- none})"
+}
+results_dir() {  # current results folder for this profile and commit
+  local d f
+  f="$STATE/results-current"
+  if [ -f "$f" ] && d=$(cat "$f") && [ -d "$d" ] && [ "$(cat "$d/.commit" 2>/dev/null)" = "$(commit)" ] && [ "$(cat "$d/.profile" 2>/dev/null)" = "$(profile)" ]; then echo "$d"; return; fi
+  d="$RESULTS/$(date -u +%Y-%m-%d_%H%M)_$(profile)"; mkdir -p "$d"; commit > "$d/.commit"; profile > "$d/.profile"
+  cp "$STATE/machine.json" "$d/machine.json"; echo "$d" > "$f"; echo "$d"
+}
+count_runs() {  # results-dir configuration → "valid invalid"
+  python3 - "$1" "$2" <<'EOF'
+import json, os, sys
+v = i = 0
+for d in os.listdir(sys.argv[1]):
+    if "_%s_rep-" % sys.argv[2] not in d or not os.path.isdir(os.path.join(sys.argv[1], d)): continue
+    p = os.path.join(sys.argv[1], d, "meta.json")
+    if os.path.isfile(p) and json.load(open(p)).get("validity", {}).get("valid"): v += 1
+    else: i += 1
+print(v, i)
+EOF
+}
+gates() {  # disk and noise before a run (REPRODUCE.md §22.7, §22.10)
+  local free i steal
+  free=$(df -P -BG /var/lib/rancher "$WORK" | awk 'NR>1 {gsub("G","",$4); print $4}' | sort -n | head -1)
+  [ "$free" -ge 20 ] || die "only $free GB free disk space – at least 20 GB needed before a run"
+  if [ -f "$STATE/last_run_used_gb" ] && [ "$free" -lt $(( 3 * $(cat "$STATE/last_run_used_gb") )) ]; then die "free disk ($free GB) below 3 × the space of the last run"; fi
+  for i in $(seq 1 31); do
+    steal=$(py prom 'sum(rate(node_cpu_seconds_total{mode="steal"}[2m]))/sum(rate(node_cpu_seconds_total[2m]))' 2>/dev/null || echo "")
+    [ -n "$steal" ] && python3 -c "import sys; sys.exit(0 if float('$steal') < 0.01 else 1)" && return 0
+    [ "$i" -lt 31 ] || { warn "machine still busy (steal ${steal:-?}) after 60 min – starting anyway"; return 0; }
+    [ "$i" -gt 1 ] || warn "machine busy (steal ${steal:-?} ≥ 1 %) – waiting for a quiet machine (up to 60 min)"
+    sleep 120
+  done
+}
+start_load() {  # name testid → applies TestRun from the plan environment
+  k create configmap k6-stock-trigger -n k6 --from-file=stock-trigger.js="$SRC/experiments/k6/stock-trigger.js" --dry-run=client -o yaml | q k apply -f -
+  py render-testrun "$1" "$2" "$SRC/setup/e1-testdaten/materialien.tsv" > "$TMPD/testrun.json"
+  q k delete testrun -n k6 -l reproduce=1 --wait=true --timeout=120s
+  q k create -f "$TMPD/testrun.json" || die "TestRun could not be created"
+}
+watch_load() {  # name t_apply labels minutes → 0 finished, 1 stalled
+  local rc msg last="" free
+  while true; do
+    rc=0; msg=$(py watchdog "$1" "$2" "$3" "$4" 2>&1) || rc=$?
+    case "$rc" in
+      0) return 0 ;;
+      10) [ "$msg" = "$last" ] || { say "·" "$msg"; last="$msg"; } ;;
+      *) fail "load generator stalled: $msg"; return 1 ;;
+    esac
+    free=$(df -P -BG /var/lib/rancher "$WORK" | awk 'NR>1 {gsub("G","",$4); print $4}' | sort -n | head -1)
+    [ "$free" -ge 5 ] || { fail "less than 5 GB free disk space during the run"; return 1; }
+    sleep 30
+  done
+}
+load_plan() {  # plan → exports plan variables
+  local pf="$SRC/experiments/plans/$1.env"
+  [ -r "$pf" ] || die "plan file missing: experiments/plans/$1.env"
+  set -a; # shellcheck disable=SC1090
+  . "$pf"; set +a
+  export PLAN="$1" STATE="s0"   # reproduce always resets to its own S0
+  if [ "${REPRODUCE_SMOKE:-0}" = 1 ]; then export STAGE_DURATION=2 PLAN_KIND=smoke; fi
+}
+log_probe() {  # configuration results-dir
+  local cfg="$1" rd="$2" name t_apply max
+  [ -f "$rd/probe-$cfg.json" ] && grep -q '"ok": true' "$rd/probe-$cfg.json" && { skip "log capacity probe ($cfg) passed before"; return 0; }
+  max=$(echo "$RATES" | tr ',' '\n' | sort -g | tail -1)
+  step "log capacity probe: 3 min at $max/s"
+  reset_sut
+  name="probe-$(date -u +%Y%m%d%H%M%S)"
+  ( export RATES="$max" STAGE_LABELS="probe" STAGE_DURATION=3; start_load "$name" "$name" )
+  t_apply=$(now_iso)
+  watch_load "$name" "$t_apply" probe 3 || { stop_own_load; die "probe: load generator stalled"; }
+  if py probe "$name" "$t_apply" > "$rd/probe-$cfg.json"; then ok "log capacity probe passed: $(cat "$rd/probe-$cfg.json")"
+  else die "log capacity probe failed – monitoring cannot keep up at $max/s: $(cat "$rd/probe-$cfg.json")"; fi
+}
+one_run() {  # configuration rep results-dir
+  local cfg="$1" rep="$2" rd="$3" run name t_apply used0 used1 valid
+  run="$rd/$(date -u +%Y-%m-%d_%H%M)_${cfg}_rep-$rep"
+  mkdir "$run" || die "run folder exists: $run"
+  marker_set run "$run"
+  export ATTEMPT_COMMIT; ATTEMPT_COMMIT=$(commit); export ATTEMPT_PLAN="$PLAN" ATTEMPT_REP="$rep" REP="$rep"
+  py attempt "$run" created running ""
+  used0=$(df -P -BG /var/lib/rancher | awk 'NR==2 {gsub("G","",$3); print $3}')
+  gates
+  py attempt "$run" reset running ""
+  reset_sut
+  function_test 3 || { py attempt "$run" function_test failed "function test failed: $FT_JSON"; marker_clear run; warn "function test failed after reset – run invalid"; return 1; }
+  python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); r["function_test"]=json.loads(sys.argv[2]); print(json.dumps(r, indent=1))' "$STATE/last-reset.json" "$FT_JSON" > "$TMPD/reset.json"
+  cp "$TMPD/reset.json" "$run/reset.json"
+  name=$(echo "rp-$(date -u +%Y%m%d%H%M%S)-$rep" | tr 'A-Z_' 'a-z-')
+  py attempt "$run" load running ""
+  start_load "$name" "$(basename "$run")"; t_apply=$(now_iso); cp "$TMPD/testrun.json" "$run/testrun.json"
+  ok "load started: $(basename "$run") ($(echo "$RATES" | tr ',' '\n' | wc -l | tr -d ' ') stages × $STAGE_DURATION min)"
+  if ! watch_load "$name" "$t_apply" "$STAGE_LABELS" "$STAGE_DURATION"; then stop_own_load; py attempt "$run" load failed "load generator stalled"; marker_clear run; return 1; fi
+  py attempt "$run" collecting running ""
+  step "collecting (drain, Prometheus, Loki, EDC)"
+  py collect "$run" "$name" "$(basename "$run")" "$t_apply" "$(commit)" "$TMPD" "$STATE/machine.json" "$(profile)" "$cfg" "$(cp_limit_of "$cfg")" >>"$LOGF" 2>&1 \
+    || { py attempt "$run" collecting failed "collection failed – see reproduce.log"; marker_clear run; warn "collection failed – run invalid"; return 1; }
+  mkdir -p "$run/db"; for n in $(db_names); do db_counts "$n" > "$run/db/$n.zeilen-nach-lauf.txt"; done
+  ( cd "$run" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
+  valid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["validity"]["valid"])' "$run/meta.json")
+  py attempt "$run" completed completed "valid=$valid"
+  marker_clear run
+  used1=$(df -P -BG /var/lib/rancher | awk 'NR==2 {gsub("G","",$3); print $3}'); echo $(( used1 > used0 ? used1 - used0 : 1 )) > "$STATE/last_run_used_gb"
+  if [ "$valid" = True ]; then ok "run valid: $(basename "$run")"; else warn "run invalid: $(basename "$run") – $(python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["validity"]; print(", ".join(k for k,x in v.items() if k.endswith("_ok") and x is not True))' "$run/meta.json")"; return 1; fi
+}
+phase_measure() {
+  set_phase measure
+  [ -f "$STATE/s0/SHA256SUMS" ] || need_fail "S0 missing" "./reproduce prepare"
+  local want="${1:-}" cfgs cfg rd v i rep
+  cfgs=$(configs_of "$(profile)")
+  if [ -n "$want" ]; then echo " $cfgs " | grep -q " $want " || die "configuration $want does not belong to profile $(profile) ($cfgs)" 2; cfgs="$want"; fi
+  TMPD=$(mktemp -d)
+  rd=$(results_dir)
+  for cfg in $cfgs; do
+    set_phase "measure:$cfg"
+    ensure_boot; resume_markers
+    apply_config "$cfg"
+    phase_verify
+    load_plan "$(plan_of "$cfg")"
+    log_probe "$cfg" "$rd"
+    read -r v i <<<"$(count_runs "$rd" "$cfg")"
+    while [ "$v" -lt "$REPS" ] && [ "$i" -le "$MAX_REPLACEMENTS" ]; do
+      rep=$((v + i + 1))
+      say "▶" "$cfg: run $rep (valid so far $v of $REPS, invalid $i)"
+      one_run "$cfg" "$rep" "$rd" || true
+      read -r v i <<<"$(count_runs "$rd" "$cfg")"
+    done
+    if [ "$v" -ge "$REPS" ]; then ok "$cfg: $v valid runs"; else warn "$cfg: only $v valid runs after $MAX_REPLACEMENTS replacement runs – reported as failed"; fi
+  done
+  rm -rf "$TMPD"
+}
+
+# ── Phases 8 and 9: evaluate, package ─────────────────────────────────────────────
+phase_evaluate() {
+  set_phase evaluate
+  local rd="${1:-$(cat "$STATE/results-current" 2>/dev/null)}"
+  [ -n "$rd" ] && [ -d "$rd" ] || need_fail "no results folder" "./reproduce measure"
+  py evaluate "$rd" "$SRC/reference"
+  ok "evaluation: $rd/verdict.md"
+}
+phase_package() {
+  set_phase package
+  local rd="${1:-$(cat "$STATE/results-current" 2>/dev/null)}"
+  [ -f "$rd/summary.json" ] || need_fail "not evaluated" "./reproduce evaluate"
+  ( cd "$rd" && find . -type f ! -name SHA256SUMS ! -name '.commit' ! -name '.profile' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
+  ok "results complete: $rd ($(du -sh "$rd" | cut -f1))"
+  echo "  copy the run folders into runs/ of the repository, e.g.: cp -r \"$rd\"/*_rep-* <repository>/runs/"
+}
+
+# ── status, watch, stop ───────────────────────────────────────────────────────────
+cmd_status() {
+  local p rd cfg
+  echo "work folder: $WORK"
+  echo "commit:      $(commit 2>/dev/null | cut -c1-7 || echo –)"
+  p=$(profile); echo "profile:     ${p:-–}${p:+ ($(configs_of "$p"))}"
+  echo "configured:  $(cat "$STATE/config" 2>/dev/null || echo –)"
+  printf '%s\n' "phases:"
+  [ -e "$SRC/.git" ] && echo "  ✓ fetch" || echo "  ✗ fetch"
+  [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] && echo "  ✓ tools" || echo "  ✗ tools"
+  [ -n "$p" ] && echo "  ✓ check" || echo "  ✗ check"
+  [ -f /etc/rancher/k3s/reproduce-owner ] && echo "  ✓ install" || echo "  ✗ install"
+  [ -f "$STATE/config" ] && echo "  ✓ deploy" || echo "  ✗ deploy"
+  [ -f "$STATE/s0/SHA256SUMS" ] && echo "  ✓ prepare" || echo "  ✗ prepare"
+  [ -f "$STATE/verified" ] && echo "  ✓ verify ($(cat "$STATE/verified"))" || echo "  ✗ verify"
+  rd=$(cat "$STATE/results-current" 2>/dev/null || true)
+  if [ -n "$rd" ] && [ -d "$rd" ]; then
+    echo "results:     $rd"
+    for cfg in $(configs_of "$p"); do echo "  $cfg: valid / invalid runs = $(count_runs "$rd" "$cfg" | tr ' ' '/')"; done
+    [ ! -f "$rd/verdict.md" ] || echo "  verdict: $rd/verdict.md"
+  fi
+  [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || echo "open changes: $(ls "$MARKERS" | tr '\n' ' ')"
+  if job_alive; then echo "job:         running – $(cat "$STATE/job")"; else echo "job:         none"; fi
+}
+cmd_watch() {
+  [ -f "$LOGF" ] || { echo "no log yet"; return 0; }
+  tail -n 30 -F "$LOGF" 2>/dev/null &
+  local tp=$!
+  trap 'kill $tp 2>/dev/null; echo; echo "(view closed – the job keeps running)"; exit 0' INT
+  sleep 3
+  while job_alive; do sleep 5; done
+  kill "$tp" 2>/dev/null || true
+  echo "(job ended – ./reproduce status)"
+}
+cmd_stop() {
+  job_alive || { echo "no job running"; return 0; }
+  local p; p=$(job_pid)
+  kill -TERM "$p"; echo "stop requested (PID $p) – waiting for a safe point"
+  for _ in $(seq 1 60); do job_alive || { ok "job ended"; return 0; }; sleep 5; done
+  warn "job still running after 5 min – check ./reproduce status"
+}
+
+# ── uninstall and bundle ──────────────────────────────────────────────────────────
+cmd_uninstall() {
+  [ -f /etc/rancher/k3s/reproduce-owner ] || die "no cluster of this script on this machine – nothing removed" 3
+  if [ "${1:-}" != --yes ]; then
+    echo "This removes k3s with all pods and volumes, and restores the system settings."
+    echo "Kept: $SRC, $RESULTS, $STATE/s0. Type 'uninstall' to continue:"
+    local a; read -r a; [ "$a" = uninstall ] || { echo "cancelled"; exit 4; }
+  fi
+  job_alive && die "a job is running – ./reproduce stop first"
+  q sudo /usr/local/bin/k3s-uninstall.sh || die "k3s-uninstall.sh failed"
+  if [ -f "$STATE/system-before.json" ]; then
+    python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["apt-daily.timer"], d["apt-daily-upgrade.timer"], d["snap_hold"], d["swap_active"])' "$STATE/system-before.json" | {
+      read -r a1 a2 sh sw
+      [ "$a1" != enabled ] || q sudo systemctl enable --now apt-daily.timer
+      [ "$a2" != enabled ] || q sudo systemctl enable --now apt-daily-upgrade.timer
+      [ "$sh" = True ] || { ! command -v snap >/dev/null || q sudo snap refresh --unhold; }
+      if [ "$sw" = True ] && [ -f /etc/fstab.reproduce-bak ]; then q sudo cp /etc/fstab.reproduce-bak /etc/fstab; q sudo swapon -a; fi
+    }
+  fi
+  sudo rm -f /etc/rancher/k3s/reproduce-owner /etc/rancher/k3s/config.yaml
+  rm -f "$KUBECONFIG" "$STATE/config" "$STATE/verified" "$STATE/boot_id" "$STATE/results-current"; rm -rf "$STATE/releases" "$MARKERS"
+  ok "removed; system settings restored. Results kept in $RESULTS"
+}
+cmd_bundle() {
+  [ -f "$STATE/config" ] || need_fail "nothing deployed" "./reproduce deploy"
+  local u="https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION/+/%2B}"
+  mkdir -p "$BUNDLE/k3s" "$BUNDLE/charts" "$BUNDLE/tools"
+  cp "$TOOLS/helm" "$TOOLS/kubectl" "$BUNDLE/tools/"; cp "$STATE/charts"/*.tgz "$BUNDLE/charts/"
+  git -C "$SRC" bundle create "$BUNDLE/src.bundle" --all >>"$LOGF" 2>&1
+  ( cd "$BUNDLE/k3s" && curl -fsSLO "$u/k3s" && curl -fsSLO "$u/k3s-airgap-images-amd64.tar.zst" && curl -fsSLO "$u/sha256sum-amd64.txt" \
+    && grep -E ' (k3s|k3s-airgap-images-amd64.tar.zst)$' sha256sum-amd64.txt | sha256sum -c --quiet && curl -fsSL https://get.k3s.io -o install.sh ) >>"$LOGF" 2>&1 \
+    || die "k3s files for the bundle could not be downloaded"
+  step "exporting images"
+  # shellcheck disable=SC2046
+  q sudo k3s ctr -n k8s.io images export "$BUNDLE/images.tar" $(py images "$STATE/render"/"$(profile)"-k*/*.yaml) || die "image export failed"
+  sudo chown "$(id -u):$(id -g)" "$BUNDLE/images.tar"
+  ( cd "$BUNDLE" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
+  ok "bundle: $BUNDLE ($(du -sh "$BUNDLE" | cut -f1)) – licences of the images must be checked before publishing"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────────
+on_exit() {
+  local rc=$?
+  if [ "$rc" -ne 0 ] && [ "$LOCKED" = 1 ] && [ -s "$KUBECONFIG" ]; then
+    if marker_has run; then stop_own_load; py attempt "$(marker_get run)" "${CURRENT_PHASE:-}" failed "stopped (exit $rc)" 2>/dev/null || true; marker_clear run; fi
+  fi
+  unlock
+  return "$rc"
+}
+on_term() { warn "stop requested"; exit 4; }
+[[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0   # sourced (tests): functions only
+CMD="${1:-all}"
+trap on_exit EXIT
+trap on_term TERM INT HUP
+case "$CMD" in
+  all)
+    lock; phase_fetch; phase_tools; phase_check; phase_install
+    detach _continue ;;
+  _continue)
+    lock; phase_deploy; phase_prepare; phase_verify; phase_measure; phase_evaluate; phase_package
+    ok "finished – results: $(cat "$STATE/results-current")" ;;
+  fetch|tools|check|install|verify) lock; "phase_$CMD" ;;
+  deploy|prepare) detach "$CMD"; lock; "phase_$CMD" ;;
+  measure) detach "$@"; lock; shift; phase_measure "${1:-}" ;;
+  evaluate|package) shift; "phase_$CMD" "${1:-}" ;;
+  status) cmd_status ;;
+  watch)  cmd_watch ;;
+  stop)   cmd_stop ;;
+  bundle) lock; cmd_bundle ;;
+  uninstall) lock; shift; cmd_uninstall "${1:-}" ;;
+  make-reference) shift; py make-reference "$@" ;;
+  help|-h|--help) sed -n '3,27p' "$SCRIPT" ;;
+  *) echo "unknown command: $CMD"; sed -n '3,27p' "$SCRIPT"; exit 2 ;;
+esac

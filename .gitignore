@@ -27,3 +27,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Arbeitsordner von reproduce (REPRODUCE.md §6), wenn das Skript im Repository gestartet wird
+/puris-repro/

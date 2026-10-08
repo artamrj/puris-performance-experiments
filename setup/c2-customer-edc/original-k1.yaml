@@ -1,0 +1,13 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    c2-customer-edc – Konfiguration original-k1 (Überlagerung, nur `reproduce`)
+# Basis:       Profil original (Ressourcen wie von den Charts ausgeliefert).
+# Zweck:       Erwarteter Engpass der Original-Konfiguration ist die PostgreSQL
+#              des EDC mit dem Bitnami-Preset „nano“ (0,1/0,15 CPU, 128/192 MiB;
+#              laut Bitnami nur für Tests). original-k1 setzt das nächstgrößere
+#              dokumentierte Preset „small“ (0,5/0,75 CPU, 512/768 MiB)
+#              (REPRODUCE.md §7.4; Wahl des Presets noch offen, §21 Punkt 1).
+# ══════════════════════════════════════════════════════════════════════════════
+
+postgresql:
+  primary:
+    resourcesPreset: small

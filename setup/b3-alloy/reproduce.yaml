@@ -1,0 +1,87 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    b3-alloy – Überlagerung nur für `reproduce` (REPRODUCE.md §22.8)
+# Basis:       values.yaml in diesem Ordner; hier nur die Konfiguration von Alloy.
+# Zweck:       Alloy liefert nur die Logzeilen an Loki, die die Auswertung nutzt:
+#              alle Zeilen der PURIS-Backends (Transaktionen, „Invalidating …“) und
+#              die WARN/ERROR-Zeilen der EDC Control Planes. Alle anderen Pods und
+#              die EDC-Zeilen unterhalb von WARN (Standard der Charts: DEBUG) werden
+#              nicht mehr gelesen bzw. vor dem Senden verworfen. Bei hoher Last
+#              (original-k1 bis 12/s) hält das Messsystem so mit; das System unter
+#              Test bleibt unverändert. `lab` nutzt diese Datei nicht.
+# Unterschied: Schritt 2 (Regel „keep“) und Schritt 5 (stage.match/stage.drop);
+#              alles andere wie values.yaml.
+# ══════════════════════════════════════════════════════════════════════════════
+
+alloy:
+  configMap:
+    content: |
+      // 1. Alle Pods des Clusters finden (ein Knoten).
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // 2. Kennzeichnung (Labels) und Pfad der Logdatei je Container; nur die
+      //    PURIS-Backends und EDC Control Planes beider Firmen.
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_name"]
+          separator     = "/"
+          regex         = "(customer|supplier)/(puris-backend|edc-controlplane).*"
+          action        = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          target_label  = "__path__"
+          replacement   = "/var/log/pods/*$1/*.log"
+        }
+        rule {
+          action = "labelkeep"
+          regex  = "__path__|namespace|pod|container"
+        }
+      }
+
+      // 3. Logdateien auf der Platte auflösen.
+      local.file_match "pod_logs" {
+        path_targets = discovery.relabel.pod_logs.output
+      }
+
+      // 4. Dateien fortlaufend lesen (folgt auch rotierten Dateien).
+      loki.source.file "pod_logs" {
+        targets    = local.file_match.pod_logs.targets
+        forward_to = [loki.process.pod_logs.receiver]
+      }
+
+      // 5. CRI-Format zerlegen (Zeitstempel aus dem Container-Log); EDC-Zeilen
+      //    unterhalb von WARN verwerfen.
+      loki.process "pod_logs" {
+        stage.cri {}
+        stage.match {
+          selector = "{pod=~\"edc-controlplane.*\"}"
+          stage.drop {
+            expression = "\"level\":\"(TRACE|DEBUG|INFO)\""
+          }
+        }
+        forward_to = [loki.write.loki.receiver]
+      }
+
+      // 6. An Loki (b2-loki) senden.
+      loki.write "loki" {
+        endpoint {
+          url = "http://loki.logging.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }

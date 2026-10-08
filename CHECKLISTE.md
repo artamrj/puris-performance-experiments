@@ -320,14 +320,16 @@ Noch offen:
 - [x] Entscheidung: zusätzlich K0-NAS (und ggf. K1-NAS) auf der VM der Betreuung messen – neu 2026-10-08 – entfällt (Entscheidung des Verfassers 2026-10-08: auf der VM der Betreuung läuft das Profil `original`; Nachbau-Test mit `compact` auf der neu aufgesetzten NAS-VM, `REPRODUCE.md` §17)
 - [x] Entwurf `REPRODUCE.md` (eigenständiges Skript `reproduce`: Profile `original`/`compact`, Konfigurationen `-k0`/`-k1`, Phasen einzeln aufrufbar, Ergebnisse im Format von `runs/`) – 2026-10-08
 - [ ] Offene Entscheidungen in `REPRODUCE.md` §21 klären (PostgreSQL-Preset `original-k1`, Nachbau-Test auf der NAS-VM, drittes Sättigungskriterium, Testpasswörter im Repository, kurzer Testplan, Fragen an die Betreuung) – neu 2026-10-08
-- [ ] `KONZEPT.md` an `reproduce` anpassen (`REPRODUCE.md` §20) – vor dem Bau – neu 2026-10-08
-- [ ] `reproduce` bauen und testen (`REPRODUCE.md` §18, Schritte 1–7, ≈ 6 Arbeitstage inkl. Robustheit §22) – Mo 12.–Mo 19.10. – neu 2026-10-08
+- [x] `KONZEPT.md` an `reproduce` anpassen (`REPRODUCE.md` §20) – neu 2026-10-08 – erledigt 2026-10-08 (Abschnitt 1 Ergänzung, Abschnitt 12 drei Zeilen)
+- [ ] `reproduce` bauen und testen (`REPRODUCE.md` §18, Schritte 1–7) – neu 2026-10-08 *(2026-10-08: gebaut (`reproduce`, ca. 1500 Zeilen) und ohne Cluster geprüft – shellcheck sauber, Charts geladen, Rechner, TestRun gleich K0 `rep-3`, Auswertung gegen K0, Watchdog; `REPRODUCE.md` §23. Offen: erster Lauf auf der VM der Betreuung (Schritt 7) – Aufbau, Reset, Sammeln, Neustart-Reparatur, Alloy-Filter, Probe, Bundle, uninstall)*
   - [x] CI-Workflow `.github/workflows/check.yml` – neu 2026-10-08 – entfällt (Entscheidung des Verfassers 2026-10-08: kein CI; Änderungen an `reproduce` vor dem Push auf der Maschine testen)
 - [ ] Referenzdateien `reference/compact-k0.json` (nach `rep-5`–`rep-7`) und `reference/compact-k1.json` (nach K1-NAS) – neu 2026-10-08
-- [ ] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08
+- [x] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08 – angelegt 2026-10-08
 - [ ] VM der Betreuung: `original-k0` und `original-k1` mit `reproduce` (je 3 gültige Läufe) – ab Di 20.10. – neu 2026-10-08
 - [ ] Nachbau-Test: NAS-VM nach K1-NAS zurücksetzen, `reproduce` mit `compact` (K0 + K1), Vergleich mit den Referenzen – bis Do 22.10. – neu 2026-10-08
 - [x] Robustheit von `reproduce` entworfen: 12 Situationen mit festen Lösungen (`REPRODUCE.md` §22: Hintergrundjob, Sperre, Marker, Neustart, Watchdog, idempotente Testdaten, Speicherplatz, Log-Filter und Kapazitätsprobe, Registry-Limits, Steal-Time-Gate, Offline-Bundle, CI-geprüfter Stand) – 2026-10-08
+- [x] Überlagerungen `setup/b3-alloy/reproduce.yaml` (Log-Filter) und `setup/c{2,4}-*-edc/original-k1.yaml` (Preset `small`) – 2026-10-08
+- [ ] `reference/compact-k0.json` nach Übernahme von `rep-5` bis `rep-7` neu erzeugen (`./reproduce make-reference …`); `reference/compact-k1.json` nach K1-NAS – neu 2026-10-08 *(2026-10-08: erste Fassung aus `rep-2` bis `rep-4`)*
 - [ ] Veröffentlichung des Offline-Bundles entscheiden (Lizenzen der Images, Größe) – `REPRODUCE.md` §21, Punkt 7 – neu 2026-10-08
 
 ## 11 Etappe 3 – Vorstudie und Einfrieren
@@ -373,7 +375,7 @@ Noch offen:
 - [x] Vollständige Logs aller bisherigen Läufe (Probelauf bis K0) aus Loki nachtragen, ohne die Laufordner zu ändern (eigener Ablageort mit Prüfsummen; Ort entscheidet der Verfasser) – **vor Ablauf der Aufbewahrung von 30 Tagen, spätestens 05.11.2026** – neu 2026-10-08 – erledigt 2026-10-08: `nachtrag/` (Ort: Verfasser), zehn Läufe, alle vollständig; `1906_smoke` entfällt (gescheiterter Versuch ohne `meta.json`)
 - [x] Vollständigkeit der Logs je Lauf prüfen (PURIS-Log gegenüber EDC-Transfers je Minute) und als Gültigkeitskriterium in `collect_run.py` aufnehmen – neu 2026-10-08 *(2026-10-08: einfacher und genauer: Auslösungen im Log = Iterationen von k6, abgeschlossen + gescheitert = Auslösungen)* – umgesetzt 2026-10-08: `validity.log_complete_ok` (Auslösungen = Anfragen von k6 ohne Fehler), `KONZEPT.md`, Abschnitt 6
 - [x] Entscheidung (Verfasser): K0 nach der Behebung wiederholen oder K0 mit Durchsatz aus den EDC-Daten auswerten – neu 2026-10-08 *(2026-10-08: wegen der Lücken keine Wiederholung nötig – vollständige Logs aus Loki nachtragen; Bestätigung des Verfassers offen)* *(Nachtrag erledigt: alle K0-Läufe vollständig)* – entschieden 2026-10-08 (Verfasser): nicht wiederholen, um 3 Läufe ergänzen (nächster Punkt)
-- [ ] Sättigungskriterium „mindestens ein ‚Invalidating …‘“ prüfen (markiert abgefangene Einzelereignisse, z. B. `rep-3` `warmup2`) – vor der Auswertung entscheiden, beide Lesarten berichten; mit der Betreuung besprechen – neu 2026-10-08
+- [ ] Sättigungskriterium „mindestens ein ‚Invalidating …‘“ prüfen (markiert abgefangene Einzelereignisse, z. B. `rep-3` `warmup2`) – vor der Auswertung entscheiden, beide Lesarten berichten; mit der Betreuung besprechen – neu 2026-10-08 *(2026-10-08, `reproduce evaluate` auf K0 `rep-2`–`rep-4`: mit der Bedingung Kippstufe 0,5–0,6/s, ohne sie 0,6–0,7/s – eine Stufe Unterschied)*
 - [x] Laufordner K0 committen (Verfasser), `SHA256SUMS` gegen den Commit prüfen, danach VM-Kopien nach `runs-vm/` verschieben – neu 2026-10-08 – erledigt 2026-10-08: Commit `6b05038`, 4 × 36 OK aus dem Commit, VM-Kopien verschoben
 - [ ] K0 um 3 Wiederholungen ergänzen (nicht ersetzen): `./lab series k0 3 5` (`rep-5` bis `rep-7`) mit `setup-v2`, Nacht 08./09.10. – schärft die Streuung des Kipppunkts (F2) – entschieden 2026-10-08 (Verfasser; vorher optional)
   - [x] `lab series` mit erster Wiederholung und Schutz vor doppelten Nummern – 2026-10-08, 46/46 Tests lokal
