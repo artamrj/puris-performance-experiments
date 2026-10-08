@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-08 – Etappe 1 abgeschlossen; Robustheit von `lab` auf der VM nachgewiesen (Kurztest 2); Vorstudien 1–3 abgeschlossen (Vorstudie 3: stabil bis 0,5/s, Kippen bei 0,8/s, keine Erholung bei 0,2/s). K0-Plan und S0 entschieden, Aufbau eingefroren (`setup-v1` = `78c7e84`, 2026-10-08). **Messreihe K0 beendet** (2026-10-08, 07:40 UTC): 3 gültige Läufe, `rep-1` ungültig (Steal Time); Kippen bei 0,6–0,7/s, keine Erholung. **Lücken im Log des Customer-PURIS (Loki) gefunden** – vor K1 klären und beheben, dann Entscheidung über Wiederholung von K0. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-08 – Etappe 1 abgeschlossen; Robustheit von `lab` auf der VM nachgewiesen (Kurztest 2); Vorstudien 1–3 abgeschlossen (Vorstudie 3: stabil bis 0,5/s, Kippen bei 0,8/s, keine Erholung bei 0,2/s). K0-Plan und S0 entschieden, Aufbau eingefroren (`setup-v1` = `78c7e84`, 2026-10-08). **Messreihe K0 beendet** (2026-10-08, 07:40 UTC): 3 gültige Läufe, `rep-1` ungültig (Steal Time); Kippen bei 0,6–0,7/s, keine Erholung. Lücken im gesammelten PURIS-Log: **Fehler des Sammlers, Loki vollständig** – Sammler korrigieren (`setup-v2`), Logs aller Läufe aus Loki nachtragen (bis spätestens 05.11.); K0 muss deshalb nicht wiederholt werden. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -30,7 +30,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
 | 10 Etappe 2 – Automatisieren | offen | Do 22.–Sa 24.10. (inkl. Neuaufbau mit Skripten) |
 | 11 Etappe 3 – Vorstudie und Einfrieren | weit fortgeschritten (Vorstudien 1–3 gelaufen, 2026-10-07; K0-Plan und S0 entschieden, `setup-v1` gesetzt 2026-10-08; Hauptmessungen folgen) | Vorstudie Nacht 24./25.10., **`setup-v1` So 25.10. (Meilenstein 2)** |
-| 12 Etappe 3 – Hauptmessungen | begonnen (K0 gelaufen 2026-10-08, 3 gültig; Log-Lücken offen) | Mo 26.–Do 29.10. (ca. 5 h je Konfiguration, nachts) |
+| 12 Etappe 3 – Hauptmessungen | begonnen (K0 gelaufen 2026-10-08, 3 gültig; Sammler korrigieren, Logs nachtragen) | Mo 26.–Do 29.10. (ca. 5 h je Konfiguration, nachts) |
 | 13 Etappe 3 – Nachbau-Test | offen | Fr 30.10.–**So 01.11. (Meilenstein 3)** |
 | 14 Auswertung (`analysis/`) | offen | Skripte ab Mo 26.10. parallel, fertig Mo 02.11. |
 | 15 Übernahme in die Arbeit | offen | 4.3 laufend ab 12.10.; Kap. 5 Mo 02.–Di 03.11. |
@@ -350,11 +350,12 @@ Noch offen:
 ## 12 Etappe 3 – Hauptmessungen
 
 - [ ] Grundkonfiguration K0: 3 Messläufe (`rep-1` bis `rep-3`) mit `./lab run` auf der VM in `tmux` *(gestartet 2026-10-07, 23:41 UTC mit `./lab series k0 3` aus `setup-v1`; erster Lauf `2026-10-07_2341_k0_rep-1`)* *(2026-10-08, 07:40 UTC beendet: 3 gültige Läufe `rep-2`, `rep-3`, `rep-4`; `rep-1` ungültig (Steal-Spitze 6,0 % um 03:00 MESZ); Kippen bei 0,6–0,7/s, keine Erholung bei 0,2/s; Haken erst nach der Entscheidung über die Log-Lücken – Wiederholung oder Auswertung über EDC-Daten)*
-- [ ] **Lücken im Log des Customer-PURIS in Loki** klären und beheben – vor K1; Diagnose braucht Root auf der VM (Rotation der Container-Logs, Alloy `loki.source.file`) – gefunden 2026-10-08
-- [ ] Vollständigkeit der Logs je Lauf prüfen (PURIS-Log gegenüber EDC-Transfers je Minute) und als Gültigkeitskriterium in `collect_run.py` aufnehmen – neu 2026-10-08
-- [ ] Entscheidung (Verfasser): K0 nach der Behebung wiederholen oder K0 mit Durchsatz aus den EDC-Daten auswerten – neu 2026-10-08
+- [ ] **Lücken im Log des Customer-PURIS in Loki** klären und beheben – vor K1; Diagnose braucht Root auf der VM (Rotation der Container-Logs, Alloy `loki.source.file`) – gefunden 2026-10-08 *(Ursache geklärt 2026-10-08: Seitenwechsel im Sammler `collect_run.py` bei mehreren Streams; Loki vollständig – `rep-2` neu gelesen: Auslösungen 3069 = k6; Rotation ausgeschlossen. Offen: Sammler korrigieren → `setup-v2`)*
+- [ ] Vollständige Logs aller bisherigen Läufe (Probelauf bis K0) aus Loki nachtragen, ohne die Laufordner zu ändern (eigener Ablageort mit Prüfsummen; Ort entscheidet der Verfasser) – **vor Ablauf der Aufbewahrung von 30 Tagen, spätestens 05.11.2026** – neu 2026-10-08
+- [ ] Vollständigkeit der Logs je Lauf prüfen (PURIS-Log gegenüber EDC-Transfers je Minute) und als Gültigkeitskriterium in `collect_run.py` aufnehmen – neu 2026-10-08 *(2026-10-08: einfacher und genauer: Auslösungen im Log = Iterationen von k6, abgeschlossen + gescheitert = Auslösungen)*
+- [ ] Entscheidung (Verfasser): K0 nach der Behebung wiederholen oder K0 mit Durchsatz aus den EDC-Daten auswerten – neu 2026-10-08 *(2026-10-08: wegen der Lücken keine Wiederholung nötig – vollständige Logs aus Loki nachtragen; Bestätigung des Verfassers offen)*
 - [ ] Sättigungskriterium „mindestens ein ‚Invalidating …‘“ prüfen (markiert abgefangene Einzelereignisse, z. B. `rep-3` `warmup2`) – vor der Auswertung entscheiden, beide Lesarten berichten; mit der Betreuung besprechen – neu 2026-10-08
-- [ ] Laufordner K0 committen (Verfasser), `SHA256SUMS` gegen den Commit prüfen, danach VM-Kopien nach `runs-vm/` verschieben – neu 2026-10-08
+- [x] Laufordner K0 committen (Verfasser), `SHA256SUMS` gegen den Commit prüfen, danach VM-Kopien nach `runs-vm/` verschieben – neu 2026-10-08 – erledigt 2026-10-08: Commit `6b05038`, 4 × 36 OK aus dem Commit, VM-Kopien verschoben
 - [ ] Skalierungskonfiguration K1: 3 Messläufe *(K1-NAS: EDC entlastet, siehe Abschnitt 11)*
 - [ ] Skalierungskonfiguration K2 (falls geplant): 3 Messläufe
 - [ ] VM der Betreuung: Neuaufbau mit den Skripten aus Etappe 2 (zugleich Nachbau-Test), Vorstudie, dann K0-ISST (Original-Konfiguration der Charts, unverändert) und K1-ISST (PostgreSQL mit normalen Ressourcen statt Bitnami-Preset „nano“) – je 3 Messläufe; Ziel bis ca. 20.10.
