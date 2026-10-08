@@ -316,6 +316,19 @@ Noch offen:
 - [ ] Messpläne in `experiments/plans/` (Laststufen, Dauer, Wiederholungen) *(2026-10-07: `smoke.env`, `vorstudie.env`; K0 folgt nach der Vorstudie)* *(2026-10-08: `k0.env` angelegt; K1 offen)*
 - [ ] **Vollständiger Neuaufbau** mit den Skripten (`k3s` entfernt → `./lab up all` → `./lab status`); Abweichungen zu `AUFBAU.md` behoben; Dauer und manuelle Eingriffe im Laborbuch
 - [ ] `README.md` mit Schnellstart (Voraussetzungen, Klonen, `.env`, `./lab up all`)
+- [x] Entscheidung: vollautomatische Kampagne `./lab campaign <datei>` – neu 2026-10-08 – entfällt (ersetzt durch das eigenständige Skript `reproduce`, Entwurf `REPRODUCE.md`, 2026-10-08)
+- [x] Entscheidung: zusätzlich K0-NAS (und ggf. K1-NAS) auf der VM der Betreuung messen – neu 2026-10-08 – entfällt (Entscheidung des Verfassers 2026-10-08: auf der VM der Betreuung läuft das Profil `original`; Nachbau-Test mit `compact` auf der neu aufgesetzten NAS-VM, `REPRODUCE.md` §17)
+- [x] Entwurf `REPRODUCE.md` (eigenständiges Skript `reproduce`: Profile `original`/`compact`, Konfigurationen `-k0`/`-k1`, Phasen einzeln aufrufbar, Ergebnisse im Format von `runs/`) – 2026-10-08
+- [ ] Offene Entscheidungen in `REPRODUCE.md` §21 klären (PostgreSQL-Preset `original-k1`, Nachbau-Test auf der NAS-VM, drittes Sättigungskriterium, Testpasswörter im Repository, kurzer Testplan, Fragen an die Betreuung) – neu 2026-10-08
+- [ ] `KONZEPT.md` an `reproduce` anpassen (`REPRODUCE.md` §20) – vor dem Bau – neu 2026-10-08
+- [ ] `reproduce` bauen und testen (`REPRODUCE.md` §18, Schritte 1–7, ≈ 6 Arbeitstage inkl. Robustheit §22) – Mo 12.–Mo 19.10. – neu 2026-10-08
+  - [ ] CI-Workflow `.github/workflows/check.yml` neu anlegen (existiert noch nicht; `shellcheck`, Rendern aller vier Konfigurationen, Prüfung des Rechners) – Teil von Schritt 2 – neu 2026-10-08
+- [ ] Referenzdateien `reference/compact-k0.json` (nach `rep-5`–`rep-7`) und `reference/compact-k1.json` (nach K1-NAS) – neu 2026-10-08
+- [ ] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08
+- [ ] VM der Betreuung: `original-k0` und `original-k1` mit `reproduce` (je 3 gültige Läufe) – ab Di 20.10. – neu 2026-10-08
+- [ ] Nachbau-Test: NAS-VM nach K1-NAS zurücksetzen, `reproduce` mit `compact` (K0 + K1), Vergleich mit den Referenzen – bis Do 22.10. – neu 2026-10-08
+- [x] Robustheit von `reproduce` entworfen: 12 Situationen mit festen Lösungen (`REPRODUCE.md` §22: Hintergrundjob, Sperre, Marker, Neustart, Watchdog, idempotente Testdaten, Speicherplatz, Log-Filter und Kapazitätsprobe, Registry-Limits, Steal-Time-Gate, Offline-Bundle, CI-geprüfter Stand) – 2026-10-08
+- [ ] Veröffentlichung des Offline-Bundles entscheiden (Lizenzen der Images, Größe) – `REPRODUCE.md` §21, Punkt 7 – neu 2026-10-08
 
 ## 11 Etappe 3 – Vorstudie und Einfrieren
 
@@ -354,7 +367,7 @@ Noch offen:
 
 - [ ] Grundkonfiguration K0: 3 Messläufe (`rep-1` bis `rep-3`) mit `./lab run` auf der VM in `tmux` *(gestartet 2026-10-07, 23:41 UTC mit `./lab series k0 3` aus `setup-v1`; erster Lauf `2026-10-07_2341_k0_rep-1`)* *(2026-10-08, 07:40 UTC beendet: 3 gültige Läufe `rep-2`, `rep-3`, `rep-4`; `rep-1` ungültig (Steal-Spitze 6,0 % um 03:00 MESZ); Kippen bei 0,6–0,7/s, keine Erholung bei 0,2/s; Haken erst nach der Entscheidung über die Log-Lücken – Wiederholung oder Auswertung über EDC-Daten)*
 - [x] **Lücken im Log des Customer-PURIS in Loki** klären und beheben – vor K1; Diagnose braucht Root auf der VM (Rotation der Container-Logs, Alloy `loki.source.file`) – gefunden 2026-10-08 *(Ursache geklärt 2026-10-08: Seitenwechsel im Sammler `collect_run.py` bei mehreren Streams; Loki vollständig – `rep-2` neu gelesen: Auslösungen 3069 = k6; Rotation ausgeschlossen. Offen: Sammler korrigieren → `setup-v2`)* – behoben 2026-10-08: `lib/loki_read.py` (feste Zeitfenster), `collect_run.py` angepasst, 42/42 Tests lokal; wirksam ab `setup-v2` (`LABORBUCH.md`, „Sammler korrigiert“)
-- [ ] Korrigierten Sammler im ersten Lauf nach `setup-v2` bestätigen (`validity.log_complete_ok` = true) – neu 2026-10-08
+- [x] Korrigierten Sammler im ersten Lauf nach `setup-v2` bestätigen (`validity.log_complete_ok` = true) – neu 2026-10-08 – bestätigt 2026-10-08: K0 `rep-5`, 3069 = 3069 (`LABORBUCH.md`)
 - [ ] Grafana-Dashboard „Bachelorarbeit – Messung“ mit `setup-v2` reproduzierbar laden (ConfigMap über den Sidecar statt Import über die Oberfläche) – neu 2026-10-08 *(2026-10-08 über die Oberfläche importiert, JSON in `setup/b1-monitoring/dashboards/`, Sterne und Lesezeichen gesetzt; `LABORBUCH.md`)*
 - [ ] Speicher-Limit von Grafana prüfen – `OOMKilled` 2026-10-08, 08:04 UTC bei 512Mi, außerhalb der Messläufe – neu 2026-10-08
 - [x] Vollständige Logs aller bisherigen Läufe (Probelauf bis K0) aus Loki nachtragen, ohne die Laufordner zu ändern (eigener Ablageort mit Prüfsummen; Ort entscheidet der Verfasser) – **vor Ablauf der Aufbewahrung von 30 Tagen, spätestens 05.11.2026** – neu 2026-10-08 – erledigt 2026-10-08: `nachtrag/` (Ort: Verfasser), zehn Läufe, alle vollständig; `1906_smoke` entfällt (gescheiterter Versuch ohne `meta.json`)
