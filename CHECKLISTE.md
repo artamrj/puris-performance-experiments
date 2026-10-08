@@ -322,7 +322,7 @@ Noch offen:
 - [ ] Offene Entscheidungen in `REPRODUCE.md` §21 klären (PostgreSQL-Preset `original-k1`, Nachbau-Test auf der NAS-VM, drittes Sättigungskriterium, Testpasswörter im Repository, kurzer Testplan, Fragen an die Betreuung) – neu 2026-10-08
 - [ ] `KONZEPT.md` an `reproduce` anpassen (`REPRODUCE.md` §20) – vor dem Bau – neu 2026-10-08
 - [ ] `reproduce` bauen und testen (`REPRODUCE.md` §18, Schritte 1–7, ≈ 6 Arbeitstage inkl. Robustheit §22) – Mo 12.–Mo 19.10. – neu 2026-10-08
-  - [ ] CI-Workflow `.github/workflows/check.yml` neu anlegen (existiert noch nicht; `shellcheck`, Rendern aller vier Konfigurationen, Prüfung des Rechners) – Teil von Schritt 2 – neu 2026-10-08
+  - [x] CI-Workflow `.github/workflows/check.yml` – neu 2026-10-08 – entfällt (Entscheidung des Verfassers 2026-10-08: kein CI; Änderungen an `reproduce` vor dem Push auf der Maschine testen)
 - [ ] Referenzdateien `reference/compact-k0.json` (nach `rep-5`–`rep-7`) und `reference/compact-k1.json` (nach K1-NAS) – neu 2026-10-08
 - [ ] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08
 - [ ] VM der Betreuung: `original-k0` und `original-k1` mit `reproduce` (je 3 gültige Läufe) – ab Di 20.10. – neu 2026-10-08

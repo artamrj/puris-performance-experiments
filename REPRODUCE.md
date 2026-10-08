@@ -27,7 +27,7 @@ It provides the four pieces of evidence for reproducibility (`KONZEPT.md`, §8):
 |---|---|
 | Name | `reproduce` (single file in the repository root) |
 | Form | one file, downloaded on its own; it fetches everything else itself |
-| Code version | always the **latest `main` commit whose CI checks passed** (§22.12); new code is pulled **only** in phase `fetch` (or at the start of a full run), never in the middle of measuring |
+| Code version | always the **latest `main`**; new code is pulled **only** in phase `fetch` (or at the start of a full run), never in the middle of measuring |
 | Long phases | always run as a background job that survives a lost SSH connection; the terminal only shows a live view (`watch`), `stop` ends it cleanly (§22.1) |
 | Offline bundle | `./reproduce bundle` stores all charts, images and tools of a working build; if a bundle is present, the script needs no internet (§22.11) |
 | Commit hash | always written into every result (`meta.json`, `summary.json`); it is the only record of which code produced a result |
@@ -270,8 +270,7 @@ already correct? ── yes ──► ↷ skip
 ### Phase 0 – `fetch`
 
 - Missing `src/` → `git clone https://github.com/artamrj/puris-performance-experiments.git src`.
-- Present → refuse if `src/` has local changes (print them); otherwise `git -C src fetch origin main`.
-- Checks out the newest commit of `main` whose CI checks passed (§22.12), detached; prints which commit and why.
+- Present → refuse if `src/` has local changes (print them); otherwise `git -C src pull --ff-only origin main`.
 - Records the commit in `state/commit`.
 - Retry: yes (network).
 
@@ -533,14 +532,14 @@ Run folders are copied into `runs/` of the repository and used like the existing
 | Step | Content | Acceptance | Effort |
 |---|---|---|---|
 | 1 | skeleton: commands, output, log, exit codes, inner cycle, `status`, lock, markers, background job, `watch`, `stop` | `shellcheck` clean; every command prints its preconditions; a second call is refused; closing the SSH session does not stop a job | 0.75 d |
-| 2 | `fetch` (CI-green commit), `tools`, `check` with calculator and noise check; CI workflow | calculator reproduces the values of §8 from the charts; CI green on `main` | 1 d |
+| 2 | `fetch`, `tools`, `check` with calculator and noise check | calculator reproduces the values of §8 from the charts | 0.75 d |
 | 3 | `install`, `uninstall` | on a fresh VM: install → uninstall → system as before | 0.5 d |
 | 4 | `deploy` (image preflight), `prepare` (idempotent), `verify` (reboot detection), `bundle` | all pods ready, S0 saved, conformance passes; second call skips everything; kill during `prepare` → next call completes | 1.25 d |
 | 5 | `measure`: apply, gates, probe, reset, load + watchdog, drain, collect, validate | run folder passes the format check of §12; kill during reset → next call repeats it | 1.5 d |
 | 6 | `evaluate`, `package`, reference files | `evaluate` on the existing NAS K0 runs gives tipping stage 0.6–0.7/s | 0.5 d |
 | 7 | end-to-end test on the supervisor's VM, including one forced reboot | full run without manual intervention | 0.5 d |
 
-Total ≈ 6 working days.
+Total ≈ 5.75 working days.
 
 Rules for the implementation: one Bash file (`#!/usr/bin/env bash`, `set -euo pipefail`); JSON, CSV and YAML handling with embedded Python 3 (standard library only; YAML through `helm`/`kubectl` output in JSON where possible); no dependency beyond §9, phase 2, step 3; every function short and named after what it does.
 
@@ -566,7 +565,7 @@ Rules for the implementation: one Bash file (`#!/usr/bin/env bash`, `set -euo pi
 | Rebuild test | fresh VM on the NAS, optional VPS; since 2026-10-07 the supervisor's VM | NAS VM reinstalled with `reproduce` (`compact`); supervisor's VM runs `original` (§17) |
 | Configurations | K0-ISST, K1-ISST | names `original-k0`, `original-k1`; `original-k1` = EDC PostgreSQL preset `small` (❓) |
 | Measuring system | Alloy ships all log lines | Alloy drops EDC lines below WARN and the logs of the measuring system itself (§22.8); for `reproduce` only, `lab` unchanged |
-| Code version | commit + tag per measurement series | latest CI-green `main`; new CI workflow `.github/workflows/check.yml` (does not exist yet, §22.12) |
+| Code version | commit + tag per measurement series | latest `main`; commit hash recorded in every result |
 
 ---
 
@@ -666,6 +665,6 @@ Cause: Alloy collects the logs of every pod, including the EDC logs at the chart
 
 ### 22.12 Broken commit on `main`
 
-- **New, does not exist yet:** a GitHub Actions workflow `.github/workflows/check.yml`, created in build step 2 (§18). It runs on every push to `main`: `shellcheck` and `bash -n` on `reproduce`, rendering of all four configurations with `helm template`, calculator check against §8, format check of the plans. No cluster needed; free for public repositories.
-- `fetch` asks the GitHub API for the check result of the newest commits and checks out the **newest commit of `main` whose checks passed**; it prints if it had to skip newer commits.
-- Commits without any check result (e.g. older than the workflow) are treated as "not checked": `fetch` uses the newest commit and prints a warning. Same if the GitHub API is unreachable.
+- No automatic check (no CI workflow – deliberately kept simple).
+- Rule: a change to `reproduce` is tested on the machine before it is pushed to `main`.
+- Every result records the commit hash, so a broken commit can be identified afterwards.
