@@ -1180,3 +1180,44 @@ Alle Läufe: Tag `setup-v1`, Reset ohne Reparatur, Funktionstest bestanden, kein
 **Ergebnis:** Die Rotation ist nicht die Ursache (in `rep-4` zwei Rotationen ohne Lücke; in `rep-1` bis `rep-3` lag die erste Lücke ca. 50 min nach dem Start von PURIS, als die Logdatei bei gleicher Last noch weit unter 10 MiB war). Ursache ist der Seitenwechsel in `loki_all()` (`experiments/collect/collect_run.py`): Je Seite 5000 Zeilen über alle Streams; die nächste Seite beginnt beim **spätesten** Zeitstempel der Seite. Reicht der Stream `unknown` (u. a. Zeilen von Stacktraces) weiter in die Zukunft als der Stream `info`, werden die `info`-Zeilen dazwischen übersprungen. Passend dazu beginnen die Lücken nach 4888 bzw. 4966 Zeilen (`rep-2`, `rep-3`) und nach ca. 9964 Zeilen (Vorstudie 3) – kurz vor einer Seitengrenze.
 **Richtigstellung** der Einträge „Messreihe K0 beendet“ (Hypothese Rotation, Folge 3 zu `b3`) und „Entscheidungen vor K0“: Alloy und Loki haben vollständig gesammelt; die Lücken und die fehlenden Auslösungen der Vorstudie 3 stammen aus dem Sammler. Die Zähltests von `b3` bleiben gültig.
 **Folgen:** (1) Die Läufe sind nicht verloren: Loki bewahrt die Zeilen 30 Tage auf (`b2-loki`); die vollständigen Logs lassen sich für alle Läufe nachtragen – frühester Lauf (Probelauf, 2026-10-07 01:01 UTC) also vor ca. 2026-11-06. Rohdaten in `runs/` bleiben unverändert. (2) Eine Wiederholung von K0 ist wegen der Lücken nicht nötig. (3) Vor weiteren Läufen den Sammler korrigieren (Abfrage in festen Zeitfenstern, volle Fenster teilen, Prüfung Auslösungen = Iterationen von k6); das ist eine Änderung nach `setup-v1` → `setup-v2`. (4) Die Kennzeichen `S` in `s3` von `rep-1` bis `rep-3` bleiben Folge der Lücken; Zählungen je Stufe erst mit den nachgetragenen Logs auswerten.
+
+## 2026-10-08 – Sammler korrigiert, vollständige Logs aller Läufe nachgetragen (`nachtrag/`)
+
+**Entscheidung** (Verfasser, im Chat): Sammler jetzt korrigieren und die vollständigen Logs aller bisherigen Läufe aus Loki nachtragen; Ablage `nachtrag/<laufordner>/`, Laufordner unverändert.
+
+**Gemacht** (vom Assistenten, auf dem Mac; Zugriff auf Loki über den Tunnel, nur lesend):
+- `lib/loki_read.py` (neu): Lesen in festen Zeitfenstern [Beginn, Ende) zu 60 s ohne Überlappung; liefert ein Fenster 5000 Zeilen (Limit von Loki), wird es halbiert, bis jedes Teilfenster darunter bleibt; ein nicht teilbares Fenster bricht ab. Selektoren und Suchmuster für beide Skripte an einer Stelle.
+- `experiments/collect/collect_run.py`: liest Loki über `lib/loki_read.py`; neues Gültigkeitskriterium `log_complete_ok` – Auslösezeilen im Log des Customer-PURIS = von k6 ohne Fehler gesendete Anfragen (`http_reqs` − `http_req_failed`), dazu `log_triggers`/`log_triggers_expected` in `meta.json`.
+- `experiments/collect/nachtrag_loki.py` (neu): je Lauf Prüfsummen des Laufordners prüfen, dieselben Selektoren im Sammelfenster aus `meta.json` lückenlos lesen, Zählungen je Stufe neu (Stufengrenzen aus `meta.json`), Vergleich mit dem Laufordner und mit k6; Ablage `nachtrag/<laufordner>/loki/*.tsv.gz`, `nachtrag.json`, `SHA256SUMS` (über einen Zwischenordner, kein Überschreiben). In `nachtrag.json`: Commit und Prüfsummen der Skripte (Stand bei der Erzeugung: noch nicht committet, `git_dirty: true`).
+- `analysis/stage_summary.py`: liest Logzeilen und Zählungen aus `nachtrag/<laufordner>/`, falls vorhanden, und meldet das in der Ausgabe.
+- Tests lokal: 42 von 42 bestanden (neu: `tests/test_loki_read.py` mit simuliertem Loki aus zwei Streams; zwei Tests für `log_complete_ok`). Gegenprobe mit dem alten Seitenwechsel am selben simulierten Loki: 5499 von 10 002 Zeilen.
+- `.gitattributes`: `nachtrag/** -text` (byte-genau wie `runs/`).
+
+**Ergebnis des Nachtrags** (2026-10-08, ca. 10:00–10:15 UTC; Zeilen Customer-PURIS Laufordner → Nachtrag; Auslösungen im Nachtrag / Anfragen von k6):
+
+| Lauf | Zeilen | Auslösungen / k6 | abgeschl. / gesch. | „Invalidating …“ |
+|---|---|---|---|---|
+| `2026-10-07_0100_pilot_rep-1` | – (Pod-Log) → 2 500 | 328 / 328 | 324 / 4 | 0 |
+| `2026-10-07_1032_smoke_rep-1` | 6 507 → 6 507 | 91 / 91 | 8 / 40 | 113 |
+| `2026-10-07_1115_vorstudie_rep-1` | 141 960 → 144 615 | 1 531 / 1 531 | 260 / 1 271 | 2 627 |
+| `2026-10-07_1500_vorstudie2_rep-1` | 4 857 → 4 857 | 644 / 641 | 640 / 4 | 8 |
+| `2026-10-07_1953_smoke_rep-1` | 6 024 → 6 024 | 92 / 92 | 59 / 33 | 105 |
+| `2026-10-07_2025_vorstudie3_rep-1` | 110 669 → 117 309 | 3 068 / 3 068 | 1 805 / 1 263 | 2 582 |
+| `2026-10-07_2341_k0_rep-1` (ungültig) | 20 036 → 21 646 | 3 070 / 3 070 | 3 067 / 3 | 0 |
+| `2026-10-08_0140_k0_rep-2` | 141 302 → 146 560 | 3 069 / 3 069 | 1 711 / 1 358 | 2 760 |
+| `2026-10-08_0340_k0_rep-3` | 166 356 → 178 996 | 3 069 / 3 069 | 1 210 / 1 859 | 3 865 |
+| `2026-10-08_0540_k0_rep-4` | 154 085 → 157 565 | 3 068 / 3 068 | 1 507 / 1 561 | 3 196 |
+
+- Vorstudie 2: 3 Auslösungen mehr als Anfragen von k6 – der Funktionstest (15:07:06, 15:07:28, 15:07:35 UTC) liegt im Sammelfenster dieses Laufs (Fenster ab dem Anwenden des TestRuns, Sammler vor den Stufengrenzen aus k6); ab dem Start des Runners (15:07:43) 641 = 641. Damit sind alle zehn Läufe vollständig. In jedem Lauf: abgeschlossen + gescheitert = Auslösungen.
+- `2026-10-07_1906_smoke_rep-1` (gescheiterter Versuch, ohne `meta.json`): kein Nachtrag.
+- Probelauf: im Laufordner gab es keine Loki-Datei (Pod-Log, Sammler-Entwurf); der Nachtrag ist die erste Loki-Ablage dieses Laufs.
+- Alle `SHA256SUMS` im Nachtrag in Ordnung; keine IP-Adressen, Hostnamen oder API-Keys (Prüfung auf die Werte beider PURIS-Keys, ohne sie auszugeben). Umfang 8,8M.
+
+**K0 mit vollständigen Logs** (`nachtrag/*/nachtrag.json`, abgeschlossen je Sekunde und Stufe):
+- `rep-2`: bis `s5` (0,6/s) alle Stufen vollständig abgeschlossen; einzelne Invalidierungen nur in `s4` (2); `s6` (0,7/s) 0,45/s, 18 Invalidierungen; ab `s7` 0; Erholung 0.
+- `rep-3`: je 1 Invalidierung in `warmup2` und `s4`; `s5` (0,6/s) 0,21/s, 85 gescheitert; ab `s6` 0; Erholung 0.
+- `rep-4`: bis `s4` ohne Fehler; `s5` (0,6/s) 0,60/s mit 3 Invalidierungen; `s6` (0,7/s) 0,11/s; ab `s7` 0; Erholung 0.
+- `rep-1` (ungültig): alle Stufen bis 1,0/s vollständig abgeschlossen (`s8` 1,00/s), insgesamt 3 gescheitert, 0 Invalidierungen; Erholung 0,20/s.
+- `s3` (0,4/s) in allen Läufen 0,40/s ohne Fehler – die früheren Kennzeichen `S` dort waren Folge der Lücken.
+
+**Folgen:** Die Korrektur am Sammler ist eine Änderung nach `setup-v1`; ab dem nächsten Messlauf gilt `setup-v2` (Tag zusammen mit den Dateien für K1). Eine Wiederholung von K0 ist für die Vollständigkeit nicht nötig (Entscheidung des Verfassers offen). Loki bewahrt die Zeilen weiter 30 Tage auf; der Nachtrag ist davon unabhängig.

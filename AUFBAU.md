@@ -1256,11 +1256,17 @@ ssh puris-vm 'mkdir -p ~/puris-loadlab-state/runs-vm && mv ~/puris-performance-e
 
 **Hauptmessung K0** (`experiments/plans/k0.env`, aus `setup-v1`; `./lab series k0 3`, 2026-10-07 23:41 – 2026-10-08 07:40 UTC): `runs/2026-10-07_2341_k0_rep-1/` (ungültig: Steal Time max 6,01 %), `runs/2026-10-08_0140_k0_rep-2/`, `runs/2026-10-08_0340_k0_rep-3/`, `runs/2026-10-08_0540_k0_rep-4/` (Ersatzlauf) – je 27–28M, auf dem Mac je 36 × `OK`. Je Wiederholung ca. 2 h (Reset 389 s, Funktionstest 36 s, 110 min Last, Abarbeiten und Sammeln ca. 4 min). Lücken im gesammelten Log des Customer-PURIS (Fehler des Sammlers, Loki vollständig): `LABORBUCH.md`, „Messreihe K0 beendet“ und „Richtigstellung“.
 
+**Nachtrag vollständiger Logs `[Mac]`** (2026-10-08; Läufe bis K0 – der Sammler übersprang bis dahin Zeilen beim Seitenwechsel, `LABORBUCH.md`, „Richtigstellung“): liest je Lauf dieselben Selektoren im Sammelfenster aus `meta.json` lückenlos aus Loki ([`lib/loki_read.py`](lib/loki_read.py)) und legt sie unter `nachtrag/<laufordner>/` ab (`loki/*.tsv.gz`, `nachtrag.json`, `SHA256SUMS`); der Laufordner wird nur gelesen. Voraussetzung: Tunnel und `KUBECONFIG` (Funktion `puris`); Loki bewahrt 30 Tage auf.
+```bash
+python3 experiments/collect/nachtrag_loki.py <laufordner> [<laufordner> …]
+```
+Ergebnis: zehn Läufe, alle vollständig (Auslösungen = Anfragen von k6), 8,8M; je Lauf ca. 45 s. Seit dieser Korrektur liest auch `collect_run.py` über `lib/loki_read.py` und prüft die Vollständigkeit (`validity.log_complete_ok`).
+
 **Kurzauswertung je Stufe `[Mac]`:**
 ```bash
 python3 analysis/stage_summary.py runs/<laufordner>
 ```
-[`analysis/stage_summary.py`](analysis/stage_summary.py): je Stufe Eingangslast, abgeschlossene Transaktionen/s, Fehler, „Invalidating …“ und neue Verhandlungen, Dauer je Transaktion nach zwei Verfahren (A: Auslösung → Ende je Material in Reihenfolge; B: erster EDC-Transfer → Ende je Pool-Thread), CPU, Drosselung, Threads, Steal Time.
+[`analysis/stage_summary.py`](analysis/stage_summary.py) (nimmt Logzeilen und Zählungen aus `nachtrag/<laufordner>/`, falls vorhanden): je Stufe Eingangslast, abgeschlossene Transaktionen/s, Fehler, „Invalidating …“ und neue Verhandlungen, Dauer je Transaktion nach zwei Verfahren (A: Auslösung → Ende je Material in Reihenfolge; B: erster EDC-Transfer → Ende je Pool-Thread), CPU, Drosselung, Threads, Steal Time.
 
 ---
 

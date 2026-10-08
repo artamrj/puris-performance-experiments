@@ -1,0 +1,296 @@
+{
+ "run": "2026-10-07_1500_vorstudie2_rep-1",
+ "created_utc": "2026-10-08T08:06:10Z",
+ "reason": "Seitenwechsel in collect_run.py übersprang Zeilen bei mehreren Streams (LABORBUCH.md, 2026-10-08, „Richtigstellung“); Laufordner unverändert",
+ "method": "lib/loki_read.py: Zeitfenster 60 s ohne Überlappung, volle Fenster (≥ 5000 Zeilen) rekursiv halbiert",
+ "window_utc": [
+  "2026-10-07T15:05:39Z",
+  "2026-10-07T15:40:06Z"
+ ],
+ "selectors": {
+  "customer_puris": "{namespace=\"customer\", pod=~\"puris-backend.*\"}",
+  "supplier_puris": "{namespace=\"supplier\", pod=~\"puris-backend.*\"}",
+  "edc_warn_error": "{namespace=~\"customer|supplier\", pod=~\"edc-controlplane.*\"} |~ \"\\\"level\\\":\\\"(WARN|ERROR)\\\"\""
+ },
+ "patterns": {
+  "triggered": "Trigger Reported MaterialStockUpdate",
+  "completed": "Updated ReportedMaterialItemStocks",
+  "failed": "Error in ReportedMaterialItemStockRequest",
+  "invalidating_contract": "Invalidating ",
+  "optimistic_lock": "ObjectOptimisticLockingFailureException"
+ },
+ "code": {
+  "git_commit": "db8845a7bd8ea88327b73e5d8db73a5474325b6b",
+  "git_dirty": true,
+  "experiments/collect/nachtrag_loki.py": "9a2d19b820c9d8df96ad2b747e6af271bb8949467dc060371ee2aa9608834cda",
+  "lib/loki_read.py": "ccafbe9b3260727ba74ae1dab8daf7ae1af3a069036250c5f93b2b477e36d57f"
+ },
+ "run_folder_checksums_ok": true,
+ "lines": {
+  "customer_puris": {
+   "nachtrag": 4857,
+   "laufordner": 4857
+  },
+  "supplier_puris": {
+   "nachtrag": 727,
+   "laufordner": 727
+  },
+  "edc_warn_error": {
+   "nachtrag": 7,
+   "laufordner": 7
+  }
+ },
+ "totals": {
+  "triggered_log": 644,
+  "completed_log": 640,
+  "failed_log": 4,
+  "optimistic_lock": 0,
+  "error_warn_lines_customer": 34,
+  "invalidating_contract": 8,
+  "k6_requests_ok": 641,
+  "laufordner": {
+   "triggered_log": 644,
+   "completed_log": 640,
+   "failed_log": 4,
+   "optimistic_lock": 0,
+   "error_warn_lines_customer": 34,
+   "invalidating_contract": 8,
+   "k6_iterations": 641,
+   "k6_dropped_iterations": 0,
+   "k6_http_req_failed_rate": 0
+  }
+ },
+ "complete": {
+  "triggered_equals_k6_requests_ok": false
+ },
+ "stages": [
+  {
+   "stage": "warmup1",
+   "rate_per_s": 0.1,
+   "start_utc": "2026-10-07T15:07:06Z",
+   "end_utc": "2026-10-07T15:12:06Z",
+   "planned": 30,
+   "triggered_log": 29,
+   "completed_log": 29,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 29,
+    "completed_log": 29,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "warmup2",
+   "rate_per_s": 0.2,
+   "start_utc": "2026-10-07T15:12:06Z",
+   "end_utc": "2026-10-07T15:17:06Z",
+   "planned": 60,
+   "triggered_log": 56,
+   "completed_log": 55,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 56,
+    "completed_log": 55,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "warmup3",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-07T15:17:06Z",
+   "end_utc": "2026-10-07T15:22:06Z",
+   "planned": 150,
+   "triggered_log": 139,
+   "completed_log": 138,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 139,
+    "completed_log": 138,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "warmup4",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-07T15:22:06Z",
+   "end_utc": "2026-10-07T15:27:06Z",
+   "planned": 150,
+   "triggered_log": 151,
+   "completed_log": 150,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 151,
+    "completed_log": 150,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "warmup5",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-07T15:27:06Z",
+   "end_utc": "2026-10-07T15:32:06Z",
+   "planned": 150,
+   "triggered_log": 151,
+   "completed_log": 151,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 151,
+    "completed_log": 151,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s1",
+   "rate_per_s": 0.6,
+   "start_utc": "2026-10-07T15:32:06Z",
+   "end_utc": "2026-10-07T15:37:06Z",
+   "planned": 180,
+   "triggered_log": 118,
+   "completed_log": 65,
+   "failed_log": 1,
+   "optimistic_lock": 0,
+   "error_warn_lines": 10,
+   "invalidating_contract": 1,
+   "laufordner": {
+    "triggered_log": 118,
+    "completed_log": 65,
+    "failed_log": 1,
+    "invalidating_contract": 1
+   }
+  },
+  {
+   "stage": "s2",
+   "rate_per_s": 0.8,
+   "start_utc": "2026-10-07T15:37:06Z",
+   "end_utc": "2026-10-07T15:42:06Z",
+   "planned": 240,
+   "triggered_log": 0,
+   "completed_log": 52,
+   "failed_log": 3,
+   "optimistic_lock": 0,
+   "error_warn_lines": 24,
+   "invalidating_contract": 7,
+   "laufordner": {
+    "triggered_log": 0,
+    "completed_log": 52,
+    "failed_log": 3,
+    "invalidating_contract": 7
+   }
+  },
+  {
+   "stage": "s3",
+   "rate_per_s": 1.0,
+   "start_utc": "2026-10-07T15:42:06Z",
+   "end_utc": "2026-10-07T15:47:06Z",
+   "planned": 300,
+   "triggered_log": 0,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 0,
+    "completed_log": 0,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s4",
+   "rate_per_s": 1.2,
+   "start_utc": "2026-10-07T15:47:06Z",
+   "end_utc": "2026-10-07T15:52:06Z",
+   "planned": 360,
+   "triggered_log": 0,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 0,
+    "completed_log": 0,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s5",
+   "rate_per_s": 1.5,
+   "start_utc": "2026-10-07T15:52:06Z",
+   "end_utc": "2026-10-07T15:57:06Z",
+   "planned": 450,
+   "triggered_log": 0,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 0,
+    "completed_log": 0,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s6",
+   "rate_per_s": 2.0,
+   "start_utc": "2026-10-07T15:57:06Z",
+   "end_utc": "2026-10-07T16:02:06Z",
+   "planned": 600,
+   "triggered_log": 0,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 0,
+    "completed_log": 0,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s7",
+   "rate_per_s": 2.5,
+   "start_utc": "2026-10-07T16:02:06Z",
+   "end_utc": "2026-10-07T16:07:06Z",
+   "planned": 750,
+   "triggered_log": 0,
+   "completed_log": 0,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 0,
+    "completed_log": 0,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  }
+ ]
+}

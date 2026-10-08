@@ -1,0 +1,4 @@
+06b18147e6b947ac9da0d39c10924204c18dd16f64fba49747dcc5637482180a  ./loki/customer_puris.tsv.gz
+8f2239059738cc35709f35b1264aa4f51b5f2007c265260fd4fe3b1ddbba431f  ./loki/edc_warn_error.tsv.gz
+fabe610c4ce77b5f5fa1fe7eeb169da71572de45b8d1ee7b5c5743c437856ee9  ./loki/supplier_puris.tsv.gz
+b0baad209492ca36bd815af6835c2563c9838cf6c7752b4574d6abcd4efd042f  ./nachtrag.json

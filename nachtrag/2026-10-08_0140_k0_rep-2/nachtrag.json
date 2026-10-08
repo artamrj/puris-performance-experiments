@@ -1,0 +1,277 @@
+{
+ "run": "2026-10-08_0140_k0_rep-2",
+ "created_utc": "2026-10-08T08:05:23Z",
+ "reason": "Seitenwechsel in collect_run.py übersprang Zeilen bei mehreren Streams (LABORBUCH.md, 2026-10-08, „Richtigstellung“); Laufordner unverändert",
+ "method": "lib/loki_read.py: Zeitfenster 60 s ohne Überlappung, volle Fenster (≥ 5000 Zeilen) rekursiv halbiert",
+ "window_utc": [
+  "2026-10-08T01:47:17.183Z",
+  "2026-10-08T03:39:24.509Z"
+ ],
+ "selectors": {
+  "customer_puris": "{namespace=\"customer\", pod=~\"puris-backend.*\"}",
+  "supplier_puris": "{namespace=\"supplier\", pod=~\"puris-backend.*\"}",
+  "edc_warn_error": "{namespace=~\"customer|supplier\", pod=~\"edc-controlplane.*\"} |~ \"\\\"level\\\":\\\"(WARN|ERROR)\\\"\""
+ },
+ "patterns": {
+  "triggered": "Trigger Reported MaterialStockUpdate",
+  "completed": "Updated ReportedMaterialItemStocks",
+  "failed": "Error in ReportedMaterialItemStockRequest",
+  "invalidating_contract": "Invalidating ",
+  "optimistic_lock": "ObjectOptimisticLockingFailureException"
+ },
+ "code": {
+  "git_commit": "db8845a7bd8ea88327b73e5d8db73a5474325b6b",
+  "git_dirty": true,
+  "experiments/collect/nachtrag_loki.py": "9a2d19b820c9d8df96ad2b747e6af271bb8949467dc060371ee2aa9608834cda",
+  "lib/loki_read.py": "ccafbe9b3260727ba74ae1dab8daf7ae1af3a069036250c5f93b2b477e36d57f"
+ },
+ "run_folder_checksums_ok": true,
+ "lines": {
+  "customer_puris": {
+   "nachtrag": 146560,
+   "laufordner": 141302
+  },
+  "supplier_puris": {
+   "nachtrag": 1715,
+   "laufordner": 1715
+  },
+  "edc_warn_error": {
+   "nachtrag": 450,
+   "laufordner": 450
+  }
+ },
+ "totals": {
+  "triggered_log": 3069,
+  "completed_log": 1711,
+  "failed_log": 1358,
+  "optimistic_lock": 1,
+  "error_warn_lines_customer": 9199,
+  "invalidating_contract": 2760,
+  "k6_requests_ok": 3069,
+  "laufordner": {
+   "triggered_log": 2941,
+   "completed_log": 1586,
+   "failed_log": 1285,
+   "optimistic_lock": 1,
+   "error_warn_lines_customer": 8647,
+   "invalidating_contract": 2616,
+   "k6_iterations": 3069,
+   "k6_dropped_iterations": 0,
+   "k6_http_req_failed_rate": 0
+  }
+ },
+ "complete": {
+  "triggered_equals_k6_requests_ok": true
+ },
+ "stages": [
+  {
+   "stage": "warmup1",
+   "rate_per_s": 0.1,
+   "start_utc": "2026-10-08T01:47:17.183Z",
+   "end_utc": "2026-10-08T01:57:17.183Z",
+   "planned": 60,
+   "triggered_log": 60,
+   "completed_log": 60,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 60,
+    "completed_log": 60,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "warmup2",
+   "rate_per_s": 0.3,
+   "start_utc": "2026-10-08T01:57:17.184Z",
+   "end_utc": "2026-10-08T02:07:17.184Z",
+   "planned": 180,
+   "triggered_log": 181,
+   "completed_log": 181,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 181,
+    "completed_log": 181,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s1",
+   "rate_per_s": 0.2,
+   "start_utc": "2026-10-08T02:07:17.184Z",
+   "end_utc": "2026-10-08T02:17:17.184Z",
+   "planned": 120,
+   "triggered_log": 121,
+   "completed_log": 121,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 121,
+    "completed_log": 121,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s2",
+   "rate_per_s": 0.3,
+   "start_utc": "2026-10-08T02:17:17.184Z",
+   "end_utc": "2026-10-08T02:27:17.184Z",
+   "planned": 180,
+   "triggered_log": 181,
+   "completed_log": 180,
+   "failed_log": 1,
+   "optimistic_lock": 1,
+   "error_warn_lines": 1,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 181,
+    "completed_log": 180,
+    "failed_log": 1,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s3",
+   "rate_per_s": 0.4,
+   "start_utc": "2026-10-08T02:27:17.185Z",
+   "end_utc": "2026-10-08T02:37:17.185Z",
+   "planned": 240,
+   "triggered_log": 241,
+   "completed_log": 241,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 149,
+    "completed_log": 147,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s4",
+   "rate_per_s": 0.5,
+   "start_utc": "2026-10-08T02:37:17.184Z",
+   "end_utc": "2026-10-08T02:47:17.184Z",
+   "planned": 300,
+   "triggered_log": 301,
+   "completed_log": 299,
+   "failed_log": 1,
+   "optimistic_lock": 0,
+   "error_warn_lines": 9,
+   "invalidating_contract": 2,
+   "laufordner": {
+    "triggered_log": 265,
+    "completed_log": 268,
+    "failed_log": 1,
+    "invalidating_contract": 2
+   }
+  },
+  {
+   "stage": "s5",
+   "rate_per_s": 0.6,
+   "start_utc": "2026-10-08T02:47:17.184Z",
+   "end_utc": "2026-10-08T02:57:17.184Z",
+   "planned": 360,
+   "triggered_log": 360,
+   "completed_log": 360,
+   "failed_log": 0,
+   "optimistic_lock": 0,
+   "error_warn_lines": 0,
+   "invalidating_contract": 0,
+   "laufordner": {
+    "triggered_log": 360,
+    "completed_log": 360,
+    "failed_log": 0,
+    "invalidating_contract": 0
+   }
+  },
+  {
+   "stage": "s6",
+   "rate_per_s": 0.7,
+   "start_utc": "2026-10-08T02:57:17.184Z",
+   "end_utc": "2026-10-08T03:07:17.184Z",
+   "planned": 420,
+   "triggered_log": 420,
+   "completed_log": 268,
+   "failed_log": 3,
+   "optimistic_lock": 0,
+   "error_warn_lines": 94,
+   "invalidating_contract": 18,
+   "laufordner": {
+    "triggered_log": 420,
+    "completed_log": 268,
+    "failed_log": 3,
+    "invalidating_contract": 18
+   }
+  },
+  {
+   "stage": "s7",
+   "rate_per_s": 0.8,
+   "start_utc": "2026-10-08T03:07:17.184Z",
+   "end_utc": "2026-10-08T03:17:17.184Z",
+   "planned": 480,
+   "triggered_log": 481,
+   "completed_log": 1,
+   "failed_log": 500,
+   "optimistic_lock": 0,
+   "error_warn_lines": 3356,
+   "invalidating_contract": 1034,
+   "laufordner": {
+    "triggered_log": 481,
+    "completed_log": 1,
+    "failed_log": 491,
+    "invalidating_contract": 1018
+   }
+  },
+  {
+   "stage": "s8",
+   "rate_per_s": 1.0,
+   "start_utc": "2026-10-08T03:17:17.184Z",
+   "end_utc": "2026-10-08T03:27:17.184Z",
+   "planned": 600,
+   "triggered_log": 601,
+   "completed_log": 0,
+   "failed_log": 604,
+   "optimistic_lock": 0,
+   "error_warn_lines": 4013,
+   "invalidating_contract": 1208,
+   "laufordner": {
+    "triggered_log": 601,
+    "completed_log": 0,
+    "failed_log": 604,
+    "invalidating_contract": 1208
+   }
+  },
+  {
+   "stage": "recovery",
+   "rate_per_s": 0.2,
+   "start_utc": "2026-10-08T03:27:17.185Z",
+   "end_utc": "2026-10-08T03:37:17.185Z",
+   "planned": 120,
+   "triggered_log": 121,
+   "completed_log": 0,
+   "failed_log": 239,
+   "optimistic_lock": 0,
+   "error_warn_lines": 1656,
+   "invalidating_contract": 478,
+   "laufordner": {
+    "triggered_log": 121,
+    "completed_log": 0,
+    "failed_log": 175,
+    "invalidating_contract": 350
+   }
+  }
+ ]
+}
