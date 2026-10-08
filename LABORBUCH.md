@@ -1123,3 +1123,48 @@ Gesamt: 3068 Iterationen von k6, 2858 Auslösungen im PURIS-Log, 1755 abgeschlos
 **Gemacht:** Verfasser: Commit `78c7e84` (Messplan `k0.env`, Entscheidungen vor K0), Tag `setup-v1`, beide nach `origin` gepusht. Auf der VM (ca. 23:40 UTC am 2026-10-07): VM-Kopie von `runs/2026-10-07_2025_vorstudie3_rep-1/` geprüft – `SHA256SUMS` gleich dem Commit, `sha256sum -c` ohne Abweichung, 37 Dateien wie auf dem Mac – und nach `~/puris-loadlab-state/runs-vm/` verschoben; dann `git pull --ff-only` und `git fetch --tags`.
 **Ergebnis:** `HEAD` = `78c7e84`, `git describe --tags --exact-match` = `setup-v1`, Git-Stand sauber; `./lab status`: Sperre frei, PURIS und EDC 6/6 bereit, keine Last. Die VM ist bereit für `./lab series k0 3`.
 **Offen vor dem Start:** Bestätigung des Verfassers, dass die anderen Dienste des NAS ruhen; Startzeitpunkt.
+
+## 2026-10-08 – Hauptmessung K0 gestartet (`./lab series k0 3`)
+
+**Prüfung vor dem Start** (vom Assistenten auf Wunsch des Verfassers, „alles selbst prüfen“; VM nur lesend, 2026-10-07, ca. 23:39 UTC):
+- VM auf `78c7e84` = `setup-v1`, Git-Stand sauber; Platte 25 % belegt, 22 GB RAM verfügbar, Swap aus, NTP synchronisiert (UTC).
+- Alle Pods des Systems unter Test, des Messsystems und des k6-Operators bereit und `Guaranteed` (nicht `Guaranteed` nur die k3s-eigenen Pods in `kube-system`, wie in der Ressourcenübersicht); einziger Neustart: Wallet-Stub am 2026-10-06, 10:29 UTC (während `c1`). Stand `s0-v2`: Prüfsummen in Ordnung.
+- Steal Time der letzten 60 h (5-min-Mittel, je Stunde zusammengefasst): ohne Last 0,14–0,47 %, während der Vorstudien bis 1,76 %; in den Nächten 06.10. und 07.10. kein Anstieg, also kein Hinweis auf nächtliche Aufträge des NAS.
+- IO-Wartezeit ohne Last derzeit ca. 2 % (früher 0,1–1 %). Platte der VM über 10 s: ca. 98 Schreibvorgänge/s, 0,7 MiB/s, mittlere Wartezeit 2 ms, keine Lesezugriffe – kleine Schreibvorgänge der Dienste in der VM; kein Hinweis auf Konkurrenz durch das NAS (dann wären die Wartezeiten deutlich höher). In Vorstudie 1 und 3 lag die IO-Wartezeit während der Last bei 2–3,5 %.
+- Mac: k9s lief (beendet durch den Assistenten); kein `kubectl port-forward` aktiv (Grafana nicht geöffnet).
+- **Andere Dienste des NAS:** vom Verfasser nicht bestätigt (unsicher). Aus der VM sind sie nicht einsehbar; ersatzweise gelten der Steal-Time-Verlauf oben und das Gültigkeitskriterium Steal Time je Lauf (`KONZEPT.md`, Abschnitt 6).
+
+**Gemacht:** Messreihe in `tmux` (Sitzung `k0`) gestartet, Befehl wie in `AUFBAU.md`, „Messlauf“; Start 2026-10-07, 23:41:01 UTC (01:41 MESZ). Erster Lauf `2026-10-07_2341_k0_rep-1`, `lab` meldet Commit `78c7e84` und Tag `setup-v1`; Vorprüfung bestanden (Platte 25 %, Steal Time 0,49 %); Reset auf `s0-v2` begonnen.
+**Erwartung** (Dauer der Vorstudie 3, ca. 2 h je Wiederholung): Ende ca. 05:40 UTC, mit einem Ersatzlauf ca. 07:40 UTC.
+**Verlauf rep-1:** Reset 389 s ohne Reparatur (Zeilen aller 7 Datenbanken gleich `s0-v2`, `ANALYZE`); Funktionstest 3/3 in 36 s; TestRun `lab-20261007234101-4054283` gestartet 23:48:11 UTC (11 Stufen à 10 min), Runner `Running`.
+
+## 2026-10-08 – Messreihe K0 beendet: 3 gültige Läufe, `rep-1` ungültig (Steal Time); Lücken im Log des Customer-PURIS gefunden
+
+**Gemacht:** `./lab series k0 3` endete 2026-10-08, 07:40:45 UTC (Ende-Code 0 in allen Läufen). `rep-1` ungültig → `lab series` startete automatisch den Ersatzlauf `rep-4`. Alle vier Laufordner auf den Mac kopiert (`scp`), je 36 Einträge in `SHA256SUMS`, 0 Abweichungen; VM-Kopien noch nicht verschoben (erst nach dem Commit).
+
+| Lauf | Zeit (UTC) | gültig | Steal max / Mittel | Größe |
+|---|---|---|---|---|
+| `2026-10-07_2341_k0_rep-1` | 23:41–01:40 | **nein** (`steal_ok`) | 6,01 % / 0,78 % | 27M |
+| `2026-10-08_0140_k0_rep-2` | 01:40–03:40 | ja | 1,88 % / 0,91 % | 28M |
+| `2026-10-08_0340_k0_rep-3` | 03:40–05:40 | ja | 2,15 % / 1,11 % | 28M |
+| `2026-10-08_0540_k0_rep-4` | 05:40–07:40 | ja | 1,94 % / 1,01 % | 28M |
+
+Alle Läufe: Tag `setup-v1`, Reset ohne Reparatur, Funktionstest bestanden, keine Neustarts, `dropped_iterations` 0, Abarbeiten „alle Transaktionen beendet“.
+
+**Ungültig `rep-1`:** Steal Time 5,18 / 6,01 / 5,38 % in den 15-s-Werten 01:00:20–01:00:50 UTC (03:00 MESZ) in Stufe `s6`, sonst ≤ 1,5 %. Hinweis auf einen zeitgesteuerten Auftrag des NAS um ca. 03:00 MESZ (auch am 2026-10-07, 01 Uhr UTC, Steal max 0,91 %, IO-Wartezeit max 3,92 %, damals während des Probelaufs). Die anderen Dienste des NAS waren vor der Messreihe nicht bestätigt angehalten (Eintrag „Hauptmessung K0 gestartet“).
+
+**Ergebnis vorläufig** (`analysis/stage_summary.py`; Zählungen aus Loki in den Lücken unvollständig, siehe unten):
+- `rep-2`: einzelne Invalidierungen in `s4` (0,5/s: 2); `s5` (0,6/s) 0,60/s abgeschlossen ohne Fehler; Kippen in `s6` (0,7/s: 0,45/s abgeschlossen, 18 Invalidierungen); ab `s7` 0 abgeschlossen; Erholungsstufe 0.
+- `rep-3`: je 1 Invalidierung in `warmup2` (0,3/s) und `s4`; Kippen in `s5` (0,6/s: 0,14/s abgeschlossen, 85 Fehler); ab `s6` 0; Erholungsstufe 0.
+- `rep-4`: bis `s4` ohne Fehler; `s5` (0,6/s) 0,60/s abgeschlossen, 3 Invalidierungen; Kippen in `s6` (0,7/s: 0,11/s, 115 Fehler); ab `s7` 0; Erholungsstufe 0.
+- `rep-1` (ungültig): kein Kippen bis 1/s – `s8` (1,0/s) 1,00/s abgeschlossen, 1 Fehler, 0 Invalidierungen; Erholungsstufe 0,20/s; CPU Control Plane Customer in `s8` 0,13 Kerne (in den gekippten Stufen der anderen Läufe 0,45–0,48).
+
+**Beobachtung / Hypothesen:** In allen gültigen Läufen keine Erholung bei 0,2/s (wie Vorstudie 3). Kipppunkt 0,6–0,7/s. `rep-1` zeigt, dass der Aufbau im „guten“ Zustand 1/s verarbeiten kann – das Kippen hängt von einem Auslöser ab, nicht von einer festen Kapazitätsgrenze (Hypothese: metastabiles Verhalten, F2). Einzelne Invalidierungen bei geringer Last (`rep-3`, `warmup2`) wurden abgefangen; das Kriterium „mindestens ein ‚Invalidating …‘“ (`KONZEPT.md`, Abschnitt 6, Vorschlag) markiert solche Stufen als gesättigt, obwohl das System nicht kippt – zu besprechen, nicht stillschweigend ändern.
+
+**Problem – Lücken im Log des Customer-PURIS in Loki:** In `rep-1` bis `rep-3` und in Vorstudie 3 fehlen im gesammelten Log des Customer-PURIS Zeiträume von 24–290 s vollständig (keine einzige Zeile); `rep-4` ohne Lücke. Lücken > 20 s: `rep-1` 00:35:10–00:38:24 und 01:15:17–01:18:24; `rep-2` 02:33:25–02:38:15; `rep-3` 04:33:45–04:37:54 und drei kurze 04:49:40–04:52:46; Vorstudie 3 21:40:52–21:41:34, 21:50:16–21:51:58, 21:52:28–21:53:30 UTC.
+- In denselben Minuten liefen die Transaktionen weiter: EDC des Customers 48 Transfers/min (= 24 Transaktionen × 2), Log des Supplier-PURIS 24 Zeilen/min, k6 0,4/s (Beispiel `s3` in `rep-1` bis `rep-3`).
+- Fehlende Auslösezeilen je Stufe ≈ Lückendauer × Rate: Vorstudie 3 `s5` 26 / 26, `s6` 67 / 69; `rep-1` `s3` 75 / 76, `s7` 145 / 147; `rep-2` `s3` 91 / 93; `rep-3` `s3` 78 / 79. In gekippten Stufen fehlen etwas mehr (Vorstudie 3 `s7` 114 / 52, `rep-3` `s5` 140 / 111), vermutlich zusätzlich kürzere Lücken.
+- `loki_discarded_samples_total` ohne Zeitreihe (Loki hat nichts abgewiesen). Eigene Logs von Alloy: im Zeitraum der Lücke in `rep-2` (02:32–02:39:30 UTC) keine Meldung; sonst nur „start/stopped tailing file“ bei jedem Reset.
+- Die erste Lücke liegt in `rep-1` bis `rep-3` an derselben Stelle: nach ca. 0,83 MiB gesammelter Logzeilen seit Lastbeginn (`s3`, ca. 56 min nach dem Start von PURIS).
+**Hypothese (nicht geprüft):** Rotation des Container-Logs durch das Kubelet (k3s-Standard 10 MiB je Datei, in `/etc/rancher/k3s/` nichts geändert) und `loki.source.file` von Alloy liest nach der Rotation verspätet oder nicht weiter. Prüfen ließ es sich nicht: `/var/log/pods` nur für root lesbar, kein `sudo` ohne Passwort.
+**Folgen:** (1) Abgeschlossene und gescheiterte Transaktionen, Invalidierungen und Verfahren A der Dauer aus Loki sind in den Lücken unvollständig; die Kennzeichen `S` in `s3` von `rep-1` bis `rep-3` sind Folge der Lücke (EDC: 48 Transfers/min). (2) Die fehlenden Auslösungen der Vorstudie 3 (Eintrag „Entscheidungen vor K0“) sind damit erklärt – kein Verhalten von PURIS. (3) Der Zähltest von `b3` (2026-10-06) lief mit wenig Logmenge ohne Rotation und belegt Vollständigkeit nur dafür. (4) Vor K1: Ursache klären und beheben; danach entscheidet der Verfasser, ob K0 wiederholt wird. Rohdaten unverändert.

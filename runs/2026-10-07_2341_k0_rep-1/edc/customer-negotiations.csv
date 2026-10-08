@@ -1,0 +1,4 @@
+id,type,state,state_count,counterparty_id,agreement_id,created_at,state_timestamp,updated_at,error_detail
+07bcd3bb-2d55-4635-bc26-af8998e46399,CONSUMER,1200,1,did:web:ssi-dim-wallet-service.identity:BPNL00000003AYRE,e068b041-5010-491d-9c67-d4a5bb0144e8,1791329100060,1791329103519,1791329103519,
+52c3d7f3-5054-4ac3-9e97-2b4459ab1a15,CONSUMER,1200,1,did:web:ssi-dim-wallet-service.identity:BPNL00000003AYRE,88d04116-94e9-416a-a2cb-1e00cd60be00,1791329114088,1791329115969,1791329115969,
+f1996e51-c0d6-4d4f-baff-1ac797f7f987,CONSUMER,1200,1,did:web:ssi-dim-wallet-service.identity:BPNL00000003AYRE,8871d364-a84f-49cc-a55b-92850567d678,1791329918818,1791329921214,1791329921214,

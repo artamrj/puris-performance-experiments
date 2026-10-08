@@ -1254,6 +1254,8 @@ ssh puris-vm 'mkdir -p ~/puris-loadlab-state/runs-vm && mv ~/puris-performance-e
 - Reset auf `s0-v2` 326 s; k6 91 Auslösungen, `dropped_iterations` 0, auf alle 20 Materialien verteilt (je 4–5); Gültigkeit nach allen Kriterien erfüllt (Steal Time höchstens 1,71 %).
 - **Ergebnis der Transaktionen:** während der Stufen 0 abgeschlossen; nach 5 min Abarbeiten 8 abgeschlossen, 40 gescheitert, 43 offen. Ursache: Last direkt nach dem Kaltstart (Einzelheiten in `LABORBUCH.md`, 2026-10-07, „Kurztest“) – daher Aufwärmstufen in der Vorstudie.
 
+**Hauptmessung K0** (`experiments/plans/k0.env`, aus `setup-v1`; `./lab series k0 3`, 2026-10-07 23:41 – 2026-10-08 07:40 UTC): `runs/2026-10-07_2341_k0_rep-1/` (ungültig: Steal Time max 6,01 %), `runs/2026-10-08_0140_k0_rep-2/`, `runs/2026-10-08_0340_k0_rep-3/`, `runs/2026-10-08_0540_k0_rep-4/` (Ersatzlauf) – je 27–28M, auf dem Mac je 36 × `OK`. Je Wiederholung ca. 2 h (Reset 389 s, Funktionstest 36 s, 110 min Last, Abarbeiten und Sammeln ca. 4 min). Lücken im Log des Customer-PURIS: `LABORBUCH.md`, „Messreihe K0 beendet“.
+
 **Kurzauswertung je Stufe `[Mac]`:**
 ```bash
 python3 analysis/stage_summary.py runs/<laufordner>

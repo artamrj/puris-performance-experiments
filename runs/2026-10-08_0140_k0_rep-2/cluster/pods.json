@@ -1,0 +1,399 @@
+[
+  {
+    "namespace": "customer",
+    "pod": "dtr-7979c5ccb7-rg7w2",
+    "uid": "47e9fc33-8877-4e3f-ac81-74179fd043e9",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "digital-twin-registry",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "dtr-postgresql-0",
+    "uid": "8c08b488-ac95-4712-aca2-c46e61a3e666",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "edc-controlplane-587996b7b5-btwgn",
+    "uid": "f9cc2f9e-f7b4-4e38-bec7-5abd9a8dfe9e",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "tractusx-connector",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "edc-dataplane-7bd7b6bd97-c4k25",
+    "uid": "9ef0c354-7305-4251-9bd3-2bd50e449fa1",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "tractusx-connector",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "edc-postgresql-0",
+    "uid": "20406cc7-5bc1-45f7-bbe8-bce444f3904c",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "edc-vault-0",
+    "uid": "4cc09ed2-f609-44f1-b44e-c26a5abb2155",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "vault",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "puris-backend-6f46958fb-lnk2s",
+    "uid": "1036f609-9495-447e-9da9-61b3f70174cc",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "puris-backend",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "customer",
+    "pod": "puris-postgresql-0",
+    "uid": "9e4c0a97-a907-48a5-8c97-b0c07d75cb5b",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "identity",
+    "pod": "ssi-dim-wallet-stub-b4d7c6fb8-xnmjq",
+    "uid": "a298d97e-7d38-48a3-9acb-e1447a9d4096",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "ssi-dim-wallet-stub",
+        "restarts": 1,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "identity",
+    "pod": "wallet-postgres-0",
+    "uid": "eab5b3f1-9edd-4a7f-adc5-d7aa8c0def9d",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "k6-operator",
+    "pod": "k6-operator-controller-manager-7c45b488b8-tvch5",
+    "uid": "cb6aaa96-dc65-418a-9c24-17d761ac334c",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "manager",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "kube-system",
+    "pod": "coredns-577d995dff-bxxlq",
+    "uid": "135cbd5e-61b7-4acc-95b3-f143a30ed1fc",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "coredns",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "kube-system",
+    "pod": "local-path-provisioner-6858d854cf-q6njl",
+    "uid": "6daebc40-232f-45c8-baee-d73968f95da2",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "local-path-provisioner",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "kube-system",
+    "pod": "metrics-server-778c4649b4-cmvc2",
+    "uid": "68571b68-74f1-49b5-85bd-c08d8c1d304a",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "metrics-server",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "logging",
+    "pod": "alloy-kcv4x",
+    "uid": "0cc97397-e54a-4e61-8f8b-edd421eebbd3",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "alloy",
+        "restarts": 0,
+        "ready": true
+      },
+      {
+        "name": "config-reloader",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "logging",
+    "pod": "loki-0",
+    "uid": "3d0d97e7-2712-443c-8f34-5c474eeb44f8",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "loki",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "monitoring",
+    "pod": "monitoring-grafana-647dfc6967-jlf5d",
+    "uid": "e211b359-3c20-4495-9af9-1916cf5cd013",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "grafana",
+        "restarts": 0,
+        "ready": true
+      },
+      {
+        "name": "grafana-sc-dashboard",
+        "restarts": 0,
+        "ready": true
+      },
+      {
+        "name": "grafana-sc-datasources",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "monitoring",
+    "pod": "monitoring-kube-prometheus-operator-6dd9b7895b-nkvg5",
+    "uid": "789439a6-d85e-418a-8452-10b29a912b2c",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "kube-prometheus-stack",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "monitoring",
+    "pod": "monitoring-kube-state-metrics-86b584b658-s8cm5",
+    "uid": "e7fb168a-272e-4034-95b7-5db23758961e",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "kube-state-metrics",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "monitoring",
+    "pod": "monitoring-prometheus-node-exporter-jdg2j",
+    "uid": "a3011f42-ffd6-4a4e-9730-fb686be30536",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "node-exporter",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "monitoring",
+    "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+    "uid": "1659eb26-b5e6-4f03-86d5-1e99685e3533",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "config-reloader",
+        "restarts": 0,
+        "ready": true
+      },
+      {
+        "name": "prometheus",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "dtr-d4f6c5bc5-nzx89",
+    "uid": "8b84f739-2518-4353-93d1-4ae86b6b87b0",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "digital-twin-registry",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "dtr-postgresql-0",
+    "uid": "c9f9ff03-7819-45a5-8c87-23c37f5c2ff1",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "edc-controlplane-dcc6896cd-264g6",
+    "uid": "d5b8a8fc-0987-4e3b-b87f-3999660889f8",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "tractusx-connector",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "edc-dataplane-85b5556596-ktpf7",
+    "uid": "22d9c192-a350-42cd-a13f-85a4da147fde",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "tractusx-connector",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "edc-postgresql-0",
+    "uid": "51555cb8-faa3-497f-9f83-deea5a89e896",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "edc-vault-0",
+    "uid": "44084d14-b825-4868-b4ed-f1784ec80b3e",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "vault",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "puris-backend-848f5f45fc-s2bgl",
+    "uid": "b27cf8aa-5067-4920-9ad4-15aef9ef9972",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "puris-backend",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  },
+  {
+    "namespace": "supplier",
+    "pod": "puris-postgresql-0",
+    "uid": "4f759402-8356-4844-9184-7c28c70ea2dd",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "restarts": 0,
+        "ready": true
+      }
+    ]
+  }
+]

@@ -1,0 +1,4 @@
+id,type,state,state_count,counterparty_id,agreement_id,created_at,state_timestamp,updated_at,error_detail
+b1258037-aae0-46a4-a6a4-6256eb7c1613,PROVIDER,1200,1,did:web:ssi-dim-wallet-service.identity:BPNL00000003AZQP,83673ffd-c48c-429a-b6c6-7e8dac70b874,1791329101083,1791329103532,1791329103532,
+1992f9fb-72ac-41fd-bbc6-4833859fd6ac,PROVIDER,1200,1,did:web:ssi-dim-wallet-service.identity:BPNL00000003AZQP,94e18afa-4f43-4cbc-aa09-d5598efd2adc,1791329114337,1791329115978,1791329115978,
+3e92b4f3-d333-44a4-8eba-064a68a8a875,PROVIDER,1200,1,did:web:ssi-dim-wallet-service.identity:BPNL00000003AZQP,0ef26eaf-3d7c-479a-9a01-d5fa6d5cdd8e,1791329919832,1791329921225,1791329921225,

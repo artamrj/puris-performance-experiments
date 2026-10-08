@@ -1,0 +1,15 @@
+{
+  "state": "s0-v2",
+  "start_utc": "2026-10-08T05:40:16Z",
+  "end_utc": "2026-10-08T05:46:44Z",
+  "duration_s": 388,
+  "counts_equal_after_restore": true,
+  "counts_diff_after_start": [],
+  "repairs": [],
+  "function_test": {
+    "transactions": 3,
+    "completed": 3,
+    "seconds": 37,
+    "passed": true
+  }
+}
