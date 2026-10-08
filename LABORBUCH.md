@@ -1258,3 +1258,31 @@ Alle Läufe: Tag `setup-v1`, Reset ohne Reparatur, Funktionstest bestanden, kein
 **Gemacht** (Assistent): `lab series <plan> <n> [<erste>]` – Nummerierung ab `<erste>` (Standard 1), schon vergebene Nummern in `runs/` werden abgelehnt, Ersatzlauf erhält die nächste freie Nummer; Messlauf über die Funktion `lab_run` (in Tests ersetzbar). Vier neue Tests in `tests/test_lifecycle.py` (Standard ab 1, Fortsetzung ab 5, Ablehnung vergebener Nummern, Ersatz überspringt vergebene Nummer); lokal 46 von 46 Tests bestanden.
 **Beobachtung:** Vom Verfasser im Repository: Grafana-Dashboard `setup/b1-monitoring/dashboards/bachelorarbeit-messung.json` (Commit `f93cfc6`, 22 Panels) – nur als Datei, nicht im Cluster installiert (keine ConfigMap mit `grafana_dashboard`); keine IP-Adressen, Hostnamen oder Schlüssel. Ohne Einfluss auf die Messung; Grafana bleibt während der Läufe geschlossen.
 **`setup-v2`** enthält gegenüber `setup-v1`: korrigierten Sammler und Vollständigkeitsprüfung (`dd6dcaa`), Nachtrag-Skript, `lab series` mit erster Wiederholung, Dashboard-Datei, Dokumentation. Konfiguration des Systems unter Test (alle `values.yaml`, Reset-Stand `s0-v2`, Messplan `k0.env`) unverändert. Dateien für K1 folgen später (`setup-v3`).
+
+## 2026-10-08 – `setup-v2` gesetzt, VM auf dem Tag; K0-Ergänzung für 20:00 UTC eingeplant
+
+**Gemacht:** Verfasser: Commit `787f32e`, Tag `setup-v2`, gepusht. Auf der VM (12:50 UTC): `git pull --ff-only` von `78c7e84` auf `787f32e`, `git describe --tags --exact-match` = `setup-v2`, Git-Stand sauber; K0 `rep-1` bis `rep-4` in `runs/` (aus Git), also `rep-5` bis `rep-7` frei; `./lab status`: Sperre frei, PURIS und EDC 6/6 bereit, keine Last; Platte 26 %.
+**Verzögerter Start** (Assistent): Skript `~/puris-loadlab-state/start-k0b.sh` (außerhalb des Repositorys) in `tmux`-Sitzung `k0b`, Ausgabe nach `~/puris-loadlab-state/logs/k0-series-2.log`. Es wartet bis 2026-10-08 20:00 UTC (22:00 MESZ), prüft dann, dass die VM genau auf `setup-v2` steht, und startet `./lab series k0 3 5`. Erwartetes Ende ca. 02:00 UTC, mit Ersatzlauf ca. 04:00 UTC.
+**Bedingungen:** Sicherheitsscan des NAS um 03:00 MESZ abgeschaltet (Verfasser, Eintrag „Ursache der Steal-Spitze“); Grafana geschlossen halten.
+**Start vorgezogen** (Wunsch des Verfassers im Chat): wartende Sitzung `k0b` um 12:52 UTC beendet (hatte nichts gestartet), Bereitschaft geprüft (Tag `setup-v2`, Git-Stand sauber, `./lab status` bereit) und `./lab series k0 3 5` sofort in `tmux` `k0b` gestartet, 2026-10-08 12:52:34 UTC (14:52 MESZ). Erster Lauf `2026-10-08_1252_k0_rep-5` (Commit `787f32e`, Tag `setup-v2`); Vorprüfung bestanden (Platte 26 %, Steal Time 0,68 %). Läuft tagsüber: Ob andere Dienste des NAS ruhen, ist nicht bestätigt; das Gültigkeitskriterium Steal Time gilt wie immer. Erwartetes Ende ca. 18:50 UTC (20:50 MESZ), mit Ersatzlauf ca. 20:50 UTC.
+
+## 2026-10-08 – K1 vorbereitet (Skalierungskonfiguration K1-NAS, Messplan `k1.env`)
+
+**Entscheidung** (Verfasser, im Chat, auf Vorschlag des Assistenten): K1 heute Nacht im Anschluss an die K0-Ergänzung. Werte (CPU; RAM unverändert):
+
+| Komponente | K0 | K1-NAS | K0: bei 1,0/s ohne Kippen / höchstens (gekippt) | Rolle |
+|---|---|---|---|---|
+| EDC Control Plane Customer (`c2`) | 500m | 1000m | 0,13 / 0,50 (am Limit) | Entlastung |
+| PostgreSQL EDC Customer (`c2`) | 200m | 400m | 0,09 / 0,20 (am Limit) | Entlastung |
+| PostgreSQL EDC Supplier (`c4`) | 200m | 400m | 0,10 / 0,20 (am Limit) | Entlastung |
+| PURIS-Backend Customer (`d1`) | 600m | 350m | 0,026 / 0,185 | Spender |
+| PURIS-Backend Supplier (`d2`) | 400m | 250m | 0,007 / 0,048 | Spender |
+| EDC Data Plane Customer (`c2`) | 200m | 100m | 0,003 / 0,025 | Spender |
+| EDC Data Plane Supplier (`c4`) | 400m | 250m | 0,042 / 0,091 | Spender |
+| Vault Supplier (`c4`) | 100m | 50m | 0,015 / 0,021 | Spender |
+
+Summe der requests während eines Laufs 6925m von 7000m (K0: 6725m); der k6-Starter (50m) passt noch daneben. Nicht verändert: Wallet-Stub (Neustart leert seine Datenbank), DTRs (Start 10–21 min), k6-Runner (Messsystem wie in K0), Vault des Customers (in K0 im gekippten Zustand am Limit – möglicher nächster Engpass, bewusst unverändert, damit der Eingriff gezielt bleibt).
+**Begründung der Spender:** gemessener Bedarf weit unter dem neuen Limit (Faktor ≥ 2 zum Höchstwert in K0). Startdauer gemessen (Reset von `rep-5`, 12:53–12:59 UTC; Container-Start bis bereit): Data Plane Customer 200m 73 s, Supplier 400m 33 s; PURIS Customer 600m 179 s, Supplier 400m 209 s – etwa umgekehrt proportional zur CPU. Deshalb PURIS Supplier 250m statt der zunächst vorgeschlagenen 200m (sonst ca. 7 min, Zeitlimit von `lab` 10 min). Zeitlimits von `lab` und Prüfungen der Pods bleiben unverändert (Data Plane Customer: Lebendprüfung ab 300 s, erwarteter Start ca. 150 s).
+**Messplan `k1.env`:** Stufen von K0 unverändert, danach 1,5 / 2 / 2,5 / 3 je s, Erholung 0,2/s; 15 Stufen à 10 min, ca. 2,7 h je Wiederholung.
+**Gemacht:** Überlagerungen `setup/{c2-customer-edc,c4-supplier-edc,d1-puris-customer,d2-puris-supplier}/k1-nas.yaml`, Messplan `experiments/plans/k1.env`. Geprüft mit `helm template` (Helm 4.3.0, Kubernetes 1.37.1) je Release mit und ohne Überlagerung: Unterschied nur in den CPU-Werten oben, jeweils request und limit gleich. TestRun aus `k1.env` gerendert: 15 Stufen, 20 Materialien, Runner 500m wie in K0. Tests 46 von 46.
+**Ablauf heute Abend (geplant):** nach dem Ende der K0-Ergänzung PURIS und EDC anhalten (sonst passt die neue Control Plane mit 1000m beim schrittweisen Austausch nicht neben die alte), VM auf `setup-v3`, die vier Releases mit `-f values.yaml -f k1-nas.yaml` aktualisieren, Ressourcen prüfen (alle `Guaranteed`, Summe ≤ `Allocatable`), Probe-Reset `./lab reset s0-v2` (Startdauer mit K1) und `./lab check`, dann `./lab series k1 3`.

@@ -1,0 +1,18 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    d1-puris-customer – Skalierungskonfiguration K1-NAS (Überlagerung)
+# Basis:       values.yaml in diesem Ordner; hier nur Abweichungen (CPU, RAM gleich).
+# Zweck:       Spender für K1-NAS (siehe c2-customer-edc/k1-nas.yaml, F3).
+# Messwerte:   CPU in Kernen bei 1,0/s ohne Kippen (K0 rep-1) / höchstens in K0.
+#
+# Anwenden [Mac] (vorher PURIS und EDC anhalten, siehe AUFBAU.md, „K1-NAS“):
+#   helm upgrade --install puris "$HOME/.local/opt/puris-loadlab/charts/puris-7.2.0/charts/puris" -n customer \
+#     -f ".../setup/d1-puris-customer/values.yaml" -f ".../setup/d1-puris-customer/k1-nas.yaml"
+# Zurück zu K0: derselbe Befehl ohne `-f …/k1-nas.yaml`.
+# ══════════════════════════════════════════════════════════════════════════════
+
+backend:
+  # 600m → 350m (Spender). K0: 0,026 / 0,185 (gekippt, viele Threads). Start mit
+  # 600m: 179 s (erwartet ca. 5 min; Zeitlimit von `lab` 10 min, Startprüfung ca. 17 min).
+  resources:
+    requests: { cpu: 350m, memory: 1536Mi }
+    limits:   { cpu: 350m, memory: 1536Mi }
