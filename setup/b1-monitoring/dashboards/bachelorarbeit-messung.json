@@ -1,0 +1,1439 @@
+{
+ "uid": "bachelorarbeit-messung",
+ "title": "Bachelorarbeit – Messung",
+ "description": "Live-Ansicht der Messgrößen der Bachelorarbeit (PURIS-Skalierung). Abfragen wie experiments/collect/collect_run.py.",
+ "tags": [
+  "bachelorarbeit"
+ ],
+ "timezone": "utc",
+ "editable": true,
+ "graphTooltip": 1,
+ "refresh": "",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "schemaVersion": 39,
+ "links": [
+  {
+   "title": "Namespace (Pods)",
+   "type": "link",
+   "url": "/d/85a562078cdf77779eaa1add43ccec1e?var-namespace=customer",
+   "keepTime": true,
+   "icon": "dashboard"
+  },
+  {
+   "title": "Pod",
+   "type": "link",
+   "url": "/d/6581e46e4e5c7ba40a07646395ef7b23",
+   "keepTime": true,
+   "icon": "dashboard"
+  },
+  {
+   "title": "Node Exporter / Nodes",
+   "type": "link",
+   "url": "/d/7d57716318ee0dddbac5a7f451fb7753",
+   "keepTime": true,
+   "icon": "dashboard"
+  },
+  {
+   "title": "Explore",
+   "type": "link",
+   "url": "/explore",
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "testid",
+    "label": "Lauf (testid)",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(k6_iterations_total, testid)",
+     "refId": "testid"
+    },
+    "definition": "label_values(k6_iterations_total, testid)",
+    "regex": "/^\\d{4}-.*/",
+    "sort": 2,
+    "refresh": 2,
+    "multi": false,
+    "includeAll": false
+   },
+   {
+    "name": "ns",
+    "label": "Namespace",
+    "type": "custom",
+    "query": "customer,supplier,identity",
+    "multi": true,
+    "includeAll": true,
+    "allValue": "customer|supplier|identity",
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    },
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "text",
+   "title": "Hinweise",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 4
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "**Nur zum Ansehen.** Während Messläufen Grafana und `kubectl port-forward` schließen. Zahlen und Abbildungen der Arbeit entstehen nur in `analysis/` aus `runs/`, nie hier.  \nZeiten in **UTC** (wie `runs/` und `LABORBUCH.md`). Lauf oben über `testid` wählen (= Name des Laufordners); Zeitraum des Laufs aus `meta.json`.  \nDie Antwortzeit von k6 ist **nicht** die Transaktionsdauer (asynchroner Endpunkt) – Durchsatz und Fehler kommen aus den PURIS-Logs (Abschnitt *Transaktionen*). Abfragen wie in `experiments/collect/collect_run.py`."
+   }
+  },
+  {
+   "id": 2,
+   "type": "row",
+   "title": "Gültigkeit: Knoten (VM)",
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 24,
+    "h": 1
+   },
+   "collapsed": false,
+   "panels": []
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Steal Time",
+   "description": "Gültigkeitskriterium je Lauf: höchstes 1-min-Mittel < 5 %, Mittel über das Messfenster < 2 % (STEAL_MAX, STEAL_MEAN_MAX in experiments/plans/*.env).",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 5,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(node_cpu_seconds_total{mode=\"steal\"}[1m])) / sum(rate(node_cpu_seconds_total[1m]))",
+     "legendFormat": "Steal Time",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "line+area"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 0.02
+       },
+       {
+        "color": "red",
+        "value": 0.05
+       }
+      ]
+     },
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "CPU der VM nach Modus (Kerne)",
+   "description": "Belegte Kerne der VM ohne Leerlauf, gestapelt nach Modus (user, system, iowait, steal …).",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 5,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (mode)(rate(node_cpu_seconds_total{mode!=\"idle\"}[1m]))",
+     "legendFormat": "{{mode}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 40,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "Platte und Arbeitsspeicher der VM (jetzt)",
+   "description": "Vorprüfung von ./lab run (lib/stack.sh): Platte unter 85 % belegt.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 5,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "1 - node_filesystem_avail_bytes{mountpoint=\"/\",fstype=\"ext4\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype=\"ext4\"}",
+     "legendFormat": "Platte / belegt",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_memory_MemAvailable_bytes",
+     "legendFormat": "RAM verfügbar",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "–",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "bytes"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "value_and_name",
+    "colorMode": "value",
+    "graphMode": "none",
+    "orientation": "horizontal"
+   }
+  },
+  {
+   "id": 6,
+   "type": "row",
+   "title": "Last (k6) – Lauf $testid",
+   "gridPos": {
+    "x": 0,
+    "y": 13,
+    "w": 24,
+    "h": 1
+   },
+   "collapsed": false,
+   "panels": []
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "k6: gestartete Iterationen je Sekunde (je Stufe)",
+   "description": "Angebotene Last (offenes Lastmodell). Eine Iteration = ein Aufruf des asynchronen Endpunkts.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 14,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (stage)(rate(k6_iterations_total{testid=~\"$testid\"}[1m]))",
+     "legendFormat": "{{stage}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "k6: VUs und verworfene Iterationen",
+   "description": "dropped_iterations muss 0 bleiben, sonst hat k6 die Last nicht erzeugt (Messung ungültig). Keine Reihe = keine verworfenen Iterationen.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 14,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(k6_vus{testid=~\"$testid\"})",
+     "legendFormat": "VUs",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (stage)(k6_dropped_iterations_total{testid=~\"$testid\"})",
+     "legendFormat": "verworfen {{stage}}",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 9,
+   "type": "timeseries",
+   "title": "k6: HTTP-Antwortzeit (nur Annahme der Anfrage)",
+   "description": "Nicht die Transaktionsdauer: Der Endpunkt antwortet sofort, der Datenaustausch läuft im Hintergrund.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 14,
+    "w": 8,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(k6_http_req_duration_p50{testid=~\"$testid\"})",
+     "legendFormat": "p50",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(k6_http_req_duration_p95{testid=~\"$testid\"})",
+     "legendFormat": "p95",
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(k6_http_req_duration_p99{testid=~\"$testid\"})",
+     "legendFormat": "p99",
+     "refId": "C"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max(k6_http_req_failed_rate{testid=~\"$testid\"})",
+     "legendFormat": "Fehlerquote HTTP",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 0,
+      "showPoints": "never"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "min",
+        "value": 0
+       },
+       {
+        "id": "max",
+        "value": 1
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 10,
+   "type": "row",
+   "title": "Transaktionen: Logs des Customer-PURIS (Loki)",
+   "gridPos": {
+    "x": 0,
+    "y": 22,
+    "w": 24,
+    "h": 1
+   },
+   "collapsed": false,
+   "panels": []
+  },
+  {
+   "id": 11,
+   "type": "timeseries",
+   "title": "Transaktionen je Minute (Customer-PURIS)",
+   "description": "Zählung der Logzeilen wie lib/loki_read.py (PATTERNS). Abgeschlossen + gescheitert = ausgelöst, sobald alles abgearbeitet ist.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 23,
+    "w": 16,
+    "h": 9
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Trigger Reported MaterialStockUpdate\" [1m]))",
+     "legendFormat": "ausgelöst",
+     "refId": "A",
+     "queryType": "range"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Updated ReportedMaterialItemStocks\" [1m]))",
+     "legendFormat": "abgeschlossen",
+     "refId": "B",
+     "queryType": "range"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Error in ReportedMaterialItemStockRequest\" [1m]))",
+     "legendFormat": "gescheitert",
+     "refId": "C",
+     "queryType": "range"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Invalidating \" [1m]))",
+     "legendFormat": "„Invalidating …“",
+     "refId": "D",
+     "queryType": "range"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"ObjectOptimisticLockingFailureException\" [1m]))",
+     "legendFormat": "Sperrkonflikt (OptimisticLock)",
+     "refId": "E",
+     "queryType": "range"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1m"
+  },
+  {
+   "id": 12,
+   "type": "stat",
+   "title": "Summen im gewählten Zeitraum",
+   "description": "Für Zählungen der Arbeit gilt nur analysis/ (Laufordner bzw. nachtrag/).",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 23,
+    "w": 8,
+    "h": 9
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Trigger Reported MaterialStockUpdate\" [$__range]))",
+     "legendFormat": "ausgelöst",
+     "refId": "A",
+     "queryType": "instant"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Updated ReportedMaterialItemStocks\" [$__range]))",
+     "legendFormat": "abgeschlossen",
+     "refId": "B",
+     "queryType": "instant"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Error in ReportedMaterialItemStockRequest\" [$__range]))",
+     "legendFormat": "gescheitert",
+     "refId": "C",
+     "queryType": "instant"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"Invalidating \" [$__range]))",
+     "legendFormat": "„Invalidating …“",
+     "refId": "D",
+     "queryType": "instant"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({namespace=\"customer\", pod=~\"puris-backend.*\"} |= \"ObjectOptimisticLockingFailureException\" [$__range]))",
+     "legendFormat": "Sperrkonflikt (OptimisticLock)",
+     "refId": "E",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "ausgelöst"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "abgeschlossen"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "C"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "gescheitert"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "„Invalidating …“"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "E"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "Sperrkonflikt (OptimisticLock)"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "textMode": "value_and_name",
+    "colorMode": "value",
+    "graphMode": "none",
+    "orientation": "horizontal"
+   }
+  },
+  {
+   "id": 13,
+   "type": "logs",
+   "title": "Customer-PURIS: WARN und ERROR",
+   "description": "Höchstens 200 Zeilen (Speicher von Grafana: Limit 512 MiB).",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 32,
+    "w": 12,
+    "h": 10
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{namespace=\"customer\", pod=~\"puris-backend.*\"} |~ \" (ERROR|WARN) \"",
+     "refId": "A",
+     "queryType": "range",
+     "maxLines": 200
+    }
+   ],
+   "maxDataPoints": 200,
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending",
+    "enableLogDetails": true,
+    "dedupStrategy": "none",
+    "prettifyLogMessage": false
+   }
+  },
+  {
+   "id": 14,
+   "type": "logs",
+   "title": "EDC Control Planes: WARN und ERROR",
+   "description": "Höchstens 200 Zeilen. Selektor wie lib/loki_read.py (edc_warn_error).",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 32,
+    "w": 12,
+    "h": 10
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{namespace=~\"customer|supplier\", pod=~\"edc-controlplane.*\"} |~ \"\\\"level\\\":\\\"(WARN|ERROR)\\\"\"",
+     "refId": "A",
+     "queryType": "range",
+     "maxLines": 200
+    }
+   ],
+   "maxDataPoints": 200,
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending",
+    "enableLogDetails": true,
+    "dedupStrategy": "none",
+    "prettifyLogMessage": false
+   }
+  },
+  {
+   "id": 15,
+   "type": "row",
+   "title": "Ressourcen: System unter Test ($ns)",
+   "gridPos": {
+    "x": 0,
+    "y": 42,
+    "w": 24,
+    "h": 1
+   },
+   "collapsed": false,
+   "panels": []
+  },
+  {
+   "id": 16,
+   "type": "timeseries",
+   "title": "CPU je Container (Kerne)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 43,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (namespace,pod,container)(rate(container_cpu_usage_seconds_total{namespace=~\"$ns\",container!=\"\",container!=\"POD\"}[1m]))",
+     "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 17,
+   "type": "timeseries",
+   "title": "CPU in % des Limits",
+   "description": "Nahe 100 % = Container am CPU-Limit (Engpass-Kandidat). Zusammen mit der Drosselung lesen.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 43,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (namespace,pod,container)(rate(container_cpu_usage_seconds_total{namespace=~\"$ns\",container!=\"\",container!=\"POD\"}[1m])) / sum by (namespace,pod,container)(kube_pod_container_resource_limits{resource=\"cpu\",namespace=~\"$ns\"})",
+     "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "line+area"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 0.8
+       },
+       {
+        "color": "red",
+        "value": 0.95
+       }
+      ]
+     },
+     "min": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 18,
+   "type": "timeseries",
+   "title": "CPU-Drosselung (Anteil gedrosselter Perioden)",
+   "description": "Wie cpu_throttled_ratio.csv im Laufordner.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 51,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (namespace,pod,container)(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$ns\",container!=\"\",container!=\"POD\"}[1m])) / sum by (namespace,pod,container)(rate(container_cpu_cfs_periods_total{namespace=~\"$ns\",container!=\"\",container!=\"POD\"}[1m]))",
+     "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     },
+     "min": 0,
+     "max": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 19,
+   "type": "timeseries",
+   "title": "Arbeitsspeicher (Working Set)",
+   "description": "Wie memory_working_set_bytes.csv im Laufordner.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 51,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (namespace,pod,container)(container_memory_working_set_bytes{namespace=~\"$ns\",container!=\"\",container!=\"POD\"})",
+     "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 20,
+   "type": "timeseries",
+   "title": "Threads je Container",
+   "description": "Der Thread-Pool der Bestandsabfrage in PURIS hat keine Obergrenze.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 59,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (namespace,pod,container)(container_threads{namespace=~\"$ns\",container!=\"\",container!=\"POD\"})",
+     "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "max",
+      "mean"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 21,
+   "type": "table",
+   "title": "Neustarts im gewählten Zeitraum",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "description": "Gültigkeit: keine Neustarts während eines Laufs.",
+   "gridPos": {
+    "x": 12,
+    "y": 59,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (namespace,pod,container)(increase(kube_pod_container_status_restarts_total{namespace=~\"$ns\"}[$__range])) > 0",
+     "legendFormat": "__auto",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "keine Neustarts"
+    },
+    "overrides": []
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "Value": "Neustarts"
+      }
+     }
+    }
+   ],
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "id": 24,
+   "type": "row",
+   "title": "Messsystem: Prometheus, Loki, Alloy, Grafana, k6",
+   "gridPos": {
+    "x": 0,
+    "y": 67,
+    "w": 24,
+    "h": 1
+   },
+   "collapsed": true,
+   "panels": [
+    {
+     "id": 22,
+     "type": "timeseries",
+     "title": "Messsystem: CPU je Container (Kerne)",
+     "description": "Gültigkeit: CPU des k6-Runners (Namespace k6) unter 0,45 Kernen (k6_cpu_ok in meta.json).",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "gridPos": {
+      "x": 0,
+      "y": 68,
+      "w": 12,
+      "h": 8
+     },
+     "targets": [
+      {
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "expr": "sum by (namespace,pod,container)(rate(container_cpu_usage_seconds_total{namespace=~\"monitoring|logging|k6\",container!=\"\",container!=\"POD\"}[1m]))",
+       "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+       "refId": "A"
+      }
+     ],
+     "fieldConfig": {
+      "defaults": {
+       "unit": "short",
+       "custom": {
+        "lineWidth": 1,
+        "fillOpacity": 10,
+        "showPoints": "never",
+        "spanNulls": false,
+        "stacking": {
+         "mode": "none"
+        }
+       }
+      },
+      "overrides": []
+     },
+     "options": {
+      "legend": {
+       "displayMode": "table",
+       "placement": "right",
+       "calcs": [
+        "max",
+        "mean"
+       ]
+      },
+      "tooltip": {
+       "mode": "multi",
+       "sort": "desc"
+      }
+     }
+    },
+    {
+     "id": 23,
+     "type": "timeseries",
+     "title": "Messsystem: Arbeitsspeicher in % des Limits",
+     "description": "Grafana wurde am 2026-10-08 um 08:04 UTC wegen Speichermangel neu gestartet (Limit 512 MiB).",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "gridPos": {
+      "x": 12,
+      "y": 68,
+      "w": 12,
+      "h": 8
+     },
+     "targets": [
+      {
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "expr": "sum by (namespace,pod,container)(container_memory_working_set_bytes{namespace=~\"monitoring|logging|k6\",container!=\"\",container!=\"POD\"}) / sum by (namespace,pod,container)(kube_pod_container_resource_limits{resource=\"memory\",namespace=~\"monitoring|logging|k6\"})",
+       "legendFormat": "{{namespace}}/{{pod}}/{{container}}",
+       "refId": "A"
+      }
+     ],
+     "fieldConfig": {
+      "defaults": {
+       "unit": "percentunit",
+       "custom": {
+        "lineWidth": 1,
+        "fillOpacity": 10,
+        "showPoints": "never",
+        "spanNulls": false,
+        "stacking": {
+         "mode": "none"
+        },
+        "thresholdsStyle": {
+         "mode": "line+area"
+        }
+       },
+       "thresholds": {
+        "mode": "absolute",
+        "steps": [
+         {
+          "color": "green",
+          "value": null
+         },
+         {
+          "color": "orange",
+          "value": 0.8
+         },
+         {
+          "color": "red",
+          "value": 0.95
+         }
+        ]
+       },
+       "min": 0
+      },
+      "overrides": []
+     },
+     "options": {
+      "legend": {
+       "displayMode": "table",
+       "placement": "right",
+       "calcs": [
+        "max",
+        "mean"
+       ]
+      },
+      "tooltip": {
+       "mode": "multi",
+       "sort": "desc"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

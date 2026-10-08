@@ -1221,3 +1221,32 @@ Alle Läufe: Tag `setup-v1`, Reset ohne Reparatur, Funktionstest bestanden, kein
 - `s3` (0,4/s) in allen Läufen 0,40/s ohne Fehler – die früheren Kennzeichen `S` dort waren Folge der Lücken.
 
 **Folgen:** Die Korrektur am Sammler ist eine Änderung nach `setup-v1`; ab dem nächsten Messlauf gilt `setup-v2` (Tag zusammen mit den Dateien für K1). Eine Wiederholung von K0 ist für die Vollständigkeit nicht nötig (Entscheidung des Verfassers offen). Loki bewahrt die Zeilen weiter 30 Tage auf; der Nachtrag ist davon unabhängig.
+**Übernahme:** Code in Commit `dd6dcaa`, Nachtrag und Dokumentation in `b52bf93` (Verfasser). `SHA256SUMS` aus dem Commit geprüft (`git archive`): 10 × 4 OK; die Prüfsummen der Skripte in allen `nachtrag.json` gleich den committeten Dateien `lib/loki_read.py` und `experiments/collect/nachtrag_loki.py`.
+
+## 2026-10-08 – Ursache der Steal-Spitze in K0 `rep-1`: Sicherheitsscan des NAS um 03:00
+
+**Gemacht** (Verfasser, Aussage im Chat): Zeitgesteuerte Aufgaben des NAS geprüft. Um 03:00 MESZ läuft ein Sicherheitsscan (Sicherheitsanalyse) des NAS; er wurde abgeschaltet.
+**Beobachtung:** Passt zur Steal-Spitze in `2026-10-07_2341_k0_rep-1` (5,2–6,0 % von 01:00:20 bis 01:00:50 UTC = 03:00 MESZ) und zum kleinen Anstieg am 2026-10-07 gegen 01 Uhr UTC (Eintrag „Messreihe K0 beendet“). Die Läufe `rep-2` bis `rep-4` lagen nicht in diesem Zeitfenster.
+**Entscheidung:** Scan während der Messphase aus; nach dem Ende der Messungen wieder einschalten oder auf eine Uhrzeit ohne Messläufe legen (Sicherheit des NAS).
+
+## 2026-10-08 – Auslöser des Kippens: in allen Läufen derselbe, nur der Zeitpunkt ist zufällig
+
+**Gemacht:** In den vollständigen Logs (`nachtrag/`) je Lauf die erste „Invalidating …“-Zeile gesucht und die WARN/ERROR-Zeilen des Customer-PURIS in den 20 s davor angesehen (Vorstudie 3, K0 `rep-1` bis `rep-4`).
+**Beobachtung:** In jedem Lauf mit Invalidierung dieselbe Folge: „Failed to obtain EDR data for DigitalTwinRegistryId@<BPN des Suppliers> …“ (EDR für den DTR des Suppliers nicht erhalten) → 2 s später „Error in AasSubmodelDescriptor Request …“ → „Invalidating …“.
+
+| Lauf | erste Invalidierung (UTC) | Stufe | danach |
+|---|---|---|---|
+| Vorstudie 3 | 20:51:56 | `s1` (0,2/s) | abgefangen; gekippt erst ab 0,7/s |
+| K0 `rep-3` | 04:03:31 | `warmup2` (0,3/s) | abgefangen; gekippt in `s5` (0,6/s) |
+| K0 `rep-2` | 02:38:17 | `s4` (0,5/s) | abgefangen (`s5` ohne Fehler); gekippt in `s6` (0,7/s) |
+| K0 `rep-4` | 06:55:17 | `s5` (0,6/s) | gekippt in `s6` (0,7/s) |
+| K0 `rep-1` (ungültig) | – | – | kein Auslöser, kein Kippen bis 1,0/s |
+
+**Deutung (Hypothese):** Der Auslöser tritt zufällig auf, auch bei geringer Last. Bis 0,5/s fängt das System ihn ab; ab 0,6–0,7/s verstärkt er sich (Neuverhandlungen, Control Plane des Customers am CPU-Limit) bis zum Kippen. Der Kipppunkt eines Laufs hängt damit davon ab, wann der erste Auslöser bei ausreichend hoher Last eintritt – daher die Streuung. Der Mechanismus ist in allen Läufen gleich (F2, metastabiles Verhalten). Ursache des fehlgeschlagenen EDR-Abrufs noch offen (z. B. 409 „currently leased“ wie in Vorstudie 2, Zeitüberschreitung).
+
+## 2026-10-08 – Grafana: Dashboard „Bachelorarbeit – Messung“, Sterne und Lesezeichen; Neustart von Grafana wegen Speichermangel
+
+**Gemacht** (Assistent auf Wunsch des Verfassers, ca. 08:10–08:30 UTC; keine Messung aktiv, TestRun von K0 `finished`): Grafana per `kubectl port-forward` angesehen, Anmeldung durch den Verfasser. Dashboard „Bachelorarbeit – Messung“ (UID `bachelorarbeit-messung`) über die Oberfläche importiert – Abfragen wie `experiments/collect/collect_run.py` und `lib/loki_read.py`: Steal Time, CPU der VM nach Modus, k6 (Iterationen je Stufe, verworfene Iterationen, Antwortzeit), Transaktionen je Minute aus dem Log des Customer-PURIS, WARN/ERROR von PURIS und EDC, je Container CPU, CPU in % des Limits, Drosselung, Arbeitsspeicher, Threads und Neustarts, Messsystem eingeklappt. JSON: `setup/b1-monitoring/dashboards/bachelorarbeit-messung.json` (nicht committet). Alle Abfragen mit den Daten von K0 `rep-4` geprüft (alle Felder mit Werten). Mit Stern markiert und als Lesezeichen gesetzt: „Bachelorarbeit – Messung“, „Kubernetes / Compute Resources / Namespace (Pods)“, „… / Cluster“, „… / Pod“, „Node Exporter / Nodes“; dazu Lesezeichen „Explore“ sowie „Logs“ und „Metrics“ (Drilldown).
+**Beobachtung:** Container `grafana` am 2026-10-08 um 08:04:27 UTC `OOMKilled` (Neustart 1, Limit 512Mi; höchster Working Set der 2 h davor 532 582 400 Byte ≈ 508 MiB) – nach dem Ende von K0 (07:40:45 UTC), kein Einfluss auf die Läufe. Um 08:30 UTC wieder 481 MiB.
+**Problem:** Der Import über die Oberfläche ist kein Teil von `setup-v1` und nicht reproduzierbar. Grafana speichert in `emptyDir`: Dashboard, Sterne und Lesezeichen überstehen einen Neustart des Containers, nicht aber das Neuerstellen des Pods (z. B. `helm upgrade` von `b1` mit geänderten Werten).
+**Offen (Entscheidung Verfasser):** Dashboard mit `setup-v2` als ConfigMap über den Sidecar laden; Speicher-Limit von Grafana prüfen (Erhöhung = Änderung an `b1`, Ressourcenübersicht).
