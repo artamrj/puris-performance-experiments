@@ -1,0 +1,11 @@
+{
+  "run": "2026-10-08_1654_k0_rep-7",
+  "git_commit": "787f32ec0e85a5c6772d7f6816abb7580bb7ad4d",
+  "plan": "k0",
+  "repetition": "7",
+  "started_utc": "2026-10-08T16:54:38.944716+00:00",
+  "time_utc": "2026-10-08T19:01:22.814654+00:00",
+  "phase": "completed",
+  "status": "completed",
+  "reason": "valid=true"
+}

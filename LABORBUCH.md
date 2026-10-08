@@ -1302,3 +1302,20 @@ Je Stufe: bis `s3` (0,4/s) alle abgeschlossen; `s4` (0,5/s) 296/300, 3 Invalidie
 **Beobachtung – Sättigungskriterium:** Auswertung von K0 `rep-2` bis `rep-4` (vollständige Logs aus `nachtrag/`): mit der dritten Bedingung („Invalidating …“) Kippstufe 0,5 / 0,5 / 0,6 je s, ohne sie 0,7 / 0,6 / 0,7 je s. Die offene Entscheidung über die dritte Bedingung verschiebt den Kipppunkt von K0 um eine Stufe.
 **Offen:** erster Lauf auf der VM der Betreuung (Aufbau, Reset, Sammeln, Neustart-Reparatur und Alloy-Filter ungetestet); `reference/compact-k0.json` nach Übernahme von `rep-5` bis `rep-7` neu erzeugen; offene Punkte `REPRODUCE.md`, Abschnitt 21.
 
+
+## 2026-10-08 – K0-Ergänzung beendet: 6 gültige Läufe, Kipppunkt 0,6 oder 0,7/s, keine Erholung
+
+**Gemacht:** `./lab series k0 3 5` beendet 19:01:22 UTC. Laufordner `runs/2026-10-08_1252_k0_rep-5/`, `…_1453_k0_rep-6/`, `…_1654_k0_rep-7/` auf den Mac kopiert (je 28–29M), `SHA256SUMS` 0 Abweichungen (`rep-7` mit 38 Einträgen: zusätzlich `diagnostics/` der Reparatur); keine IP-Adressen oder Hostnamen. Alle drei gültig, `log_complete_ok` true (3069, 3066, 3070), Steal Time max 1,9–2,4 %, keine Neustarts.
+
+**K0 gesamt** (gültige Läufe; Zählungen für `rep-2` bis `rep-4` aus `nachtrag/`, für `rep-5` bis `rep-7` aus `meta.json`; abgeschlossen je Stufe / geplant):
+
+| Lauf | 0,4/s | 0,5/s | 0,6/s | 0,7/s | 0,8/s | kippt bei | Erholung 0,2/s |
+|---|---|---|---|---|---|---|---|
+| `rep-2` | 241/240 | 299/300 | 360/360 | 268/420 | 1/480 | 0,7/s | 0 |
+| `rep-3` | 240/240 | 299/300 | 129/360 | 0/420 | 0/480 | 0,6/s | 0 |
+| `rep-4` | 240/240 | 301/300 | 358/360 | 68/420 | 0/480 | 0,7/s | 0 |
+| `rep-5` | 241/240 | 296/300 | 361/360 | 76/420 | 0/480 | 0,7/s | 0 |
+| `rep-6` | 240/240 | 296/300 | 75/360 | 0/420 | 0/480 | 0,6/s | 0 |
+| `rep-7` | 239/240 | 302/300 | 361/360 | 219/420 | 0/480 | 0,7/s | 0 |
+
+„kippt bei“ = erste Stufe mit weniger als 95 % abgeschlossen. **Ergebnis:** in allen 6 gültigen Läufen bis 0,5/s stabil; Kippen bei 0,6/s (2 Läufe) oder 0,7/s (4 Läufe); nach dem Kippen in keinem Lauf Erholung unter 0,2/s. Dazu `rep-1` (ungültig, Steal Time) ohne Kippen bis 1,0/s.
