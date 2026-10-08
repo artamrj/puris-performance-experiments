@@ -17,9 +17,11 @@
 #                             Abarbeiten abwarten → Sammeln nach
 #                             runs/<Zeit>_<plan>_rep-<rep>/ (nur auf der VM, nur bei
 #                             sauberem Git-Stand)
-#   ./lab series <plan> <n>   Messreihe: Wiederholungen 1..n nacheinander; ein
-#                             gescheiterter Lauf hält die Reihe nicht an, er wird
-#                             einmal durch eine weitere Wiederholung ersetzt;
+#   ./lab series <plan> <n> [<erste>]
+#                             Messreihe: n Wiederholungen ab <erste> (Standard 1)
+#                             nacheinander; schon vergebene Nummern in runs/ werden
+#                             abgelehnt; ein gescheiterter Lauf hält die Reihe nicht an,
+#                             er wird einmal durch eine weitere Wiederholung ersetzt;
 #                             Übersicht in $STATE_DIR/logs/series-<plan>.txt
 #   ./lab status              Zustand: letzte Meldung, Sperre, PURIS/EDC vollständig?
 #   ./lab check               Funktionstest: 3 echte Transaktionen nacheinander (ohne Reset)
@@ -242,25 +244,33 @@ cmd_run() {
 # Messreihe: jede Wiederholung als eigener Prozess (ein Fehler beendet nur diesen Lauf;
 # das sichere Ende stellt das System wieder her). Je gescheitertem Lauf eine Ersatz-
 # Wiederholung (höchstens so viele wie Läufe geplant).
+lab_run() { ./lab run "$@"; }  # eigener Aufruf, damit Tests den Messlauf ersetzen können
+rep_used() { ls -d runs/*_"$1"_rep-"$2" >/dev/null 2>&1; }
 cmd_series() {
-  local plan="${1:?Plan fehlt}" n="${2:?Anzahl fehlt}" rep rc dir valid failed=0 next ov="$STATE_DIR/logs/series-${1:-}.txt"
+  local plan="${1:?Plan fehlt}" n="${2:?Anzahl fehlt}" first="${3:-1}" rep rc dir valid failed=0 next ov="$STATE_DIR/logs/series-${1:-}.txt"
+  [[ "$n" =~ ^[1-9][0-9]*$ && "$first" =~ ^[1-9][0-9]*$ ]] || die "Anzahl und erste Wiederholung müssen positive ganze Zahlen sein"
   [ -r "experiments/plans/$plan.env" ] || die "experiments/plans/$plan.env fehlt"
+  # Nummern nicht doppelt vergeben (z. B. K0 ergänzen: ./lab series k0 3 5)
+  for rep in $(seq "$first" $((first + n - 1))); do
+    ! rep_used "$plan" "$rep" || die "rep-$rep von $plan gibt es schon in runs/ – höhere erste Wiederholung wählen"
+  done
   mkdir -p "$STATE_DIR/logs"
-  echo "[$(now)] Messreihe $plan, $n Wiederholungen, Commit $(git rev-parse --short HEAD)" >> "$ov"
+  echo "[$(now)] Messreihe $plan, $n Wiederholungen ab rep-$first, Commit $(git rev-parse --short HEAD)" >> "$ov"
   run_one() {
     local r="$1" before
     before=$(ls -d runs/*_"${plan}"_rep-"$r" 2>/dev/null || true)
-    rc=0; ./lab run "$plan" "$r" || rc=$?
+    rc=0; lab_run "$plan" "$r" || rc=$?
     # nur der in diesem Lauf neu entstandene Laufordner
     dir=$(comm -13 <(echo "$before") <(ls -d runs/*_"${plan}"_rep-"$r" 2>/dev/null || true) | tail -1)
     valid=$( [ -n "$dir" ] && [ -f "$dir/meta.json" ] && jq -r .validity.valid "$dir/meta.json" || echo "-")
     echo "[$(now)] rep-$r: Ende-Code $rc, gültig $valid, ${dir:-kein Laufordner}" >> "$ov"
     [ "$rc" -eq 0 ] && [ "$valid" = true ]
   }
-  for rep in $(seq 1 "$n"); do run_one "$rep" || failed=$((failed + 1)); done
-  # je gescheitertem oder ungültigem Lauf genau ein Ersatzversuch
-  next=$((n + 1))
+  for rep in $(seq "$first" $((first + n - 1))); do run_one "$rep" || failed=$((failed + 1)); done
+  # je gescheitertem oder ungültigem Lauf genau ein Ersatzversuch (nächste freie Nummer)
+  next=$((first + n))
   while [ "$failed" -gt 0 ]; do
+    while rep_used "$plan" "$next"; do next=$((next + 1)); done
     echo "[$(now)] Ersatz für einen gescheiterten oder ungültigen Lauf: rep-$next" >> "$ov"
     run_one "$next" || true
     next=$((next + 1)); failed=$((failed - 1))

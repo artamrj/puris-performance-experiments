@@ -1240,6 +1240,10 @@ Ablauf im Skript ([`lab`](lab)):
 ```bash
 tmux new-session -d -s k0 -c ~/puris-performance-experiments "./lab series k0 3 2>&1 | tee ~/puris-loadlab-state/logs/k0-series.log"
 ```
+Messreihe ergänzen (seit 2026-10-08), Nummerierung ab einer gewählten Wiederholung, z. B. K0 `rep-5` bis `rep-7`:
+```bash
+tmux new-session -d -s k0b -c ~/puris-performance-experiments "./lab series k0 3 5 2>&1 | tee ~/puris-loadlab-state/logs/k0-series-2.log"
+```
 Zustand jederzeit: `./lab status` (auch vom Mac mit `puris`); Funktionstest allein: `./lab check`.
 
 **Übernahme ins Repository `[Mac]`** (Commit durch den Verfasser; auf der VM danach verschieben, nicht löschen):

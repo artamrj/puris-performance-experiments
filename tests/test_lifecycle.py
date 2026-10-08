@@ -21,6 +21,36 @@ attempt_event() { echo "event:$PHASE:${1:-running}" >> "$CALLS"; }
             result=subprocess.run(['/bin/bash','-c',setup+script],cwd=ROOT,env=env,capture_output=True,text=True,timeout=10)
             calls=Path(env['CALLS']).read_text() if Path(env['CALLS']).exists() else ''
             return result,calls
+    def series(self, args, existing=(), invalid=()):
+        """Messreihe mit ersetztem Messlauf in einem leeren Arbeitsordner (nie im Repository)."""
+        made=''.join(f'mkdir -p runs/2026-01-01_0000_k0_rep-{r}; ' for r in existing)
+        bad=' '.join(str(r) for r in invalid)
+        return self.shell(f'''cd "$STATE_DIR"; mkdir -p runs experiments/plans; : > experiments/plans/k0.env
+{made}
+git() {{ echo test; }}
+lab_run() {{
+  local d="runs/2099-01-01_0000_$1_rep-$2" v=true
+  for b in {bad}; do [ "$b" = "$2" ] && v=false; done
+  mkdir -p "$d"; echo "{{\\"validity\\":{{\\"valid\\":$v}}}}" > "$d/meta.json"; echo "run:$2" >> "$CALLS"
+}}
+cmd_series {args}
+''')
+    def test_series_default_starts_at_one(self):
+        r,c=self.series('k0 2')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(c.split(),['run:1','run:2'])
+    def test_series_continues_numbering(self):
+        r,c=self.series('k0 3 5',existing=(1,2,3,4))
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(c.split(),['run:5','run:6','run:7'])
+    def test_series_refuses_used_numbers(self):
+        r,c=self.series('k0 3 4',existing=(1,2,3,4))
+        self.assertNotEqual(r.returncode,0)
+        self.assertEqual(c,'')
+    def test_series_replacement_takes_next_free_number(self):
+        r,c=self.series('k0 3 5',existing=(8,),invalid=(6,))
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(c.split(),['run:5','run:6','run:7','run:9'])
     def test_api_failure_cannot_mean_stopped(self):
         r,_=self.shell('wait_gone customer edc-controlplane\n')
         self.assertEqual(r.returncode,2)
