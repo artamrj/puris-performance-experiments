@@ -14,10 +14,15 @@
 #   ./reproduce measure [config]     runs; without argument all configurations of the profile
 #   ./reproduce evaluate [folder]    tipping stage, metric, comparison with the reference
 #   ./reproduce package [folder]     results folder complete, with checksums
-#   ./reproduce watch                follow the background job (Ctrl-C leaves only the view)
+#   ./reproduce watch [--all]        follow the background job live (--all: full log; Ctrl-C closes only the view)
 #   ./reproduce stop                 end the background job at the next safe point
 #   ./reproduce bundle               offline bundle of the running build (needs sudo)
 #   ./reproduce uninstall [--yes]    remove the own cluster, restore system settings
+#
+# Output: one line per step – ✓ done · ↷ already done, skipped · … working · · information
+# · ! warning · ✗ error · → what to run next. From phase 4 on the job runs in the background;
+# closing the terminal does not stop it. Every stop names the cause and the next command,
+# and running the same command again continues where it stopped. NO_COLOR=1: no colours.
 #
 # Exit codes: 0 success · 1 error · 2 precondition missing · 3 machine too small or
 # foreign cluster · 4 stopped by the user.
@@ -64,27 +69,140 @@ SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[
 WORK="${REPRODUCE_HOME:-$(dirname "$SCRIPT")/puris-repro}"
 SRC="$WORK/src"; TOOLS="$WORK/tools"; STATE="$WORK/state"; RESULTS="$WORK/results"; BUNDLE="$WORK/bundle"
 LOGF="$STATE/logs/reproduce.log"; MARKERS="$STATE/markers"
+OWNER=/etc/rancher/reproduce-owner  # outside /etc/rancher/k3s, which k3s creates with mode 700
 export KUBECONFIG="$STATE/kubeconfig"
 export HELM_CACHE_HOME="$STATE/helm/cache" HELM_CONFIG_HOME="$STATE/helm/config" HELM_DATA_HOME="$STATE/helm/data"
 export PATH="$TOOLS:$PATH"
 mkdir -p "$STATE/logs" "$MARKERS" "$RESULTS"
 
-# ── Output ────────────────────────────────────────────────────────────────────────
+# ── Output (REPRODUCE.md §4, "Output style") ─────────────────────────────────────
+# One status line per step: time (UTC), symbol, text. The same plain line goes into the
+# log; on a terminal it is coloured. Long command output goes only into the log (q).
+#   ━━ phase   ✓ done   ↷ already done, skipped   … working   · information
+#   !  warning   ✗ error   → what to run next
 BG="${REPRODUCE_BG:-0}"
 if [ "$BG" = 1 ]; then exec >>"$LOGF" 2>&1; fi
+TTY=0; [ "$BG" != 1 ] && [ -t 1 ] && TTY=1
+if [ "$TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+  C_OK=$'\033[32m' C_WARN=$'\033[33m' C_ERR=$'\033[1;31m' C_RUN=$'\033[36m' C_DIM=$'\033[2m' C_B=$'\033[1m' C_0=$'\033[0m'; REPRODUCE_COLOR=1
+else C_OK="" C_WARN="" C_ERR="" C_RUN="" C_DIM="" C_B="" C_0=""; REPRODUCE_COLOR=0; fi
+export LOGF REPRODUCE_BG="$BG" REPRODUCE_COLOR
+paint() {  # plain status line → coloured line (plain without colours)
+  local l="$1" t r s
+  [ -n "$C_0" ] || { printf '%s\n' "$l"; return 0; }
+  t="${l%% *}"; r="${l#* }"; s="${r%% *}"
+  case "$s" in
+    "✓")     printf '%s %s%s\n' "$C_DIM$t$C_0" "$C_OK$s$C_0" "${r#"$s"}" ;;
+    "…"|"▶") printf '%s %s%s\n' "$C_DIM$t$C_0" "$C_RUN$s$C_0" "${r#"$s"}" ;;
+    "↷"|"·") printf '%s\n' "$C_DIM$l$C_0" ;;
+    "!")     printf '%s %s\n' "$C_DIM$t$C_0" "$C_WARN$r$C_0" ;;
+    "✗")     printf '%s %s\n' "$C_DIM$t$C_0" "$C_ERR$r$C_0" ;;
+    "→")     printf '%s %s\n' "$C_DIM$t$C_0" "$C_B$r$C_0" ;;
+    "━"*)    printf '\n%s %s\n' "$C_DIM$t$C_0" "$C_B$r$C_0" ;;
+    *)       printf '%s\n' "$l" ;;
+  esac
+}
 say() {  # symbol text
   local line; line="$(date -u +%H:%M:%S) $1 $2"
-  if [ "$BG" = 1 ]; then echo "$line"; else echo "$line"; echo "$line" >> "$LOGF"; fi
+  if [ "$BG" != 1 ]; then [ "$TTY" != 1 ] || printf '\r\033[K'; paint "$line"; fi
+  echo "$line" >> "$LOGF"
 }
 ok()   { say "✓" "$*"; }
 skip() { say "↷" "$*"; }
 step() { say "…" "$*"; }
+info() { say "·" "$*"; }
 warn() { say "!" "$*"; }
 fail() { say "✗" "$*"; }
+hint() { say "→" "$*"; }
 q()    { "$@" >>"$LOGF" 2>&1; }          # long output only into the log file
-die()  { fail "$1"; diagnostics || true; exit "${2:-1}"; }
-need_fail() { fail "$1"; echo "  next: $2"; exit 2; }
+rel()  { case "$1" in "$PWD"/*) printf '%s\n' "${1#"$PWD"/}" ;; "$HOME"/*) printf '~/%s\n' "${1#"$HOME"/}" ;; *) printf '%s\n' "$1" ;; esac; }
+retry_cmd() { case "${CMD:-all}" in all|_continue) echo "./reproduce" ;; *) echo "./reproduce $ARGS_TEXT" ;; esac; }
+die()  {  # message [exit code] – every stop says what failed, where to look and what to run next
+  progress_end; fail "$1"; diagnostics || true
+  info "full log: $(rel "$LOGF")"
+  hint "fix the cause, then run $(retry_cmd) again – steps already done are skipped"
+  exit "${2:-1}"
+}
+need_fail() { fail "not possible yet: $1"; hint "run first: $2"; exit 2; }
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+dur() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }   # seconds → 2m05s
+# live progress line on a terminal, one plain line per item otherwise (background job, log)
+progress() {  # done total text [seconds on the current item]
+  local w=24 f bar; f=$(($1 * w / ($2 > 0 ? $2 : 1)))
+  bar="$(printf '%*s' "$f" '' | tr ' ' '#')$(printf '%*s' $((w - f)) '' | tr ' ' '-')"
+  if [ "$TTY" = 1 ]; then
+    printf '\r\033[K%s %s [%s] %d/%d  %s%s' "$C_DIM$(date -u +%H:%M:%S)$C_0" "$C_RUN…$C_0" "$bar" "$1" "$2" "${3:0:60}" "${4:+  ($(dur "$4"))}"
+  elif [ -z "${4:-}" ]; then say "…" "$1/$2 $3"; fi
+  return 0
+}
+progress_end() { [ "$TTY" = 1 ] && printf '\r\033[K'; return 0; }
+SPIN=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+spin() {  # label expected command... → runs the command with a live timer on a terminal; its stdout passes through
+  local label="$1" exp="$2" pid t0=$SECONDS; shift 2
+  [ "$TTY" = 1 ] || { "$@"; return; }
+  "$@" & pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    printf '\r\033[K%s %s %s  %s%s' "$C_DIM$(date -u +%H:%M:%S)$C_0" "$C_RUN${SPIN[$((SECONDS % 10))]}$C_0" "$label" "$(dur $((SECONDS - t0)))" "${exp:+ (usually $exp)}" >&2
+    sleep 1
+  done
+  printf '\r\033[K' >&2
+  wait "$pid"
+}
+
+# ── Phases: name, purpose, usual duration (shown in headers, hints and status) ──────
+PHASES="fetch tools check install deploy prepare verify measure evaluate package"
+phase_no() { local i=0 x; for x in $PHASES; do [ "$x" = "$1" ] && { echo "$i"; return 0; }; i=$((i + 1)); done; }
+next_of() { local x prev=""; for x in $PHASES; do [ "$prev" = "$1" ] && { echo "$x"; return 0; }; prev=$x; done; }
+phase_desc() {
+  case "$1" in
+    fetch)    echo "download the experiment repository" ;;
+    tools)    echo "helm, kubectl and the Helm charts in fixed versions" ;;
+    check)    echo "machine scan, requirements, choice of the profile" ;;
+    install)  echo "k3s and all container images (asks for the sudo password)" ;;
+    deploy)   echo "11 components: monitoring, logs, identity, 2 EDC, 2 DTR, 2 PURIS, k6" ;;
+    prepare)  echo "test data, first transactions, database state S0" ;;
+    verify)   echo "configuration check and one test transaction" ;;
+    measure)  echo "measurement runs per configuration: reset → load → collect" ;;
+    evaluate) echo "tipping stage and comparison with the reference" ;;
+    package)  echo "checksums for the results folder" ;;
+  esac
+}
+phase_time() {
+  case "$1" in
+    fetch|evaluate|package) echo "under 1 min" ;;
+    tools)   echo "1–3 min" ;;
+    check)   echo "about 2 min" ;;
+    install) echo "5–20 min" ;;
+    deploy)  echo "20–60 min" ;;
+    prepare) echo "10–30 min" ;;
+    verify)  echo "2–5 min" ;;
+    measure) if [ "${REPRODUCE_SMOKE:-0}" = 1 ]; then echo "about 30–45 min per run (short test mode)"; else echo "about 2–3 h per run, $REPS runs per configuration"; fi ;;
+  esac
+}
+in_background() { case "$1" in deploy|prepare|measure) return 0 ;; *) return 1 ;; esac; }
+phase_header() { say "━━" "phase $(phase_no "$1")/9 · $1 – $(phase_desc "$1") · usually $(phase_time "$1")"; }
+PHASE_SECONDS=0
+run_phase() {  # phase [arguments] → header, phase, duration in PHASE_SECONDS
+  local x="$1" t0=$SECONDS; shift
+  phase_header "$x"
+  "phase_$x" "$@"
+  PHASE_SECONDS=$((SECONDS - t0))
+}
+phase_done_hint() {  # phase → duration and the command to run next
+  local n; n=$(next_of "$1")
+  ok "phase $1 done ($(dur "$PHASE_SECONDS"))"
+  [ -n "$n" ] || return 0
+  hint "next: ./reproduce $n – $(phase_desc "$n") · usually $(phase_time "$n")$(in_background "$n" && echo " · runs in the background")"
+}
+banner() {
+  [ "$BG" != 1 ] || return 0
+  printf '%s\n' "${C_B}reproduce – PURIS saturation experiment, from an empty Ubuntu server to checked results${C_0}"
+  printf '%s\n' "${C_DIM}  phases   0 fetch · 1 tools · 2 check · 3 install (sudo) · 4 deploy · 5 prepare · 6 verify · 7 measure · 8 evaluate · 9 package${C_0}"
+  printf '%s\n' "${C_DIM}  from phase 4 on the job runs in the background: closing the terminal or losing SSH does not stop it${C_0}"
+  printf '%s\n' "${C_DIM}  symbols  ✓ done · ↷ already done, skipped · … working · · information · ! warning · ✗ error · → next step${C_0}"
+  [ "${REPRODUCE_SMOKE:-0}" != 1 ] || warn "short test mode (REPRODUCE_SMOKE=1): stages of 2 min, $REPS run(s) per configuration – results are not valid for the thesis"
+  return 0
+}
 
 # ── Embedded helper (Python 3, standard library + PyYAML) ─────────────────────────
 IFS= read -r -d '' PY <<'PYCODE' || true
@@ -667,11 +785,13 @@ LOCKED=0
 lock() {
   exec 9>"$STATE/lock"
   if ! flock -n 9; then
-    fail "already running: $(cat "$STATE/job" 2>/dev/null || echo unknown) – use ./reproduce watch"
+    fail "another reproduce job is already running ($(sed -n 's/.*command=\([^ ]*\).*phase=\([^ ]*\).*/command \1, phase \2/p' "$STATE/job" 2>/dev/null || echo unknown))"
+    hint "follow it: ./reproduce watch · stop it: ./reproduce stop"
     exit 1
   fi
   LOCKED=1
   printf 'pid=%s command=%s phase=%s started=%s\n' "$$" "${CMD:-}" "start" "$(now_iso)" > "$STATE/job"
+  [ "$BG" != 1 ] || info "background job started (PID $$)"
 }
 unlock() { [ "$LOCKED" = 1 ] || return 0; flock -u 9; exec 9>&-; LOCKED=0; }
 set_phase() { CURRENT_PHASE="$1"; [ -f "$STATE/job" ] && sed -i.bak "s/phase=[^ ]*/phase=$1/" "$STATE/job" && rm -f "$STATE/job.bak"; return 0; }
@@ -683,15 +803,15 @@ marker_has()   { [ -f "$MARKERS/$1" ]; }
 marker_get()   { cat "$MARKERS/$1" 2>/dev/null; }
 
 # Background job: survives a lost SSH connection (REPRODUCE.md §22.1).
-detach() {
+detach() {  # command... → continues as a background job and shows its progress
   [ "$BG" = 1 ] && return 0
   unlock
+  local pos; pos=$(stat -c %s "$LOGF" 2>/dev/null || echo 0)
   REPRODUCE_BG=1 setsid nohup "$SCRIPT" "$@" </dev/null >/dev/null 2>&1 &
-  local pid=$!
-  sleep 2
-  ok "running in the background (PID $pid) – closing this terminal does not stop it"
-  echo "  follow: ./reproduce watch    stop: ./reproduce stop    state: ./reproduce status"
-  cmd_watch
+  echo
+  printf '%s\n' "${C_DIM}  The next steps run in the background (PID $!). Closing this terminal or losing the SSH connection does not stop them.${C_0}"
+  printf '%s\n' "${C_DIM}  Ctrl-C closes only this view · ./reproduce watch opens it again · ./reproduce status · ./reproduce stop${C_0}"
+  cmd_watch --from "$pos"
   exit 0
 }
 
@@ -886,7 +1006,7 @@ diagnostics() {
   k get events -A --sort-by=.lastTimestamp > "$d/events.txt" 2>&1 || true
   helm list -A > "$d/helm.txt" 2>&1 || true
   tail -n 200 "$LOGF" > "$d/reproduce-log-tail.txt" 2>/dev/null || true
-  echo "  diagnostics: $d"
+  info "diagnostics (pods, events, releases): $(rel "$d")"
 }
 
 # ── Phase 0: fetch ────────────────────────────────────────────────────────────────
@@ -913,14 +1033,14 @@ phase_tools() {
   [ -e "$SRC/.git" ] || need_fail "repository missing" "./reproduce fetch"
   mkdir -p "$TOOLS" "$STATE/charts"
   local t; t=$(mktemp -d)
-  if [ -x "$TOOLS/helm" ] && "$TOOLS/helm" version --short 2>/dev/null | grep -q "^${HELM_VERSION}+"; then skip "helm $HELM_VERSION"
+  if [ -x "$TOOLS/helm" ] && "$TOOLS/helm" version --short 2>/dev/null | grep -q "^${HELM_VERSION}+"; then skip "helm $HELM_VERSION already there"
   elif [ -x "$BUNDLE/tools/helm" ]; then cp "$BUNDLE/tools/helm" "$TOOLS/helm"; ok "helm from bundle"
   else
     ( cd "$t" && curl -fsSLO "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz" && curl -fsSLO "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz.sha256sum" \
       && sha256sum -c --quiet "helm-$HELM_VERSION-linux-amd64.tar.gz.sha256sum" && tar -xzf "helm-$HELM_VERSION-linux-amd64.tar.gz" ) >>"$LOGF" 2>&1 || die "helm download or checksum failed"
     install -m 755 "$t/linux-amd64/helm" "$TOOLS/helm"; ok "helm $HELM_VERSION (checksum verified)"
   fi
-  if [ -x "$TOOLS/kubectl" ] && "$TOOLS/kubectl" version --client 2>/dev/null | grep -q "$KUBECTL_VERSION"; then skip "kubectl $KUBECTL_VERSION"
+  if [ -x "$TOOLS/kubectl" ] && "$TOOLS/kubectl" version --client 2>/dev/null | grep -q "$KUBECTL_VERSION"; then skip "kubectl $KUBECTL_VERSION already there"
   elif [ -x "$BUNDLE/tools/kubectl" ]; then cp "$BUNDLE/tools/kubectl" "$TOOLS/kubectl"; ok "kubectl from bundle"
   else
     ( cd "$t" && curl -fsSLO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl" && curl -fsSLO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl.sha256" \
@@ -928,10 +1048,12 @@ phase_tools() {
     install -m 755 "$t/kubectl" "$TOOLS/kubectl"; ok "kubectl $KUBECTL_VERSION (checksum verified)"
   fi
   rm -rf "$t"
-  local b _r _n chart repo ver _s url f
+  local b _r _n chart repo ver _s url f i=0 n got=0
+  n=$(echo "$RELEASES" | wc -l | tr -d ' ')
   while read -r b _r _n chart repo ver _s; do
-    f=$(chart_ref "$b")
+    i=$((i + 1)); f=$(chart_ref "$b")
     if [ -s "$f" ]; then continue; fi
+    progress $((i - 1)) "$n" "downloading chart ${chart##*/} $ver"; got=$((got + 1))
     if [ -s "$BUNDLE/charts/$(basename "$f")" ]; then cp "$BUNDLE/charts/$(basename "$f")" "$f"; continue; fi
     case "$repo" in TX) url="$TX_REPO" ;; GF) url="$GF_REPO" ;; *) url="" ;; esac
     if [ "$chart" = PURIS ]; then
@@ -943,7 +1065,8 @@ phase_tools() {
     else q helm pull "$chart" --version "$ver" -d "$STATE/charts" || die "chart $chart $ver not available"; fi
     [ -s "$f" ] || die "chart archive missing after download: $f"
   done <<<"$RELEASES"
-  ok "charts present (${STATE/#$WORK\//})"
+  progress_end
+  if [ "$got" = 0 ]; then skip "$n Helm charts already there"; else ok "$n Helm charts present ($got downloaded)"; fi
 }
 
 # ── Phase 2: check ────────────────────────────────────────────────────────────────
@@ -951,26 +1074,28 @@ phase_check() {
   set_phase check
   [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] || need_fail "tools missing" "./reproduce tools"
   local c host steal cfg fp need_cpu need_mem vcpu mem prof="" b line
+  step "checking requirements (Ubuntu, amd64, programs, sudo, internet, no other Kubernetes)"
   [ "$(uname -m)" = x86_64 ] || die "architecture $(uname -m) – amd64 (x86_64) required" 3
   grep -qi ubuntu /etc/os-release || die "Ubuntu required" 3
   for c in bash curl git python3 tar gzip openssl sha256sum flock setsid; do command -v "$c" >/dev/null || die "missing program: $c" 3; done
   python3 -c 'import yaml' 2>/dev/null || die "Python module yaml missing – install it with: sudo apt-get install -y python3-yaml" 3
-  sudo -n true 2>/dev/null || sudo -v || die "sudo not available" 3
+  sudo -n true 2>/dev/null || { info "sudo is needed later in phase install (k3s, swap, automatic updates) – checking access now"; sudo -v; } || die "sudo not available" 3
   for host in github.com get.k3s.io get.helm.sh dl.k8s.io ghcr.io registry-1.docker.io quay.io; do
     curl -s -o /dev/null --max-time 10 "https://$host" || { [ -d "$BUNDLE" ] && warn "$host not reachable (bundle present)" || die "$host not reachable – internet access required" 3; }
   done
-  if [ -x /usr/local/bin/k3s ] && [ ! -f /etc/rancher/k3s/reproduce-owner ]; then die "a k3s installation not created by this script exists – not touched" 3; fi
+  if [ -x /usr/local/bin/k3s ] && [ ! -f $OWNER ]; then die "a k3s installation not created by this script exists – not touched" 3; fi
   if pgrep -x kubelet >/dev/null || pgrep -f 'microk8s|minikube|kind-control-plane' >/dev/null; then die "another Kubernetes is running on this machine" 3; fi
-  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ':6443$' && [ ! -f /etc/rancher/k3s/reproduce-owner ]; then die "port 6443 is in use by another program" 3; fi
-  step "machine scan (10 s CPU speed test)"
-  py machine "$STATE/machine.json" "$WORK" > /dev/null
+  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ':6443$' && [ ! -f $OWNER ]; then die "port 6443 is in use by another program" 3; fi
+  ok "requirements met"
+  spin "machine scan with a CPU speed test" "10 s" py machine "$STATE/machine.json" "$WORK" > /dev/null
   vcpu=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["vcpu"])' "$STATE/machine.json")
   mem=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mem_total_gib"])' "$STATE/machine.json")
   ok "machine: $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print("%s · %s vCPU · %s GiB · %s · score %s" % (m["cpu_model"], m["vcpu"], m["mem_total_gib"], m["os"], m["cpu_single_core_score"]))' "$STATE/machine.json")"
   [ "$(python3 -c 'import json,sys; print(min(json.load(open(sys.argv[1]))["disk_free_gib"].values()))' "$STATE/machine.json" | cut -d. -f1)" -ge 50 ] || die "at least 50 GB free disk space required" 3
-  steal=$(py steal 60)
+  steal=$(spin "measuring steal time – shows whether the machine is shared and busy" "60 s" py steal 60)
   if python3 -c "import sys; sys.exit(0 if float('$steal') > 0.02 else 1)"; then warn "steal time $steal over 60 s – shared and busy machine, expect waiting or invalid runs"; else ok "steal time $steal over 60 s"; fi
   # calculator (REPRODUCE.md §8)
+  step "calculating the resources each profile needs"
   for p in original compact; do
     need_cpu=0; need_mem=0
     for cfg in $(configs_of "$p"); do
@@ -989,20 +1114,25 @@ phase_check() {
     fi
   done
   [ -n "$prof" ] || die "machine too small for every profile (minimum: profile compact, see above)" 3
-  if [ -f "$STATE/profile" ] && [ "$(profile)" != "$prof" ] && [ -f /etc/rancher/k3s/reproduce-owner ]; then
+  if [ -f "$STATE/profile" ] && [ "$(profile)" != "$prof" ] && [ -f $OWNER ]; then
     die "profile changed from $(profile) to $prof on an installed cluster – run ./reproduce uninstall first" 3
   fi
   echo "$prof" > "$STATE/profile"
-  ok "profile: $prof (configurations: $(configs_of "$prof"))"
+  ok "profile: $prof (configurations: $(configs_of "$prof" | sed 's/ /, /g'))"
+  case "$prof" in
+    compact)  info "compact = resource limits of the setup measured in the thesis (fits 8 vCPU)" ;;
+    original) info "original = resources as shipped by Tractus-X (needs about 20 vCPU)" ;;
+  esac
 }
 
 # ── Phase 3: install (sudo) ───────────────────────────────────────────────────────
 phase_install() {
   set_phase install
   [ -f "$STATE/profile" ] || need_fail "machine not checked" "./reproduce check"
-  if [ -f /etc/rancher/k3s/reproduce-owner ] && [ "$(/usr/local/bin/k3s --version 2>/dev/null | awk 'NR==1{print $3}')" = "$K3S_VERSION" ] && k get nodes >/dev/null 2>&1; then
-    skip "k3s $K3S_VERSION (own installation)"
+  if [ -f $OWNER ] && [ "$(/usr/local/bin/k3s --version 2>/dev/null | awk 'NR==1{print $3}')" = "$K3S_VERSION" ] && k get nodes >/dev/null 2>&1; then
+    skip "k3s $K3S_VERSION already installed by this script"
   else
+    sudo -n true 2>/dev/null || info "sudo password needed: k3s is installed system-wide; swap and automatic updates are switched off (./reproduce uninstall restores them)"
     sudo -v || die "sudo not available"
     step "saving system settings, switching off automatic updates and swap"
     if [ ! -f "$STATE/system-before.json" ]; then
@@ -1015,7 +1145,7 @@ EOF
     fi
     q sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
     command -v snap >/dev/null && { q sudo snap refresh --hold || true; }
-    q sudo swapoff -a; q sudo sed -i.reproduce-bak -E 's|^([^#][^ ]*[[:space:]]+[^ ]+[[:space:]]+swap[[:space:]].*)$|#\1|' /etc/fstab
+    q sudo swapoff -a; [ -f /etc/fstab.reproduce-bak ] || q sudo sed -i.reproduce-bak -E 's|^([^#][^ ]*[[:space:]]+[^ ]+[[:space:]]+swap[[:space:]].*)$|#\1|' /etc/fstab
     q sudo install -D -m 644 "$SRC/setup/a2-k3s/config.yaml" /etc/rancher/k3s/config.yaml
     step "installing k3s $K3S_VERSION"
     if [ -x "$BUNDLE/k3s/k3s" ]; then
@@ -1024,9 +1154,10 @@ EOF
       [ ! -f "$BUNDLE/images.tar" ] || q sudo install -D -m 644 "$BUNDLE/images.tar" /var/lib/rancher/k3s/agent/images/reproduce-images.tar
       sudo env INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable traefik" sh "$BUNDLE/k3s/install.sh" >>"$LOGF" 2>&1 || die "k3s installation (bundle) failed"
     else
-      curl -sfL https://get.k3s.io | sudo env INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC="--disable traefik" sh - >>"$LOGF" 2>&1 || die "k3s installation failed"
+      spin "downloading and starting k3s" "30 s" bash -c 'curl -sfL https://get.k3s.io | sudo env INSTALL_K3S_VERSION="$1" INSTALL_K3S_EXEC="--disable traefik" sh - >>"$2" 2>&1' _ "$K3S_VERSION" "$LOGF" \
+        || die "k3s installation failed"
     fi
-    printf 'installed by reproduce %s, work folder %s\n' "$(now_iso)" "$WORK" | sudo tee /etc/rancher/k3s/reproduce-owner >/dev/null
+    printf 'installed by reproduce %s, work folder %s\n' "$(now_iso)" "$WORK" | sudo install -D -m 644 /dev/stdin "$OWNER"
     sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG"; chmod 600 "$KUBECONFIG"
     local i; for i in $(seq 60); do [ -n "$(k get node -o name 2>/dev/null)" ] && break; sleep 5; done  # node object appears only after k3s registers it
     q k wait --for=condition=Ready node --all --timeout=300s || die "node not ready"
@@ -1038,14 +1169,21 @@ EOF
   [ "$((cap - 1))" = "$alloc" ] || die "allocatable CPU $alloc ≠ capacity $cap − 1 (system-reserved missing)"
   cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"
   # images once, one after another, with back-off on rate limits (REPRODUCE.md §22.9)
-  local img n=0 total wait_s
-  total=$(py images "$STATE/render"/"$(profile)"-k*/*.yaml | wc -l)
+  local img n=0 total wait_s pulled=0 t0=$SECONDS t1 pid list
+  list=$(py images "$STATE/render"/"$(profile)"-k*/*.yaml; printf '%s\n' "grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6" "ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6")
+  total=$(printf '%s\n' "$list" | grep -c .)
   step "pulling $total images (once)"
+  sudo -v || die "sudo not available"   # before the loop: a password prompt from a background pull would hang
   while read -r img; do
     n=$((n + 1))
-    if sudo k3s crictl inspecti "$img" >/dev/null 2>&1; then continue; fi
+    if sudo k3s crictl inspecti "$img" >/dev/null 2>&1; then progress "$n" "$total" "present: ${img%%@*}"; continue; fi
     wait_s=60
-    until sudo k3s crictl pull "$img" >>"$LOGF" 2>&1; do
+    while :; do
+      progress "$((n - 1))" "$total" "pulling ${img%%@*}"
+      t1=$SECONDS; sudo k3s crictl pull "$img" >>"$LOGF" 2>&1 & pid=$!
+      while kill -0 "$pid" 2>/dev/null; do sleep 1; [ "$TTY" = 1 ] && progress "$((n - 1))" "$total" "pulling ${img%%@*}" "$((SECONDS - t1))"; done
+      wait "$pid" && break
+      progress_end
       if tail -n 5 "$LOGF" | grep -qiE 'toomanyrequests|429'; then
         [ "$wait_s" -le 1920 ] || die "registry download limit reached – try again later or use a bundle (REPRODUCE.md §22.11)"
         warn "download limit of the registry – waiting $((wait_s / 60)) min ($n/$total)"; sleep "$wait_s"; wait_s=$((wait_s * 2))
@@ -1053,8 +1191,10 @@ EOF
         die "image pull failed: $img"
       fi
     done
-  done < <(py images "$STATE/render"/"$(profile)"-k*/*.yaml; printf '%s\n' "grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6" "ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6")
-  ok "images present"
+    pulled=$((pulled + 1))
+  done <<< "$list"
+  progress_end
+  ok "$total images present ($pulled pulled, $((total - pulled)) already there, $(dur $((SECONDS - t0))))"
 }
 
 # ── Reboot detection and repair (REPRODUCE.md §22.4) ──────────────────────────────
@@ -1091,46 +1231,93 @@ resume_markers() {
   if marker_has reset && [ -f "$STATE/s0/SHA256SUMS" ]; then warn "a reset was interrupted – repeating it"; reset_sut; fi
 }
 
-wait_namespaces() {  # timeout ns... → all pods (except completed ones) ready
-  local to="$1"; shift
-  python3 - "$to" "$@" <<'EOF'
-import json, subprocess, sys, time
-to, nss = int(sys.argv[1]), sys.argv[2:]; t0 = time.time(); oom = {}
+wait_namespaces() {  # timeout ns... → all workloads and pods (except finished ones) ready
+  # prints one line per minute with the pods still missing and why; warns once if a pod is stuck
+  python3 - "$@" <<'EOF'
+import json, os, subprocess, sys, time
+to, nss = int(sys.argv[1]), sys.argv[2:]
+t0 = time.time(); oom = {}; stuck_since = {}; warned = set(); next_line = 60
+COL = os.environ.get("REPRODUCE_COLOR") == "1"
+def say(sym, text):
+    t = time.strftime("%H:%M:%S", time.gmtime()); line = "%s %s %s" % (t, sym, text)
+    if os.environ.get("REPRODUCE_BG") != "1":
+        with open(os.environ["LOGF"], "a") as f: f.write(line + "\n")
+        if COL: line = "\033[2m%s\033[0m %s%s %s\033[0m" % (t, "\033[2m" if sym == "·" else "\033[33m", sym, text)
+    print(line, flush=True)
+def mins(s): return "%dm%02ds" % (s // 60, s % 60)
+def get(*a):
+    r = subprocess.run(["kubectl", "--request-timeout=30s", "get", *a, "-o", "json"], capture_output=True, text=True)
+    return json.loads(r.stdout)["items"] if r.returncode == 0 and r.stdout else None
+HARD = {"CreateContainerConfigError", "CreateContainerError", "InvalidImageName", "ImagePullBackOff", "ErrImagePull", "RunContainerError"}
+def why(p):  # → short reason, stuck?
+    st = p.get("status") or {}
+    for c in st.get("conditions") or []:
+        if c.get("type") == "PodScheduled" and c.get("status") == "False":
+            return "not scheduled: " + (c.get("message") or c.get("reason") or "")[:90], True
+    cs = (st.get("initContainerStatuses") or []) + (st.get("containerStatuses") or [])
+    for c in cs:
+        w = (c.get("state") or {}).get("waiting") or {}
+        if w.get("reason") in HARD: return "%s – %s" % (w["reason"], (w.get("message") or "")[:100]), True
+        if w.get("reason") == "CrashLoopBackOff": return "crashed and restarting (%d×)" % c.get("restartCount", 0), c.get("restartCount", 0) >= 3
+    if any(not c.get("ready") for c in st.get("initContainerStatuses") or []): return "initialising", False
+    if not st.get("containerStatuses") or any(((c.get("state") or {}).get("waiting") or {}).get("reason") == "ContainerCreating" for c in cs): return "starting", False
+    return "started, waiting for its readiness check", False
 while True:
     bad = []
     for ns in nss:
-        pods = json.loads(subprocess.run(["kubectl", "get", "pods", "-n", ns, "-o", "json"], capture_output=True, text=True).stdout or '{"items":[]}')["items"]
+        pods, wls = get("pods", "-n", ns), get("deploy,sts,ds", "-n", ns)
+        if pods is None or wls is None: bad.append(("Kubernetes API", "not reachable", False)); continue
+        for w in wls:  # catches pods that do not exist yet (right after helm)
+            s = w.get("status") or {}
+            want = s.get("desiredNumberScheduled", 0) if w["kind"] == "DaemonSet" else (w.get("spec") or {}).get("replicas", 1)
+            have = s.get("numberReady", 0) if w["kind"] == "DaemonSet" else s.get("readyReplicas", 0)
+            if have < want and not any(b[0].startswith(w["metadata"]["name"]) for b in bad): bad.append((w["metadata"]["name"], "%d of %d ready" % (have, want), False))
         for p in pods:
-            if p["status"].get("phase") == "Succeeded": continue
+            ph = p["status"].get("phase")
+            if ph == "Succeeded" or (ph == "Failed" and any(o.get("kind") == "Job" for o in p["metadata"].get("ownerReferences") or [])): continue
             cs = p["status"].get("containerStatuses") or []
             for c in cs:
                 t = (c.get("lastState") or {}).get("terminated") or {}
                 if t.get("reason") == "OOMKilled": oom["%s/%s/%s" % (ns, p["metadata"]["name"], c["name"])] = c.get("restartCount", 0)
-            if not cs or not all(c.get("ready") for c in cs): bad.append("%s/%s" % (ns, p["metadata"]["name"]))
+            if not cs or not all(c.get("ready") for c in cs):
+                r, st = why(p); name = p["metadata"]["name"]
+                bad = [b for b in bad if not name.startswith(b[0])] + [(name, r, st)]
+    el = int(time.time() - t0)
     if not bad: sys.exit(0)
     hard = [k for k, v in oom.items() if v >= 3]
-    if hard: print("OOMKilled repeatedly: " + ", ".join(hard)); sys.exit(2)
-    if time.time() - t0 > to: print("not ready: " + ", ".join(bad)); sys.exit(1)
+    if hard: say("·", "killed repeatedly for exceeding the RAM limit (OOMKilled): " + ", ".join(hard)); sys.exit(2)
+    if el > to: say("·", "not ready after %s: %s" % (mins(el), "; ".join("%s (%s)" % b[:2] for b in bad))); sys.exit(1)
+    for name, r, st in bad:
+        if not st: stuck_since.pop(name, None); continue
+        stuck_since.setdefault(name, el)
+        if el - stuck_since[name] >= 180 and name not in warned:
+            warned.add(name); say("!", "%s looks stuck: %s – this rarely fixes itself (the step gives up after %d min)" % (name, r, to // 60))
+    if el >= next_line:
+        next_line += 60
+        say("·", "still waiting %s (gives up after %d min) – not ready: %s" % (mins(el), to // 60,
+            ", ".join("%s (%s)" % (n, r if len(r) <= 48 else r[:47] + "…") for n, r, _ in bad[:3]) + (" and %d more" % (len(bad) - 3) if len(bad) > 3 else "")))
     time.sleep(10)
 EOF
 }
 
 # ── Phase 4: deploy ───────────────────────────────────────────────────────────────
-deploy_release() {  # block configuration
-  local b="$1" cfg="$2" rel ns args=() f h
+deploy_release() {  # block configuration [prefix]
+  local b="$1" cfg="$2" pre="${3:-}" rel ns args=() f h
   rel=$(release_line "$b" | awk '{print $2}'); ns=$(release_line "$b" | awk '{print $3}')
   h=$(desired_hash "$b" "$cfg")
-  if [ "$(cat "$STATE/releases/$ns-$rel" 2>/dev/null)" = "$h" ] && helm status "$rel" -n "$ns" >/dev/null 2>&1; then skip "$b ($cfg)"; return 0; fi
+  if [ "$(cat "$STATE/releases/$ns-$rel" 2>/dev/null)" = "$h" ] && helm status "$rel" -n "$ns" >/dev/null 2>&1; then skip "${pre}$b already installed ($cfg)"; return 0; fi
+  step "${pre}installing $b ($cfg)"
   while IFS= read -r f; do args+=(-f "$f"); done < <(values_files "$b" "$cfg")
   q helm upgrade --install "$rel" "$(chart_ref "$b")" -n "$ns" --create-namespace --timeout 60m "${args[@]}" || die "helm install of $b failed – see log"
   mkdir -p "$STATE/releases"; echo "$h" > "$STATE/releases/$ns-$rel"
-  ok "$b ($cfg)"
+  ok "${pre}$b installed ($cfg)"
 }
 phase_deploy() {
   set_phase deploy
-  [ -f /etc/rancher/k3s/reproduce-owner ] && k get nodes >/dev/null 2>&1 || need_fail "k3s not installed" "./reproduce install"
+  [ -f $OWNER ] && k get nodes >/dev/null 2>&1 || need_fail "k3s not installed" "./reproduce install"
   ensure_boot
-  local cfg ns d line b rc
+  local cfg ns d line b rc i=0 n to t1
+  n=$(echo "$RELEASES" | wc -l | tr -d ' ')
   cfg="$(profile)-k0"
   [ -f "$STATE/config" ] && cfg=$(cat "$STATE/config")
   for ns in monitoring logging identity customer supplier k6-operator k6; do k create namespace "$ns" --dry-run=client -o yaml | q k apply -f -; done
@@ -1143,13 +1330,21 @@ phase_deploy() {
       --from-file="$d/tokenSignerPrivateKey" --from-file="$d/tokenSignerPublicKey" --dry-run=client -o yaml | q k apply -f -
   done
   k create secret generic puris-api-key -n k6 --from-literal=key="$TEST_API_KEY" --dry-run=client -o yaml | q k apply -f -
+  # Grafana login (values.yaml: existingSecret grafana-admin); random, stays in state/keys (AUFBAU.md, b1)
+  d="$STATE/keys/grafana"; mkdir -p "$d"
+  [ -f "$d/admin-password" ] || { openssl rand -base64 18 | tr -d '\n' > "$d/admin-password"; chmod 600 "$d/admin-password"; }
+  k create secret generic grafana-admin -n monitoring --from-literal=admin-user=admin --from-file=admin-password="$d/admin-password" \
+    --dry-run=client -o yaml | q k apply -f -
   while read -r line; do
     b=${line%% *}; ns=$(echo "$line" | awk '{print $3}')
-    deploy_release "$b" "$cfg"
-    case "$b" in c3-*|c5-*) step "waiting until $b is ready (DTR start with little CPU can take 20 min)" ;; *) step "waiting until $b is ready" ;; esac
-    rc=0; wait_namespaces "$( [ "${b:0:1}" = c ] && echo 2100 || echo 900 )" "$ns" >>"$LOGF" 2>&1 || rc=$?
+    i=$((i + 1))
+    deploy_release "$b" "$cfg" "[$i/$n] "
+    to=$( [ "${b:0:1}" = c ] && echo 2100 || echo 900 ); t1=$SECONDS
+    case "$b" in c3-*|c5-*) step "[$i/$n] waiting until $b is ready – a DTR starting with little CPU can take up to 20 min" ;; *) step "[$i/$n] waiting until $b is ready" ;; esac
+    rc=0; wait_namespaces "$to" "$ns" 2>>"$LOGF" || rc=$?
     if [ "$rc" = 2 ]; then die "$b: container killed repeatedly for exceeding its RAM limit (OOMKilled) – configuration $cfg as shipped is not runnable on its own; this is a result (REPRODUCE.md §7.4)"; fi
-    [ "$rc" = 0 ] || die "$b: pods not ready in time – see diagnostics"
+    [ "$rc" = 0 ] || die "$b: pods not ready within $((to / 60)) min – see the reasons above and the diagnostics"
+    ok "[$i/$n] $b ready ($(dur $((SECONDS - t1))))"
   done <<<"$RELEASES"
   echo "$cfg" > "$STATE/config"
   ok "all components deployed ($cfg)"
@@ -1160,7 +1355,7 @@ phase_prepare() {
   set_phase prepare
   [ -f "$STATE/config" ] || need_fail "components not deployed" "./reproduce deploy"
   ensure_boot; resume_markers
-  if [ -f "$STATE/s0/SHA256SUMS" ] && ( cd "$STATE/s0" && sha256sum -c --quiet SHA256SUMS ) 2>/dev/null; then skip "S0 present"; return 0; fi
+  if [ -f "$STATE/s0/SHA256SUMS" ] && ( cd "$STATE/s0" && sha256sum -c --quiet SHA256SUMS ) 2>/dev/null; then skip "database state S0 already saved"; return 0; fi
   step "test data: supplier"; py testdata supplier "$SRC" "$TEST_API_KEY" >>"$LOGF" 2>&1 || die "test data (supplier) failed – see log"
   step "test data: customer"; py testdata customer "$SRC" "$TEST_API_KEY" >>"$LOGF" 2>&1 || die "test data (customer) failed – see log"
   ok "test data: 20 materials in both companies"
@@ -1207,7 +1402,7 @@ phase_verify() {
     out=$(py conformance "$ns" "$STATE/render/current-$b.yaml" 2>&1) || die "running $b differs from configuration $cfg:"$'\n'"$out"
   done <<<"$RELEASES"
   ok "conformance: running resources = configuration $cfg"
-  wait_namespaces 600 monitoring logging identity customer supplier k6-operator >>"$LOGF" 2>&1 || die "not all pods ready"
+  wait_namespaces 600 monitoring logging identity customer supplier k6-operator 2>>"$LOGF" || die "not all pods ready within 10 min"
   diffs=$(counts_diff c1-wallet c3-customer-dtr c5-supplier-dtr); [ -z "$diffs" ] || die "wallet/DTR rows differ from S0: $diffs"
   function_test 1 || die "test transaction failed: $FT_JSON"
   cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"; now_iso > "$STATE/verified"
@@ -1343,6 +1538,7 @@ phase_measure() {
   cfgs=$(configs_of "$(profile)")
   if [ -n "$want" ]; then echo " $cfgs " | grep -q " $want " || die "configuration $want does not belong to profile $(profile) ($cfgs)" 2; cfgs="$want"; fi
   TMPD=$(mktemp -d)
+  [ "${REPRODUCE_SMOKE:-0}" != 1 ] || warn "short test mode (REPRODUCE_SMOKE=1): stages of 2 min – these runs are not valid for the thesis"
   rd=$(results_dir)
   for cfg in $cfgs; do
     set_phase "measure:$cfg"
@@ -1381,38 +1577,96 @@ phase_package() {
 }
 
 # ── status, watch, stop ───────────────────────────────────────────────────────────
+phase_state() {  # phase → 0 done
+  local rd c v i
+  case "$1" in
+    fetch)   [ -e "$SRC/.git" ] ;;
+    tools)   [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] ;;
+    check)   [ -n "$(profile)" ] ;;
+    install) [ -f "$OWNER" ] ;;
+    deploy)  [ -f "$STATE/config" ] ;;
+    prepare) [ -f "$STATE/s0/SHA256SUMS" ] ;;
+    verify)  [ -f "$STATE/verified" ] ;;
+    measure)
+      rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -d "$rd" ] || return 1
+      for c in $(configs_of "$(profile)"); do read -r v i <<<"$(count_runs "$rd" "$c")"; [ "$v" -ge "$REPS" ] || return 1; done ;;
+    evaluate) rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -f "$rd/summary.json" ] ;;
+    package)  rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -f "$rd/SHA256SUMS" ] ;;
+  esac
+}
+last_status_line() { grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2} ' "$LOGF" 2>/dev/null | tail -n 1; }
+last_line_age() {  # seconds since the last status line
+  local t; t=$(last_status_line | cut -c1-8)
+  [ -n "$t" ] || { echo 0; return 0; }
+  echo $(( ( $(date -u +%s) % 86400 - $(date -u -d "1970-01-01 $t" +%s) + 86400 ) % 86400 ))
+}
 cmd_status() {
-  local p rd cfg
-  echo "work folder: $WORK"
-  echo "commit:      $(commit 2>/dev/null | cut -c1-7 || echo –)"
-  p=$(profile); echo "profile:     ${p:-–}${p:+ ($(configs_of "$p"))}"
-  echo "configured:  $(cat "$STATE/config" 2>/dev/null || echo –)"
-  printf '%s\n' "phases:"
-  [ -e "$SRC/.git" ] && echo "  ✓ fetch" || echo "  ✗ fetch"
-  [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] && echo "  ✓ tools" || echo "  ✗ tools"
-  [ -n "$p" ] && echo "  ✓ check" || echo "  ✗ check"
-  [ -f /etc/rancher/k3s/reproduce-owner ] && echo "  ✓ install" || echo "  ✗ install"
-  [ -f "$STATE/config" ] && echo "  ✓ deploy" || echo "  ✗ deploy"
-  [ -f "$STATE/s0/SHA256SUMS" ] && echo "  ✓ prepare" || echo "  ✗ prepare"
-  [ -f "$STATE/verified" ] && echo "  ✓ verify ($(cat "$STATE/verified"))" || echo "  ✗ verify"
+  local p rd cfg x st n="" ph="" v i
+  p=$(profile)
+  ! job_alive || ph=$(sed -n 's/.*phase=\([^ :]*\).*/\1/p' "$STATE/job")
+  printf '%s\n' "${C_B}reproduce · PURIS saturation experiment${C_0}"
+  printf '  %-12s %s\n' "work folder" "$(rel "$WORK")" "repository" "$(commit 2>/dev/null | cut -c1-7 || true)" \
+    "profile" "${p:-– (not checked yet)}${p:+ – configurations $(configs_of "$p" | sed 's/ /, /g')}"
+  [ ! -f "$STATE/config" ] || printf '  %-12s %s\n' "deployed" "$(cat "$STATE/config")"
+  echo
+  for x in $PHASES; do
+    if [ "$x" = "$ph" ]; then st="$C_RUN…$C_0"
+    elif phase_state "$x"; then st="$C_OK✓$C_0"
+    else st="$C_DIM○$C_0"; [ -n "$n" ] || n=$x; fi
+    printf '  %s %s %-9s %s\n' "$st" "$(phase_no "$x")" "$x" "$C_DIM$(phase_desc "$x")$C_0"
+  done
+  echo
   rd=$(cat "$STATE/results-current" 2>/dev/null || true)
   if [ -n "$rd" ] && [ -d "$rd" ]; then
-    echo "results:     $rd"
-    for cfg in $(configs_of "$p"); do echo "  $cfg: valid / invalid runs = $(count_runs "$rd" "$cfg" | tr ' ' '/')"; done
-    [ ! -f "$rd/verdict.md" ] || echo "  verdict: $rd/verdict.md"
+    printf '  %-12s %s\n' "results" "$(rel "$rd")"
+    for cfg in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid (target: $REPS valid)"; done
+    [ ! -f "$rd/verdict.md" ] || printf '  %-12s %s\n' "verdict" "$(rel "$rd/verdict.md")"
   fi
-  [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || echo "open changes: $(ls "$MARKERS" | tr '\n' ' ')"
-  if job_alive; then echo "job:         running – $(cat "$STATE/job")"; else echo "job:         none"; fi
+  [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || printf '  %-12s %s\n' "interrupted" "$(ls "$MARKERS" | tr '\n' ' ')– completed automatically by the next command"
+  if job_alive; then
+    printf '  %-12s %s\n' "job" "running in the background – phase ${ph:-?}, PID $(job_pid), since $(sed -n 's/.*started=[0-9-]*T\([0-9:]*\):[0-9]*Z.*/\1/p' "$STATE/job") UTC" \
+      "last line" "$(last_status_line) ($(dur "$(last_line_age)") ago)"
+    printf '\n%s\n' "${C_B}→ follow it: ./reproduce watch${C_0}"
+  else
+    printf '  %-12s %s\n' "job" "none running"
+    if [ -n "$n" ]; then printf '\n%s\n' "${C_B}→ next: ./reproduce $n${C_0}  $C_DIM($(phase_desc "$n") · usually $(phase_time "$n"))$C_0"
+    else printf '\n%s\n' "${C_B}→ all phases done – results: $(rel "$rd")${C_0}"; fi
+  fi
+  printf '%s\n' "${C_DIM}  kubectl: export KUBECONFIG=$KUBECONFIG PATH=$TOOLS:\$PATH${C_0}"
 }
-cmd_watch() {
-  [ -f "$LOGF" ] || { echo "no log yet"; return 0; }
-  tail -n 30 -F "$LOGF" 2>/dev/null &
-  local tp=$!
-  trap 'kill $tp 2>/dev/null; echo; echo "(view closed – the job keeps running)"; exit 0' INT
-  sleep 3
-  while job_alive; do sleep 5; done
-  kill "$tp" 2>/dev/null || true
-  echo "(job ended – ./reproduce status)"
+TICKER=0
+ticker() {  # time of the last status line (SECONDS) → live line below the output, terminal only
+  [ "$TTY" = 1 ] || return 0
+  local ph; ph=$(sed -n 's/.*phase=\([^ ]*\).*/\1/p' "$STATE/job" 2>/dev/null)
+  printf '\r\033[K%s' "$C_DIM         $C_0$C_RUN${SPIN[$((SECONDS % 10))]}$C_0$C_DIM working on ${ph:-?} · last update $(dur $((SECONDS - $1))) ago · Ctrl-C closes only this view$C_0"
+  TICKER=1
+}
+ticker_clear() { [ "$TICKER" = 1 ] && printf '\r\033[K'; TICKER=0; return 0; }
+cmd_watch() {  # [--all | --from byte-offset] → status lines of the background job, live
+  [ -f "$LOGF" ] || { echo "nothing to show yet – no log"; return 0; }
+  local re='^[0-9]{2}:[0-9]{2}:[0-9]{2} ' from="" line rc t_last ended=0
+  case "${1:-}" in --all) re='' ;; --from) from="${2:-0}" ;; esac
+  if [ -z "$from" ]; then
+    if [ -z "$re" ]; then tail -n 40 "$LOGF"; else grep -E "$re" "$LOGF" | tail -n 15 | while IFS= read -r line; do paint "$line"; done; fi
+    from=$(stat -c %s "$LOGF")
+    job_alive || { printf '\n%s\n' "no job is running – overview: ./reproduce status"; return 0; }
+  else
+    for _ in $(seq 1 15); do job_alive && break; [ "$(stat -c %s "$LOGF")" -le "$from" ] || break; sleep 1; done   # a job started just now registers itself
+  fi
+  exec 8< <(tail -c +"$((from + 1))" -F --pid=$$ "$LOGF" 2>/dev/null | grep --line-buffered -E "$re")
+  trap 'ticker_clear; printf "\n%s\n" "(view closed – the job keeps running · ./reproduce watch opens it again)"; exit 0' INT TERM HUP   # a view never writes into the job's log
+  t_last=$((SECONDS - $(last_line_age)))
+  while :; do
+    if IFS= read -r -t 1 line <&8; then
+      ticker_clear; if [ -z "$re" ]; then printf '%s\n' "$line"; else paint "$line"; fi; t_last=$SECONDS
+    else
+      rc=$?; [ "$rc" -gt 128 ] || break
+      if job_alive; then ticker "$t_last"; elif [ "$ended" = 1 ]; then break; else ended=1; fi
+    fi
+  done
+  ticker_clear
+  if grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2} ' "$LOGF" | tail -n 4 | grep -q '^.\{8\} ✗ '; then printf '\n%s\n' "${C_ERR}(the job stopped with an error – see the ✗ line above)${C_0}"
+  else printf '\n%s\n' "(the job has ended – overview: ./reproduce status)"; fi
 }
 cmd_stop() {
   job_alive || { echo "no job running"; return 0; }
@@ -1424,7 +1678,7 @@ cmd_stop() {
 
 # ── uninstall and bundle ──────────────────────────────────────────────────────────
 cmd_uninstall() {
-  [ -f /etc/rancher/k3s/reproduce-owner ] || die "no cluster of this script on this machine – nothing removed" 3
+  [ -f $OWNER ] || die "no cluster of this script on this machine – nothing removed" 3
   if [ "${1:-}" != --yes ]; then
     echo "This removes k3s with all pods and volumes, and restores the system settings."
     echo "Kept: $SRC, $RESULTS, $STATE/s0. Type 'uninstall' to continue:"
@@ -1441,7 +1695,7 @@ cmd_uninstall() {
       if [ "$sw" = True ] && [ -f /etc/fstab.reproduce-bak ]; then q sudo cp /etc/fstab.reproduce-bak /etc/fstab; q sudo swapon -a; fi
     }
   fi
-  sudo rm -f /etc/rancher/k3s/reproduce-owner /etc/rancher/k3s/config.yaml
+  sudo rm -f "$OWNER" /etc/rancher/k3s/config.yaml
   rm -f "$KUBECONFIG" "$STATE/config" "$STATE/verified" "$STATE/boot_id" "$STATE/results-current"; rm -rf "$STATE/releases" "$MARKERS"
   ok "removed; system settings restored. Results kept in $RESULTS"
 }
@@ -1471,28 +1725,29 @@ on_exit() {
   unlock
   return "$rc"
 }
-on_term() { warn "stop requested"; exit 4; }
+on_term() { progress_end; warn "stopped – run $(retry_cmd) again to continue; steps already done are skipped"; exit 4; }
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0   # sourced (tests): functions only
-CMD="${1:-all}"
+CMD="${1:-all}"; ARGS_TEXT="$*"
 trap on_exit EXIT
 trap on_term TERM INT HUP
 case "$CMD" in
   all)
-    lock; phase_fetch; phase_tools; phase_check; phase_install
+    banner; lock; for x in fetch tools check install; do run_phase "$x"; done
     detach _continue ;;
   _continue)
-    lock; phase_deploy; phase_prepare; phase_verify; phase_measure; phase_evaluate; phase_package
-    ok "finished – results: $(cat "$STATE/results-current")" ;;
-  fetch|tools|check|install|verify) lock; "phase_$CMD" ;;
-  deploy|prepare) detach "$CMD"; lock; "phase_$CMD" ;;
-  measure) detach "$@"; lock; shift; phase_measure "${1:-}" ;;
-  evaluate|package) shift; "phase_$CMD" "${1:-}" ;;
+    lock; for x in deploy prepare verify measure evaluate package; do run_phase "$x"; done
+    ok "finished – all phases done"
+    hint "results: $(rel "$(cat "$STATE/results-current")") · readable summary: verdict.md in that folder" ;;
+  fetch|tools|check|install|verify) lock; run_phase "$CMD"; phase_done_hint "$CMD" ;;
+  deploy|prepare) detach "$CMD"; lock; run_phase "$CMD"; phase_done_hint "$CMD" ;;
+  measure) detach "$@"; lock; shift; run_phase measure "${1:-}"; phase_done_hint measure ;;
+  evaluate|package) shift; run_phase "$CMD" "${1:-}"; phase_done_hint "$CMD" ;;
   status) cmd_status ;;
-  watch)  cmd_watch ;;
+  watch)  cmd_watch "${2:-}" ;;
   stop)   cmd_stop ;;
   bundle) lock; cmd_bundle ;;
   uninstall) lock; shift; cmd_uninstall "${1:-}" ;;
   make-reference) shift; py make-reference "$@" ;;
-  help|-h|--help) sed -n '3,27p' "$SCRIPT" ;;
-  *) echo "unknown command: $CMD"; sed -n '3,27p' "$SCRIPT"; exit 2 ;;
+  help|-h|--help) sed -n '3,32p' "$SCRIPT" ;;
+  *) echo "unknown command: $CMD"; sed -n '3,32p' "$SCRIPT"; exit 2 ;;
 esac
