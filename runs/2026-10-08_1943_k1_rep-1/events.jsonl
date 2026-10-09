@@ -1,0 +1,6 @@
+{"time_utc": "2026-10-08T19:43:30.723220+00:00", "phase": "created", "status": "running", "reason": ""}
+{"time_utc": "2026-10-08T19:43:30.785024+00:00", "phase": "preflight", "status": "running", "reason": ""}
+{"time_utc": "2026-10-08T19:43:31.549024+00:00", "phase": "stopping", "status": "running", "reason": ""}
+{"time_utc": "2026-10-08T19:44:04.256877+00:00", "phase": "restoring", "status": "running", "reason": ""}
+{"time_utc": "2026-10-08T19:44:13.843893+00:00", "phase": "verifying_restore", "status": "running", "reason": ""}
+{"time_utc": "2026-10-08T19:44:25.015680+00:00", "phase": "starting", "status": "running", "reason": ""}

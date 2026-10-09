@@ -1,0 +1,12 @@
+{
+  "run": "2026-10-09_0646_k1_rep-5",
+  "git_commit": "da36c931e70239f7701c14485875ffda3b3bcf13",
+  "plan": "k1",
+  "repetition": "5",
+  "started_utc": "2026-10-09T06:46:34.644977+00:00",
+  "time_utc": "2026-10-09T07:01:39.292048+00:00",
+  "phase": "preflight",
+  "status": "failed",
+  "reason": "Vorprüfung: Steal Time bleibt über dem Grenzwert; recovery=not_needed",
+  "exit_code": 1
+}

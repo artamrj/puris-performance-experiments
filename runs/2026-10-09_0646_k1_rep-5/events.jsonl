@@ -1,0 +1,3 @@
+{"time_utc": "2026-10-09T06:46:34.644999+00:00", "phase": "created", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T06:46:34.692517+00:00", "phase": "preflight", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T07:01:39.292048+00:00", "phase": "preflight", "status": "failed", "reason": "Vorprüfung: Steal Time bleibt über dem Grenzwert; recovery=not_needed", "exit_code": 1}

@@ -1,0 +1,13 @@
+{"time_utc": "2026-10-09T01:06:26.052324+00:00", "phase": "created", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:06:26.075504+00:00", "phase": "preflight", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:06:27.140953+00:00", "phase": "stopping", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:07:00.098819+00:00", "phase": "restoring", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:07:10.643710+00:00", "phase": "verifying_restore", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:07:25.030302+00:00", "phase": "starting", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:16:01.078529+00:00", "phase": "verifying_start", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:16:11.860031+00:00", "phase": "ready", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:16:11.911933+00:00", "phase": "function_test", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T01:16:50.590748+00:00", "phase": "load", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T03:47:01.601621+00:00", "phase": "collecting", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T03:52:34.034760+00:00", "phase": "completed", "status": "running", "reason": ""}
+{"time_utc": "2026-10-09T03:52:34.084916+00:00", "phase": "completed", "status": "completed", "reason": "valid=true"}

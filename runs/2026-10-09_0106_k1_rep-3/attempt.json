@@ -1,0 +1,11 @@
+{
+  "run": "2026-10-09_0106_k1_rep-3",
+  "git_commit": "da36c931e70239f7701c14485875ffda3b3bcf13",
+  "plan": "k1",
+  "repetition": "3",
+  "started_utc": "2026-10-09T01:06:26.052303+00:00",
+  "time_utc": "2026-10-09T03:52:34.084916+00:00",
+  "phase": "completed",
+  "status": "completed",
+  "reason": "valid=true"
+}

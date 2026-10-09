@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-08 – Etappe 1 abgeschlossen; Robustheit von `lab` auf der VM nachgewiesen (Kurztest 2); Vorstudien 1–3 abgeschlossen (Vorstudie 3: stabil bis 0,5/s, Kippen bei 0,8/s, keine Erholung bei 0,2/s). K0-Plan und S0 entschieden, Aufbau eingefroren (`setup-v1` = `78c7e84`, 2026-10-08). **Messreihe K0 beendet** (2026-10-08, 07:40 UTC): 3 gültige Läufe, `rep-1` ungültig (Steal Time); Kippen bei 0,6–0,7/s, keine Erholung. **K0 abgeschlossen** (2026-10-08): 6 gültige Läufe, stabil bis 0,5/s, Kippen bei 0,6/s (2×) oder 0,7/s (4×), keine Erholung. K1 vorbereitet (`setup-v3`); als Nächstes K1-NAS anwenden und messen. **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-09 – Etappe 1 abgeschlossen; Vorstudien 1–3 abgeschlossen. **Hauptmessungen auf dem NAS abgeschlossen:** K0 (`setup-v1`/`setup-v2`) 6 gültige Läufe, stabil bis 0,5/s, kippt bei 0,6/s (2×) oder 0,7/s (4×); K1-NAS (`setup-v3`) 4 gültige Läufe, bis 1,0/s fehlerfrei, kippt bei 1,5/s (3×) oder 2,0/s (1×); in beiden keine Erholung, gekipptes System ohne Last weiter beschäftigt. Logs aller Läufe bis 2026-10-08 vollständig in `nachtrag/`. Als Nächstes: K1-Läufe committen, System zurücksetzen, Auswertung (`analysis/`), VM der Betreuung (K0-ISST/K1-ISST, Nachbau-Test). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -30,7 +30,7 @@ Zieltermine rückwärts gerechnet vom Abgabetermin der Arbeit (10.11.2026); mit 
 | 9 Offene Punkte klären | teilweise erledigt (Rest: Probelauf, Reset, VPS-Entscheidung bis So 18.10.) | bis Mi 21.10. |
 | 10 Etappe 2 – Automatisieren | offen | Do 22.–Sa 24.10. (inkl. Neuaufbau mit Skripten) |
 | 11 Etappe 3 – Vorstudie und Einfrieren | weit fortgeschritten (Vorstudien 1–3 gelaufen, 2026-10-07; K0-Plan und S0 entschieden, `setup-v1` gesetzt 2026-10-08; Hauptmessungen folgen) | Vorstudie Nacht 24./25.10., **`setup-v1` So 25.10. (Meilenstein 2)** |
-| 12 Etappe 3 – Hauptmessungen | begonnen (K0 gelaufen 2026-10-08, 3 gültig, Logs vollständig nachgetragen; K1 vorbereiten) | Mo 26.–Do 29.10. (ca. 5 h je Konfiguration, nachts) |
+| 12 Etappe 3 – Hauptmessungen | NAS erledigt (K0 6 gültig, K1 4 gültig, 2026-10-09); offen: VM der Betreuung (K0-ISST/K1-ISST) | Mo 26.–Do 29.10. (ca. 5 h je Konfiguration, nachts) |
 | 13 Etappe 3 – Nachbau-Test | offen | Fr 30.10.–**So 01.11. (Meilenstein 3)** |
 | 14 Auswertung (`analysis/`) | offen | Skripte ab Mo 26.10. parallel, fertig Mo 02.11. |
 | 15 Übernahme in die Arbeit | offen | 4.3 laufend ab 12.10.; Kap. 5 Mo 02.–Di 03.11. |
@@ -96,6 +96,9 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] Vor dem Einfrieren (`setup-v1`): Updates einmal von Hand einspielen, danach keine Updates mehr bis zum Ende der Messungen – entfällt (Entscheidung 2026-10-07: keine Updates vor `setup-v1`, Neustart-Risiko am Messtag; Paketstand im Laborbuch)
 - [ ] Vor den Messungen: Festlegen, welche anderen Dienste des NAS während der Messungen ruhen, und das im Laborbuch vermerken (die VM teilt sich die Threads mit dem NAS) *(2026-10-08: Steal-Spitze 6,0 % um ca. 03:00 MESZ in K0 `rep-1` → zeitgesteuerte Aufgaben des NAS um 03:00 prüfen, vor K1)* *(geprüft 2026-10-08 (Verfasser): Sicherheitsscan des NAS um 03:00 – abgeschaltet; weitere Dienste noch nicht festgelegt)*
 - [ ] Sicherheitsscan des NAS nach dem Ende der Messungen wieder einschalten oder auf eine Zeit ohne Messläufe legen – neu 2026-10-08
+- [ ] Weitere zeitgesteuerte Aufgabe des NAS um 03:00 MESZ finden und für die Messphase abschalten oder verlegen (Verfasser) – K1 `rep-2` ungültig durch Steal-Spitze 9,1 % um 03:00:45, trotz abgeschaltetem Sicherheitsscan – neu 2026-10-09
+- [x] Morgens 08:46–09:01 MESZ NAS ausgelastet (K1 `rep-5` von der Vorprüfung abgelehnt) – Ursache prüfen (z. B. Sicherung, eigene Nutzung) – neu 2026-10-09 – geklärt 2026-10-09: eigenes gekipptes System (ohne Last 2,65 Kerne), nicht der NAS *(abgeleitet – Messung 09:55 UTC, `LABORBUCH.md`)*
+- [ ] `lab`: Steal Time in der Vorprüfung erst nach dem Anhalten von PURIS und EDC messen (sonst verfälscht das eigene gekippte System die Prüfung) – vor weiteren Messreihen, neuer Tag – neu 2026-10-09
 
 ## 2 Phase a – Basis
 
@@ -119,7 +122,6 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] Grafana erreichbar (nur zum Ansehen, nie im Lastweg) – Anmeldung und Datenquelle `OK`, 2026-10-06
 - [x] Versionsübersicht ergänzt (Chart, Prometheus, Operator, Grafana, kube-state-metrics, node-exporter) – 2026-10-06
 - [x] Definition „Baustein fertig“ erfüllt – 2026-10-06 (Punkt 11: mit dem Commit dieser Dokumentation)
-
 - [x] Aufteilung entschieden: zwei Bausteine `b2-loki` und `b3-alloy` (zwei Helm-Charts, ein Release je Baustein) – 2026-10-06
 
 ### `b2-loki` (Loki)
@@ -144,6 +146,7 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnitte 3 und 13).
 
 **Für alle Bausteine der Phase c:**
+
 - [x] Charts mit k3s v1.37.1 lauffähig (sonst Versionswechsel mit Laborbuch-Eintrag) – alle Bausteine `c1`–`c5` ohne Versionswechsel, 2026-10-06
 - [x] Identitätsangaben je Firma (BPN, DID) aus den getesteten Werten des Umbrella-Charts 26.03.00 übernommen (`dataconsumerOne` → Customer, `tx-data-provider` → Supplier) – `c1`, `c2`, `c4`, 2026-10-06
 - [x] Heap der Java-Dienste (EDC, DTR) passt ins Speicherlimit – EDC: `MaxRAMPercentage=75`; DTR: Heap vom Image bis 2048 MB, Limit 3Gi; Wallet-Stub: JVM-Standard; 2026-10-06
@@ -158,6 +161,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] `c2`/`c4`: Schlüssel der Data Plane (`tokenSignerPrivateKey`/`tokenSignerPublicKey`) und Client-Secret in Vault bereitstellen – das Bundle legt sie nicht an, im Umbrella-Chart erledigt das der Wrapper `tx-data-provider` (gefunden 2026-10-06) – erledigt 2026-10-06: eigenes Secret je Firma, Vault schreibt bei jedem Start
 
 **Bausteine:**
+
 - [x] `c1-identitaet` – `identity-and-trust-bundle` 1.1.3 (Wallet-Stub); Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `f753a2b` (Punkt 11: mit dem Commit dieser Dokumentation)
 - [x] `c2-customer-edc` – `dataspace-connector-bundle` 1.3.0 (mit PostgreSQL und Vault); Definition „fertig“ erfüllt – 2026-10-06, Revision 6 (gleich Revision 4) aus Commit `d438167`; Katalogabfrage an sich selbst (DSP v0.8 und 2025-1) HTTP 200 (Punkt 11: mit dem Commit dieser Dokumentation)
   - [x] Vault: alle 5 Schlüssel zuverlässig beim Start schreiben (`client-secret` fehlte, `postStart` zu früh) und Bereitschaftsprüfung per HTTP – gefunden und behoben 2026-10-06 (dazu `RollingUpdate`)
@@ -166,6 +170,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] `c5-supplier-dtr` – `digital-twin-bundle` 1.3.0; Definition „fertig“ erfüllt – 2026-10-06, installiert aus Commit `54aa5c3`, Start 9,6 min (Punkt 11: mit dem Commit dieser Dokumentation)
 
 **Prüfung des Datenraums:**
+
 - [x] Beide EDCs erhalten Identitätsnachweise vom Wallet-Stub – 2026-10-06 (Katalogabfragen in beide Richtungen, DSP v0.8 und 2025-1)
 - [x] Katalogabfrage Customer-EDC → Supplier-EDC erfolgreich – 2026-10-06, HTTP 200 (auch Supplier → Customer)
 - [ ] Beide DTRs erreichbar (über den EDC der jeweiligen Firma) *(2026-10-06: aus den EDC-Pods per Dienstnamen erreichbar; 2026-10-07: DTR des Suppliers über EDC-Assets vom Customer aus erreicht (Vertrag, EDR, Zwilling gefunden); DTR des Customers über EDC kommt im Ablauf „Customer fragt Bestand ab“ nicht vor – entfällt-Entscheidung offen)*
@@ -174,6 +179,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 ## 5 Phase d – PURIS (Chart `puris` 7.2.0 = PURIS 6.2.0)
 
 **Für beide Bausteine:**
+
 - [x] Chart-Quelle geklärt: Paket 7.2.0 im Helm-Repository nicht abrufbar (404) → Git-Tag `puris-7.2.0` (Commit `d0027bb`) – 2026-10-07
 - [x] Täglicher Batch-Abgleich abgeschaltet (`PURIS_BATCH_PARTNERDATAUPDATE_ENABLED: "false"` über `backend.env`) – über `backend.puris.batch` (Abgleich und Aufräumen), im Pod `false`; 2026-10-07
 - [x] Adressen von EDC und DTR **der eigenen Firma** eingetragen – mit Namespace, im Pod geprüft; 2026-10-07
@@ -185,12 +191,14 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Health-Endpunkt meldet `UP` – beide, 2026-10-07
 
 **Bausteine:**
+
 - [x] `d1-puris-customer`; Definition „fertig“ erfüllt – 2026-10-07, aus Commit `b78086f`; 14 Assets im EDC, API-Key geprüft (Punkt 11: mit dem Commit dieser Dokumentation)
 - [x] `d2-puris-supplier`; Definition „fertig“ erfüllt – 2026-10-07, aus Commit `b78086f`; 14 Assets im EDC, API-Key geprüft (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ## 6 Phase e – Testdaten und Funktionstest
 
 ### `e1-testdaten`
+
 - [x] Nur erfundene Testdaten (keine echten Firmen- oder Materialdaten) – Testdaten der PURIS-Integrationstests, `setup/e1-testdaten/`, Commit `1d63e8a`; 2026-10-07
 - [x] In beiden PURIS: Partner, Material, Material-Partner-Beziehung angelegt – 2026-10-07, je HTTP 200; je DTR 1 Zwilling
 - [x] Beim Supplier einen Bestand für den Customer eingetragen – 100 Stück, 2026-10-07
@@ -199,6 +207,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [ ] Anlage nicht idempotent (zweiter Aufruf → HTTP 409): in Etappe 2 vor dem Anlegen prüfen, ob die Daten schon da sind – gefunden 2026-10-07 *(für Materialien, Beziehungen und Bestände in `materialien-anlegen.sh` umgesetzt, 2026-10-07; Partner noch nicht)*
 
 ### `e2-funktionstest`
+
 - [x] Eine Abfrage von Hand am Backend des Customer-PURIS ausgelöst – zwei Abfragen, 2026-10-07
 - [x] Log des Customer-PURIS zeigt `Updated ReportedMaterialItemStocks for …` – beide Abfragen, 2026-10-07
 - [x] Bestand beim Customer abrufbar (`GET /catena/stockView/reported-material-stocks`) – 100 Stück, 2026-10-07
@@ -212,6 +221,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 ## 7 Phase f – Lastgenerator und Probelauf
 
 ### `f1-k6` (k6-Operator per Helm, Lauf als `TestRun`)
+
 - [x] Chart-Version des k6-Operators festgelegt – 4.6.0 (Operator 1.6.0), k6 2.2.0; `setup/f1-k6/values.yaml`; 2026-10-07
 - [x] Ressourcen für Operator **und** Runner (requests = limits); ein Runner (`parallelism: 1`) – Operator 50m/100Mi, Runner 500m/512Mi, dazu Initializer und Starter fest; in den Dateien, `helm template` geprüft; 2026-10-07
 - [x] k6-Skript in `experiments/k6/`: `constant-arrival-rate`, Aufruf direkt am Backend (nicht über das Frontend), Materialnummer in Base64, API-Key aus Secret – `experiments/k6/stock-trigger.js`, Syntax geprüft; 2026-10-07
@@ -226,6 +236,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 - [x] Definition „Baustein fertig“ erfüllt – 2026-10-07, aus Commits `8b7677a`/`5ab5857`; Funktionsprüfung = Probelauf (Punkt 11: mit dem Commit dieser Dokumentation)
 
 ### Probelauf (`pilot`)
+
 - [x] Erster Probelauf mit wenigen niedrigen Laststufen *(festgelegt 2026-10-07: 0,1 / 0,2 / 0,5 / 1 je s, je 3 min)* – 2026-10-07, 01:01–01:13 UTC
 - [x] Abgelegt wie ein Messlauf unter `runs/…_pilot_…/` – `runs/2026-10-07_0100_pilot_rep-1/` (mit `cluster/logs/` nach Änderung der `.gitignore`; Commit durch den Nutzer)
 - [x] `dropped_iterations = 0`, k6 unter seinem CPU-Limit – 0; höchstens 0,005 von 0,5 Kernen
@@ -266,6 +277,7 @@ Je Firma eigener EDC und DTR, zentral nur die Identität (`KONZEPT.md`, Abschnit
 ## 9 Offene Punkte klären
 
 Geklärt (Details in `KONZEPT.md`, Abschnitt 13):
+
 - [x] Auslösender Endpunkt und Verhalten: asynchron, Thread-Pool ohne Obergrenze, Fehler nur im Log – 2026-10-06
 - [x] Aufbau des Datenraums: je Firma EDC und DTR, zentral Wallet-Stub – 2026-10-06
 - [x] k6 im Cluster über den k6-Operator – 2026-10-06
@@ -273,6 +285,7 @@ Geklärt (Details in `KONZEPT.md`, Abschnitt 13):
 - [x] Messgrößen: Durchsatz, Dauer und Fehler aus PURIS-Logs und EDC-Daten, nicht aus der k6-Antwortzeit – 2026-10-06
 
 Noch offen:
+
 - [x] Logs: zwei Bausteine `b2-loki` und `b3-alloy` – 2026-10-06
 - [x] Puffer für k3s und Betriebssystem (Abschnitt 2) – 2026-10-06
 - [x] Parallele Aufträge für dasselbe Material: Fehler oder Doppelungen? (Probelauf) – Fehler (`ObjectOptimisticLockingFailureException`, 4 von 328), keine Doppelungen; 2026-10-07
@@ -346,8 +359,8 @@ Noch offen:
 - [x] Reset mit `ANALYZE` der zurückgesetzten Datenbanken – 2026-10-07 (gleiche Planer-Statistiken zu Beginn jedes Laufs; vorher nur durch Autovacuum während der Last)
 - [ ] Vor K0: andere NAS-Dienste ruhen lassen (Verfasser), K0 nachts starten; Grafana und k9s geschlossen *(2026-10-08: K0 nachts gestartet, 2026-10-07 23:41 UTC; k9s auf dem Mac beendet, kein port-forward; NAS-Dienste vom Verfasser nicht bestätigt – ersatzweise Steal-Time-Verlauf der letzten 60 h geprüft, ohne Last 0,14–0,47 % (`LABORBUCH.md`, „Hauptmessung K0 gestartet“))*
 - [x] K1-NAS vorbereiten (Eingriff zur Prüfung der Engpasshypothese, F3): EDC Control Plane Customer 500m → 1000m und PostgreSQL beider EDCs 200m → 400m, umverteilt aus kaum genutzten Zuteilungen (Wallet-Stub, PURIS, Data Plane Customer, k6-Runner) – Berechnung 2026-10-07: Obergrenze von 1,3–2,7/s auf ca. 2,5–4/s (`LABORBUCH.md`) – vorbereitet 2026-10-08: `setup/*/k1-nas.yaml` (Spender: PURIS beider Firmen, Data Planes, Vault Supplier; Wallet-Stub, DTRs, k6-Runner unverändert), mit `helm template` geprüft (`LABORBUCH.md`, „K1 vorbereitet“)
-- [ ] `setup-v3` setzen und pushen (Verfasser) – mit K1-Dateien
-- [ ] K1-NAS anwenden: PURIS/EDC anhalten, VM auf `setup-v3`, `helm upgrade` mit `k1-nas.yaml`, alle Pods `Guaranteed`, Summe ≤ `Allocatable`, Probe-Reset und `./lab check`; Befehle danach in `AUFBAU.md`
+- [x] `setup-v3` setzen und pushen (Verfasser) – mit K1-Dateien – 2026-10-08, Tag auf `da36c93`
+- [x] K1-NAS anwenden: PURIS/EDC anhalten, VM auf `setup-v3`, `helm upgrade` mit `k1-nas.yaml`, alle Pods `Guaranteed`, Summe ≤ `Allocatable`, Probe-Reset und `./lab check`; Befehle danach in `AUFBAU.md` – 2026-10-08, 19:27–19:43 UTC (`AUFBAU.md`, „Skalierungskonfiguration K1-NAS anwenden“)
 - [x] K0-Plan (`experiments/plans/k0.env`) aus Vorstudie 2: Aufwärmen, 8 Stufen × 10 min um den Kipppunkt, zum Schluss 10 min Erholungsstufe mit geringer Last (zeigt, ob sich das System nach dem Kippen erholt – metastabiles Verhalten) *(Vorschlag im Laborbuch, Entscheidung des Verfassers offen: Aufwärmen 0,1 und 0,3/s je 10 min – nicht 0,5/s, dort lag der Auslöser –, Stufen 0,2 / 0,3 / 0,4 / 0,5 / 0,6 / 0,7 / 0,8 / 1 je s zu 10 min, Erholung 0,2/s 10 min; ca. 2,3 h je Wiederholung)* – entschieden 2026-10-08 (Verfasser, Chat): Stufen der Vorstudie 3 unverändert, Erholung 10 min; `k0.env` angelegt (`main`, `s0-v2`, 20 Materialien), TestRun lokal gleich dem der Vorstudie 3 (`LABORBUCH.md`, „Entscheidungen vor K0“); Vorstudie 3: ca. 2,0 h je Wiederholung
 - [ ] Je Lauf prüfen, ob nach dem Aufwärmen ein stabiler Zustand erreicht ist (CPU je Transaktion in den letzten Aufwärm-Minuten; vgl. Barrett et al. 2017), statt ihn anzunehmen
 - [x] Aufbau vor K0 einfrieren: Git-Tag `setup-v1` (Verfasser) – 2026-10-08, auf Commit `78c7e84` (`AUFBAU.md`, „Einfrieren“)
@@ -381,10 +394,11 @@ Noch offen:
   - [x] `lab series` mit erster Wiederholung und Schutz vor doppelten Nummern – 2026-10-08, 46/46 Tests lokal
   - [x] `setup-v2` setzen und pushen (Verfasser), VM auf den Tag bringen und prüfen – 2026-10-08: `787f32e` = `setup-v2`, VM geprüft (sauber, `lab status` bereit)
   - [x] Messreihe gelaufen und geprüft *(gestartet 2026-10-08 12:52 UTC auf Wunsch des Verfassers, `tmux` `k0b`; Ende ca. 18:50 UTC)* – beendet 19:01 UTC: `rep-5` bis `rep-7` gültig, auf dem Mac geprüft (`LABORBUCH.md`, „K0-Ergänzung beendet“); Commit durch den Verfasser offen
-- [ ] Skalierungskonfiguration K1: 3 Messläufe *(K1-NAS: EDC entlastet, siehe Abschnitt 11)*
-- [ ] Skalierungskonfiguration K2 (falls geplant): 3 Messläufe
+- [x] Skalierungskonfiguration K1: 3 Messläufe *(K1-NAS: EDC entlastet, siehe Abschnitt 11)* – 3 gültige Läufe 2026-10-09: `rep-3`, `rep-4`, `rep-6` (kippt bei 1,5/2,0/1,5 je s); `rep-7` in Vorprüfung – abgeschlossen 12:44 UTC mit **4 gültigen Läufen** (`rep-7`: kippt bei 1,5/s); alle Ordner auf den Mac kopiert und geprüft; Commit durch den Verfasser offen *(gestartet 2026-10-08 19:43 UTC, `./lab series k1 3`, `setup-v3`; Ende ca. 04:00 UTC)* *(19:52–19:54 UTC vor Lastbeginn abgebrochen – Anweisung des Verfassers: K1 erst auf sein Kommando; Versuch `rep-1` ohne Last erhalten; Neustart mit `./lab series k1 3 2`)*
+- [x] K1 starten – **erst auf ausdrückliche Anweisung des Verfassers** – neu 2026-10-08 – gestartet 2026-10-09 00:20 MESZ auf Anweisung: `./lab series k1 4 2` (`rep-2` bis `rep-5`), Ende ca. 11:20 MESZ
+- [ ] Skalierungskonfiguration K2 (falls geplant): 3 Messläufe *(2026-10-09: für F1–F3 nicht nötig – K0 und K1 beantworten sie; optional K2a (Control Plane oder Datenbank einzeln entlasten) oder K2b (zusätzlich Vault des Customers) – Entscheidung nach der Auswertung von K1, ca. 20.10.; Vorrang: Schreiben, Nachbau-Test auf der VM der Betreuung)*
 - [ ] VM der Betreuung: Neuaufbau mit den Skripten aus Etappe 2 (zugleich Nachbau-Test), Vorstudie, dann K0-ISST (Original-Konfiguration der Charts, unverändert) und K1-ISST (PostgreSQL mit normalen Ressourcen statt Bitnami-Preset „nano“) – je 3 Messläufe; Ziel bis ca. 20.10.
-- [ ] Jede Skalierungskonfiguration in Ressourcenübersicht und Laborbuch vermerkt
+- [ ] Jede Skalierungskonfiguration in Ressourcenübersicht und Laborbuch vermerkt *(K1-NAS: Laborbuch und `AUFBAU.md`, „K1-NAS anwenden“, 2026-10-08; Ressourcenübersicht noch ohne K1-Spalte)*
 - [ ] Vor jedem Lauf `./lab reset`; während einer Messreihe nichts am Aufbau geändert
 - [ ] Während der Läufe k9s und Grafana geschlossen; Mac nicht im Lastweg
 - [ ] Nach jedem Lauf Gültigkeit geprüft und im Laborbuch vermerkt
@@ -418,6 +432,10 @@ Noch offen:
 - [ ] Sättigungsbereich je Konfiguration nach dem festgelegten Kriterium
 - [ ] Engpasskandidaten: Ressourcenauffälligkeit zeitgleich mit dem Leistungsabfall (inkl. Drosselung, Wallet-Stub)
 - [ ] Häufigkeit von `Invalidating Contract data` je Laststufe
+- [ ] CPU des gekippten Systems ohne Last (nach Lastende bis zum nächsten Reset) auswerten – Beleg für sich selbst erhaltende Überlast (F2) – neu 2026-10-09
+- [ ] K1: CPU und Drosselung der Control Plane, Datenbank und Vault des Customers am Kipppunkt je Lauf und Minute auswerten – wer sättigt zuerst? *(Schnellprüfung 2026-10-09, `rep-3`/`rep-4`: Control Plane in der Kipp-Stufe 0,69–0,83 von 1,0 bei 98–99 % Drosselung, Datenbank 79–93 %, Vault 100 %; `LABORBUCH.md`)* – neu 2026-10-09
+- [ ] K1: Neustarts im System unter Test (Vault des Customers `OOMKilled`, Control Plane des Customers) je Lauf und Stufe auswerten und als Ergebnis/nächsten Engpass berichten (5.4, 6.2) – neu 2026-10-09
+- [ ] Steal Time in K1 bei hohen Stufen 3–4 % (Last, NAS mit 8 Threads) – als Limitation berichten (6.5) – neu 2026-10-09
 - [ ] Je Lauf: Zeitpunkt und Art des ersten Auslösers (z. B. EDC 409 „currently leased“) und Häufigkeit der 409-Fehler je Laststufe (`loki/edc_warn_error.tsv.gz`) – neu 2026-10-07 (Befund Vorstudie 2) *(2026-10-08: erster Auslöser für Vorstudie 3 und K0 bestimmt – in allen Läufen „Failed to obtain EDR data for DigitalTwinRegistryId…“ (Supplier) vor der ersten Invalidierung, `LABORBUCH.md`; offen: Ursache des EDR-Fehlers, Häufigkeit je Stufe, als Skript in `analysis/`)*
 - [ ] Abbildungen `out/figures/*.pdf`: Last → Durchsatz, Last → p95-Dauer, Last → Fehlerrate, Last → CPU je Komponente; Zeitreihen ausgewählter Läufe
 - [ ] Tabellen `out/tables/*.tex`
@@ -429,6 +447,7 @@ Noch offen:
 ## 15 Übernahme in die Arbeit
 
 Zuordnung nach `KONZEPT.md`, Abschnitt 10:
+
 - [ ] 4.3: Hardware, Versionstabelle, Abbildung des Aufbaus, Ressourcentabelle, Testdaten
 - [ ] 4.4: Auslösung über den asynchronen Endpunkt, k6-Skript, Lastmodell
 - [ ] 4.5: Laststufen, Wiederholungen, Skalierungskonfigurationen (aus Vorstudie und Messplänen)
@@ -439,6 +458,7 @@ Zuordnung nach `KONZEPT.md`, Abschnitt 10:
 - [ ] Kapitel 4 und 6.5: Abweichungen und Limitationen aus dem Laborbuch
 
 **Limitationen, die das Laborbuch bisher nennt** (für 6.5 vormerken):
+
 - [ ] VM teilt sich die Threads mit dem NAS-Betriebssystem
 - [ ] Hybride CPU (Performance- und Effizienzkerne), Kerntyp aus der VM nicht steuerbar
 - [ ] Ein Knoten; k6 teilt sich den Knoten mit dem System unter Test

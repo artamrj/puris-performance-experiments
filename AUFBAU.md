@@ -1274,6 +1274,41 @@ python3 analysis/stage_summary.py runs/<laufordner>
 
 ---
 
+## Skalierungskonfiguration K1-NAS anwenden
+
+**Datum:** 2026-10-08 (19:27–19:43 UTC)
+**Ziel:** Werte aus `setup/*/k1-nas.yaml` (Aufbau `setup-v3`) auf dem NAS anwenden: EDC Control Plane Customer 1000m, PostgreSQL beider EDCs 400m; Spender PURIS 350m/250m, Data Planes 100m/250m, Vault Supplier 50m (`LABORBUCH.md`, „K1 vorbereitet“).
+**YAML-Dateien:** [`c2-customer-edc/k1-nas.yaml`](setup/c2-customer-edc/k1-nas.yaml), [`c4-supplier-edc/k1-nas.yaml`](setup/c4-supplier-edc/k1-nas.yaml), [`d1-puris-customer/k1-nas.yaml`](setup/d1-puris-customer/k1-nas.yaml), [`d2-puris-supplier/k1-nas.yaml`](setup/d2-puris-supplier/k1-nas.yaml) – jeweils zusätzlich zur `values.yaml`.
+
+**1. PURIS und EDC anhalten `[Mac]`** (sonst passt die neue Control Plane mit 1000m beim schrittweisen Austausch nicht neben die alte; Reihenfolge wie im Reset):
+```bash
+for d in puris-backend edc-dataplane edc-controlplane; do for ns in customer supplier; do kubectl scale deploy $d -n $ns --replicas=0; done; done
+```
+**2. VM genau auf den Tag `[VM]`** (Laufordner unter `runs/` vorher übernommen und nach `~/puris-loadlab-state/runs-vm/` verschoben):
+```bash
+cd ~/puris-performance-experiments && git fetch --tags origin && git checkout setup-v3 && git describe --tags --exact-match && git status --porcelain
+```
+**3. Releases aktualisieren `[Mac]`** (`puris`; Dateien gleich `setup-v3`, geprüft mit `git diff --quiet setup-v3 -- <datei>`):
+```bash
+E="$HOME/Downloads/2 Bachelorarbeit/6-experiment/setup"; P="$HOME/.local/opt/puris-loadlab/charts/puris-7.2.0/charts/puris"
+helm upgrade --install puris "$P" -n customer -f "$E/d1-puris-customer/values.yaml" -f "$E/d1-puris-customer/k1-nas.yaml"
+helm upgrade --install puris "$P" -n supplier -f "$E/d2-puris-supplier/values.yaml" -f "$E/d2-puris-supplier/k1-nas.yaml"
+helm upgrade --install edc tractusx-dev/dataspace-connector-bundle --version 1.3.0 -n supplier -f "$E/c4-supplier-edc/values.yaml" -f "$E/c4-supplier-edc/k1-nas.yaml"
+helm upgrade --install edc tractusx-dev/dataspace-connector-bundle --version 1.3.0 -n customer -f "$E/c2-customer-edc/values.yaml" -f "$E/c2-customer-edc/k1-nas.yaml"
+```
+Revisionen: PURIS Customer 1 → 2, PURIS Supplier 1 → 2, EDC Supplier 1 → 2, EDC Customer 6 → 7 (alle `deployed`).
+**4. Prüfung `[Mac]`:** `kubectl rollout status statefulset/edc-postgresql` und `statefulset/edc-vault` in beiden Namespaces abgeschlossen; alle Pods in `customer`, `supplier`, `identity` `Guaranteed` mit den neuen Limits; Wallet-Stub nicht neu gestartet; Knoten: CPU-requests 6425m (91 %) ohne Lauf, mit k6-Runner 6925m.
+**5. Probe-Reset und Funktionstest `[VM]`:** `./lab reset s0-v2` – 602 s ohne Reparatur (Control Planes bereit nach 35 s, Data Planes nach 170 s, PURIS nach 331 s; K0: 35 / 75 / 180–210 s); `./lab check` – 3/3 in 32 s.
+**6. Messreihe `[VM]`:**
+```bash
+tmux new-session -d -s k1 -c ~/puris-performance-experiments "./lab series k1 3 2>&1 | tee ~/puris-loadlab-state/logs/k1-series.log"
+```
+**Zurück zu K0:** Schritt 1, dann dieselben `helm upgrade`-Befehle ohne `-f …/k1-nas.yaml`, dann Reset.
+**Messreihe K1** (`./lab series k1 4 2`, 2026-10-08 22:20 – 2026-10-09 12:44 UTC): gültig `runs/2026-10-09_0106_k1_rep-3/`, `…_0352_k1_rep-4/`, `…_0701_k1_rep-6/`, `…_0953_k1_rep-7/`; ungültig `…_2220_k1_rep-2/` (Steal Time); Versuche ohne Messdaten `…_1943_k1_rep-1/`, `…_0646_k1_rep-5/`. Je Wiederholung ca. 2 h 45 min (Reset ca. 10 min).
+**Hinweise:** Die Data Plane des Customers (100m) braucht beim Start ca. 170 s; Zeitlimit von `lab` 240 s – bei Überschreitung repariert `lab` einmal. Der k6-Runner bleibt bei 500m (wie K0).
+
+---
+
 ## Einfrieren (`setup-v1`)
 
 **Datum:** 2026-10-08

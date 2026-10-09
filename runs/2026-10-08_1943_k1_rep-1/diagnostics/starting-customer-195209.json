@@ -1,0 +1,106 @@
+[
+  {
+    "pod": "dtr-7979c5ccb7-rg7w2",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "digital-twin-registry",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "dtr-postgresql-0",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "edc-controlplane-fc549bb69-r2q8z",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "tractusx-connector",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "edc-dataplane-966dc8889-n7k62",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "tractusx-connector",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "edc-postgresql-0",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "edc-vault-0",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "vault",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "puris-backend-75fb75cc7b-vzm4w",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "puris-backend",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  },
+  {
+    "pod": "puris-postgresql-0",
+    "phase": "Running",
+    "containers": [
+      {
+        "name": "postgresql",
+        "ready": true,
+        "restartCount": 0,
+        "waiting_reason": null,
+        "terminated_reason": null
+      }
+    ]
+  }
+]

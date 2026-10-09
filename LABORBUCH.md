@@ -1319,3 +1319,78 @@ Je Stufe: bis `s3` (0,4/s) alle abgeschlossen; `s4` (0,5/s) 296/300, 3 Invalidie
 | `rep-7` | 239/240 | 302/300 | 361/360 | 219/420 | 0/480 | 0,7/s | 0 |
 
 „kippt bei“ = erste Stufe mit weniger als 95 % abgeschlossen. **Ergebnis:** in allen 6 gültigen Läufen bis 0,5/s stabil; Kippen bei 0,6/s (2 Läufe) oder 0,7/s (4 Läufe); nach dem Kippen in keinem Lauf Erholung unter 0,2/s. Dazu `rep-1` (ungültig, Steal Time) ohne Kippen bis 1,0/s.
+
+## 2026-10-08 – K1-NAS angewendet, Messreihe K1 gestartet
+
+**Gemacht** (Assistent, Auftrag des Verfassers „k1 tonight“): K0-Läufe `rep-5` bis `rep-7` aus Commit `e7c3eea` geprüft (`git archive`: 36/36/38 × OK) und die VM-Kopien nach `runs-vm/` verschoben. Vor dem Anwenden festgestellt: zwischen `setup-v3` (`da36c93`) und `e7c3eea` liegen drei Commits des Verfassers (`a03408d`, `a82764b`, `35f591c`: `REPRODUCE.md`, Skript `reproduce`, Pläne und Überlagerungen `original-*`, `setup/b3-alloy/reproduce.yaml`, Dokumentation) – nur neue Dateien; alle für K1 genutzten Dateien (`values.yaml` und `k1-nas.yaml` von `c2`, `c4`, `d1`, `d2`, `k1.env`, `lab`) gleich `setup-v3`. Ablauf und Befehle: `AUFBAU.md`, „Skalierungskonfiguration K1-NAS anwenden“.
+**Ergebnis:** Revisionen PURIS 2/2, EDC Supplier 2, EDC Customer 7; alle Pods `Guaranteed` mit den geplanten Limits; Knoten 6425m requests ohne Lauf. Probe-Reset 602 s ohne Reparatur (Data Planes nach 170 s, PURIS nach 331 s bereit), Funktionstest 3/3.
+**Messreihe:** `./lab series k1 3` in `tmux` `k1`, Start 2026-10-08 19:43:30 UTC (21:43 MESZ), VM auf `setup-v3` (`da36c93`); erster Lauf `2026-10-08_1943_k1_rep-1`, Vorprüfung bestanden (Steal Time 0,55 %). Je Wiederholung ca. 2 h 45 min (Reset ca. 10 min, 150 min Last) → Ende ca. 04:00 UTC, mit Ersatzlauf ca. 06:45 UTC.
+**Beobachtung:** Reset mit K1 dauert länger (602 s statt 370–390 s), vor allem durch PURIS (350m/250m) und die Data Plane des Customers (100m, 170 s bei Zeitlimit 240 s).
+
+## 2026-10-08 – Messreihe K1 vor Lastbeginn abgebrochen (Anweisung des Verfassers)
+
+**Anlass:** Der Assistent hatte K1 um 19:43:30 UTC gestartet, gestützt auf die frühere Anweisung „k1 tonight“, ohne die zuvor selbst erbetene ausdrückliche Freigabe („K1“) abzuwarten. Um ca. 19:51 UTC Anweisung des Verfassers: K1 erst starten, wenn er es sagt.
+**Gemacht:** 19:52 UTC `Ctrl+C` in `tmux` `k1` (beendete `tee` und löste das sichere Ende von `lab run` aus; dieses hielt PURIS und EDC an, löschte die Registrierungen der Data Planes und startete die Control Planes neu); 19:54 UTC verbliebene Prozesse `lab series` und `lab run` (samt Kindprozessen) mit `kill -KILL` beendet, Sitzung `k1` geschlossen.
+**Zustand danach** (`./lab status`, 19:55 UTC): keine Last (kein aktiver TestRun), Control Planes beider Firmen 1/1, Data Planes und PURIS 0/0; Konfiguration K1-NAS bleibt angewendet (Helm-Revisionen unverändert); VM auf `setup-v3`, Git-Stand bis auf den neuen Versuchsordner sauber. Verwaiste Sperre `lab.lock` (PID beendet; der nächste `lab`-Befehl entfernt sie) und Marke `reset-incomplete` (der nächste Reset löscht sie).
+**Versuch:** `runs/2026-10-08_1943_k1_rep-1/` – nur `attempt.json` (Stand „starting/running“, durch den harten Abbruch nicht mehr fortgeschrieben), `events.jsonl`, `diagnostics/`; Reset bis „Data Planes bereit“ (19:48:06 UTC), **keine Last gesendet**. Bleibt als abgebrochener Versuch erhalten (`KONZEPT.md`, Abschnitt 6) und geht nicht in die Auswertung ein.
+**Für den Neustart:** Nummer `rep-1` ist durch den Versuchsordner vergeben → `./lab series k1 3 2` (Wiederholungen `rep-2` bis `rep-4`); der Reset am Beginn des ersten Laufs stellt den vollständigen Stand her.
+
+## 2026-10-09 – Messreihe K1 gestartet (Anweisung des Verfassers)
+
+**Anweisung** (Verfasser, im Chat, 00:20 MESZ): K1 jetzt beginnen, „mit 4 rep“ – umgesetzt als 4 Wiederholungen.
+**Gemacht:** Bereitschaft geprüft (VM auf `setup-v3`, Git-Stand bis auf den Versuchsordner `…_k1_rep-1` sauber, keine Last, keine `lab`-Prozesse). `./lab series k1 4 2` in `tmux` `k1` gestartet, 2026-10-08 22:20:48 UTC (00:20 MESZ), Ausgabe an `~/puris-loadlab-state/logs/k1-series.log` angehängt. `lab` entfernte die verwaiste Sperre (PID 2465932); erster Lauf `2026-10-08_2220_k1_rep-2` (Commit `da36c93`, Tag `setup-v3`), Vorprüfung bestanden (Platte 27 %, Steal Time 0,31 %), Reset begonnen.
+**Nummerierung:** `rep-1` ist durch den abgebrochenen Versuch ohne Last vergeben (Eintrag „Messreihe K1 vor Lastbeginn abgebrochen“); Wiederholungen `rep-2` bis `rep-5`.
+**Erwartung:** ca. 2 h 45 min je Wiederholung → Ende ca. 09:20 UTC (11:20 MESZ), mit Ersatzlauf ca. 12:05 UTC.
+
+## 2026-10-09 – K1 Zwischenstand: 2 gültige Läufe, `rep-2` ungültig (Steal um 03:00), `rep-5` von der Vorprüfung abgelehnt, Vault des Customers mit OOMKilled
+
+**Beobachtung** (VM, `runs/*_k1_rep-*/meta.json`, `series-k1.txt`, nur lesend; Laufordner noch nicht übernommen; Stand 07:30 UTC):
+
+| Lauf | Zeit (UTC) | gültig | Steal max | bis 1,0/s | 1,5/s | 2,0/s | kippt bei | Erholung |
+|---|---|---|---|---|---|---|---|---|
+| `rep-2` | 22:20–01:06 | **nein** (`steal_ok`) | 9,09 % | vollständig | 438/900 | 0/1200 | 1,5/s | 0 |
+| `rep-3` | 01:06–03:52 | ja | 3,53 % | vollständig | 476/900 | 18/1200 | 1,5/s | 0 |
+| `rep-4` | 03:52–06:46 | ja | 4,14 % | vollständig | 876/900 | 40/1200 | 2,0/s | 0 |
+
+`log_complete_ok` in allen drei Läufen true (8472, 8474, 8472). „Vollständig“: in den Stufen 0,2–1,0/s alle Auslösungen abgeschlossen.
+- **`rep-2` ungültig:** Steal-Spitze 9,09 % um 01:00:45 UTC (03:00:45 MESZ) in der Erholungsstufe bei 0,2/s, also nicht durch die Last – wie in K0 `rep-1` um 03:00 MESZ. Trotz abgeschaltetem Sicherheitsscan läuft offenbar eine weitere zeitgesteuerte Aufgabe des NAS um 03:00 (`rep-3` lag mit seiner Erholungsstufe nicht in diesem Zeitfenster).
+- **`rep-5` (06:46–07:01 UTC):** Vorprüfung abgelehnt – Steal Time (5-min-Mittel) blieb 15 min über 2 % (08:46–09:01 MESZ); `attempt.json`: „Vorprüfung: Steal Time bleibt über dem Grenzwert; recovery=not_needed“. Keine Last, kein Eingriff. Ersatzlauf `rep-6` seit 07:01:39 UTC (Reset 578 s, Funktionstest 3/3, Last seit 07:17:54 UTC); danach folgt ein weiterer Ersatzlauf `rep-7` (zwei Ersatzversuche für `rep-2` und `rep-5`).
+- **Steal Time unter Last:** in K1 in den hohen Stufen (1,5–2,0/s, gekippter Zustand) 3–4 % (K0 höchstens 2,4 %); das System nutzt mit K1 mehr CPU, der NAS mit 8 Threads gerät unter Druck. Unter dem Grenzwert von 5 %, aber nah daran.
+- **Neustarts im System unter Test nach dem Aufwärmen** (in jedem K1-Lauf; nach `KONZEPT.md`, Abschnitt 6, ein Ergebnis): Vault des Customers 2–5 × je Lauf, letzte Beendigung `OOMKilled` (Limit 128Mi); Control Plane des Customers 1–6 × je Lauf; jeweils ab ca. 2/s im gekippten Zustand. In K0 gab es keine solchen Neustarts.
+**Deutung (Hypothese):** K1 verschiebt den Kipppunkt von 0,6–0,7/s (K0) auf 1,5–2,0/s; bis 1,0/s läuft K1 in allen drei Läufen ohne Fehler. Nach dem Kippen auch in K1 keine Erholung. Neuer Engpass unter Überlast: Speicher der Vault des Customers (vorab als möglicher nächster Engpass vermerkt, Eintrag „K1 vorbereitet“).
+
+## 2026-10-09 – K1: Ressourcen am Kipppunkt (Schnellprüfung `rep-3`, `rep-4`)
+
+**Gemacht:** CPU (Mittel je Stufe ohne erste Minute) und Drosselung (Höchstwert je Stufe) aus `prometheus/cpu_cores.csv` und `cpu_throttled_ratio.csv` der gültigen K1-Läufe `rep-3` und `rep-4` (auf der VM, nur lesend).
+**Beobachtung:**
+- EDC Control Plane Customer (Limit 1,0): bis 1,0/s 0,09–0,20 Kerne, kaum gedrosselt; in der Kipp-Stufe 0,69 (`rep-3`, 1,5/s) bzw. 0,83 (`rep-4`, 2,0/s) bei 98–99 % gedrosselt; danach 0,90–0,95 bei 100 %.
+- PostgreSQL EDC Customer (Limit 0,4): bis 1,0/s 0,07–0,14; vor bzw. in der Kipp-Stufe 0,29–0,33 bei 79–93 % gedrosselt (`rep-4`, 1,5/s noch stabil: 0,29 bei 83 % – am stärksten gedrosselt kurz vor dem Kippen); danach wieder 0,08–0,11.
+- Vault Customer (Limit 0,1, in K1 unverändert): bis 1,0/s 0,01–0,02; ab der Kipp-Stufe am Limit (100 % gedrosselt); erster Neustart (`OOMKilled`) in `s10` (`rep-3`) bzw. `s12` (`rep-4`), also nach dem Kippen.
+- Übrige (Control Plane Supplier, PostgreSQL Supplier, PURIS Customer): bis 1,0/s gering; erst im gekippten Zustand höher, unter ihren Limits.
+**Deutung (Hypothese, Auswertung folgt):** Am Kipppunkt von K1 erreicht die Control Plane des Customers wieder ihr (neues) Limit – gleicher Engpass auf höherem Niveau; zugleich werden die Datenbank und die Vault des Customers knapp. Engpass ist damit die EDC des Customers als Ganzes (Control Plane, Datenbank, Vault). K1 hat Control Plane und Datenbanken zugleich verändert; welcher Teil zuerst sättigt, zeigt erst der zeitliche Verlauf je Minute.
+
+## 2026-10-09 – K1 `rep-6` gültig (3 gültige Läufe); gekipptes System verbraucht ohne Last 2,65 Kerne – Richtigstellung zur Vorprüfung
+
+**Beobachtung:** `rep-6` (07:01–09:53 UTC) gültig: `log_complete_ok` true (8472 = 8472), Steal Time max 3,79 % / Mittel 1,44 %, keine Reparatur; nach den Loki-Zählungen während des Laufs bis 1,0/s vollständig, gekippt bei 1,5/s (386/899), keine Erholung. **K1: 3 gültige Läufe (`rep-3`, `rep-4`, `rep-6`).**
+Ersatzlauf `rep-7` ab 09:53:09 UTC: Vorprüfung wartet (Steal Time im 5-min-Mittel 2,6 % ≥ 2 %).
+**Messung 09:55:46 UTC, keine Last** (`kubectl top`): Knoten 2648m CPU (37 %); EDC Control Plane Customer 623m, PostgreSQL EDC Supplier 384m, EDC Control Plane Supplier 337m, PostgreSQL EDC Customer 318m, Wallet-Stub 183m. Das nach dem Lauf gekippte System bleibt ohne Eingangslast beschäftigt, bis es zurückgesetzt wird.
+**Richtigstellung** zum Eintrag „K1 Zwischenstand“: Die abgelehnte Vorprüfung von `rep-5` (06:46–07:01 UTC) und die Wartezeit vor `rep-6` (bis 07:07 UTC) folgten jeweils direkt auf einen gekippten Lauf (`rep-4`); die erhöhte Steal Time stammt sehr wahrscheinlich vom eigenen gekippten System, nicht von Aufgaben des NAS (abgeleitet aus der Messung oben). Die Steal-Spitze von `rep-2` um 03:00:45 MESZ bleibt davon unberührt (Erholungsstufe, nicht am Laufende).
+**Deutung (Hypothese, F2):** sich selbst erhaltende Überlast – auch ohne Eingangslast keine Rückkehr in den Ruhezustand (metastabil).
+**Folge für `lab`:** Die Vorprüfung misst die Steal Time vor dem Reset, also mit dem noch laufenden gekippten System; mit K1 (mehr CPU) liegt sie dann nahe 2 %. Besser: Steal Time nach dem Anhalten von PURIS und EDC prüfen (Änderung von `lab`, später, neuer Tag).
+
+## 2026-10-09 – K1 abgeschlossen: 4 gültige Läufe, Kipppunkt 1,5 oder 2,0/s, keine Erholung
+
+**Gemacht:** `./lab series k1 4 2` beendet 12:44:19 UTC. Alle sieben K1-Ordner auf den Mac kopiert: `rep-2`, `rep-3`, `rep-4`, `rep-6`, `rep-7` (je 45–47M, `SHA256SUMS` 0 Abweichungen) sowie die Versuche ohne Messdaten `rep-1` (abgebrochen vor Lastbeginn) und `rep-5` (Vorprüfung abgelehnt; je `attempt.json`, `events.jsonl`, `diagnostics/`). Keine IP-Adressen oder Hostnamen; in den beiden Versuchsordnern keine API-Keys (Prüfung auf die Werte beider Keys auf der VM, ohne Ausgabe). VM-Kopien noch nicht verschoben.
+`rep-7` (09:53–12:44 UTC): gültig, `log_complete_ok` true (8470 = 8470), Steal Time max 3,81 % / Mittel 1,46 %; Vorprüfung wartete 5 min (Steal Time 2,5 → 1,95 %, eigenes gekipptes System).
+
+**K1 gesamt** (gültige Läufe, `meta.json`; abgeschlossen / geplant):
+
+| Lauf | 1,0/s | 1,5/s | 2,0/s | kippt bei | Erholung 0,2/s |
+|---|---|---|---|---|---|
+| `rep-3` | 601/600 | 476/900 | 18/1200 | 1,5/s | 0 |
+| `rep-4` | 600/600 | 876/900 | 40/1200 | 2,0/s | 0 |
+| `rep-6` | 599/600 | 383/900 | 0/1200 | 1,5/s | 0 |
+| `rep-7` | 600/600 | 171/900 | 0/1200 | 1,5/s | 0 |
+
+In allen vier Läufen bis 1,0/s alle Stufen vollständig abgeschlossen. Dazu `rep-2` (ungültig, Steal Time um 03:00): ebenso, kippt bei 1,5/s.
+**Vergleich mit K0** (6 gültige Läufe, kippt bei 0,6/s (2×) oder 0,7/s (4×), stabil bis 0,5/s): K1 kippt in jedem Lauf später als K0 in jedem Lauf (vollständige Trennung); exakter Mann-Whitney-Test (zweiseitig) ergäbe p = 2/210 ≈ 0,01 – vorläufig, die Auswertung in `analysis/` folgt. In beiden Konfigurationen keine Erholung nach dem Kippen.
