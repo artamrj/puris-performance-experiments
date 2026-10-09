@@ -89,13 +89,17 @@ WORK="${REPRODUCE_HOME:-$(dirname "$SCRIPT")/puris-repro}"
 SRC="$WORK/src"; TOOLS="$WORK/tools"; STATE="$WORK/state"; RESULTS="$WORK/results"; BUNDLE="$WORK/bundle"
 LOGF="$STATE/logs/reproduce.log"; MARKERS="$STATE/markers"
 OWNER=/etc/rancher/reproduce-owner  # outside /etc/rancher/k3s, which k3s creates with mode 700
+# paths and fixed values are write-protected: an accidental assignment anywhere (e.g. from a data
+# file) stops the script at once with "readonly variable" instead of silently using a wrong path
+readonly SCRIPT WORK SRC TOOLS STATE RESULTS BUNDLE LOGF MARKERS OWNER
+readonly REPO_URL K3S_VERSION HELM_VERSION KUBECTL_VERSION PURIS_GIT PURIS_TAG TX_REPO GF_REPO RELEASES TEST_API_KEY TEST_DB_PASSWORD REPS MAX_REPLACEMENTS
 export KUBECONFIG="$STATE/kubeconfig"
 export HELM_CACHE_HOME="$STATE/helm/cache" HELM_CONFIG_HOME="$STATE/helm/config" HELM_DATA_HOME="$STATE/helm/data"
 export PATH="$TOOLS:$PATH"
 case "${1:-}" in help|-h|--help) ;; *) mkdir -p "$STATE/logs" "$MARKERS" "$RESULTS" ;; esac   # help creates nothing
 
 # ── Settings (./reproduce settings) – environment variables win over the file ───────
-SETTINGS="$STATE/settings"
+SETTINGS="$STATE/settings"; readonly SETTINGS
 setting() {  # key → value from the settings file, or the default
   local v; v=$(sed -n "s/^$1=//p" "$SETTINGS" 2>/dev/null | tail -n 1)
   if [ -n "$v" ]; then echo "$v"; else case "$1" in color|progress) echo auto ;; title) echo on ;; notify) echo bell ;; *) echo "" ;; esac; fi
@@ -768,7 +772,7 @@ def cmd_collect(run, name, testid, t_apply, commit, extra, machine_json, profile
     mach = rjson(machine_json)
     meta = {"run": os.path.basename(run), "kind": E.get("PLAN_KIND"), "plan": E.get("PLAN"), "repetition": int(E.get("REP", "0")),
             "git_commit": commit, "tag": None, "testrun": name, "testid": testid, "script": "experiments/k6/stock-trigger.js",
-            "plan_values": {"state": E.get("STATE"), "rates_per_s": RATES, "stage_labels": LABELS, "stage_minutes": STAGE_MIN,
+            "plan_values": {"state": E.get("PLAN_STATE", "s0"), "rates_per_s": RATES, "stage_labels": LABELS, "stage_minutes": STAGE_MIN,
                             "materials_n": int(E.get("MATERIALS_N") or 0) or None, "drain_max_min": DRAIN_MAX, "steal_max": STEAL_MAX, "steal_mean_max": STEAL_MEAN_MAX},
             "times_utc": {"apply": t_apply, "runner_start": iso(r_start), "runner_end": iso(r_end), "load_start": iso(first),
                           "stage_boundary_source": "k6.scenario.startTime", "drain_end": iso(drain_end), "collection_window": [iso(w_start), iso(w_end)]},
@@ -1221,7 +1225,11 @@ def cmd_dashboard(script, logf, once=""):
             elif ch in (curses.KEY_END, ord("G")): MODE["off"] = 0 if v == "log" else 10 ** 9
             MODE["off"] = max(0, MODE["off"])
         if os.environ.get("REPRODUCE_TPROG") == "1": term("\033]9;4;0;0\a")
-    curses.wrapper(main)
+    try:
+        curses.wrapper(main)
+    except KeyboardInterrupt:   # Ctrl-C closes the view like q
+        if os.environ.get("REPRODUCE_TPROG") == "1": term("\033]9;4;0;0\a")
+    print("(dashboard closed%s)" % (" – the job keeps running · ./reproduce dashboard opens it again" if (W["snap"] or {}).get("job") else ""))
 
 def cmd_snapshot():
     d = {"phases": [], "runs": {}, "job": None, "interrupted": [], "configs": []}
@@ -1301,14 +1309,14 @@ detach() {  # command... → continues as a background job and shows its progres
   local pos js; : >> "$LOGF"; pos=$(stat -c %s "$LOGF")   # the log exists before the view follows it
   # the job runs from its own copy: downloading a new ./reproduce never changes a running job
   # (bash reads a script while running it – an overwritten file would be read at the old position)
-  js=$(mktemp "$STATE/job-script.XXXXXX"); cp "$SCRIPT" "$js"
+  js=$(mktemp "$STATE/job-script.XXXXXX"); cp "$SCRIPT" "$js"; rm -f "$STATE/job-exit"
   REPRODUCE_BG=1 REPRODUCE_HOME="$WORK" setsid nohup bash "$js" "$@" </dev/null >/dev/null 2>&1 &
   echo
   printf '%s\n' "${C_DIM}  The next steps run in the background (PID $!). Closing this terminal or losing the SSH connection does not stop them.${C_0}"
   printf '%s\n' "${C_DIM}  Ctrl-C closes only this view · ./reproduce dashboard (live overview) · watch · status · stop${C_0}"
   [ -z "$SUDO_KEEP" ] || kill "$SUDO_KEEP" 2>/dev/null || true
   cmd_watch --from "$pos"
-  exit 0
+  exit "$(cat "$STATE/job-exit" 2>/dev/null || echo 0)"   # the job's exit code, so that "./reproduce measure && …" stops after a failure
 }
 
 # ── Common helpers ────────────────────────────────────────────────────────────────
@@ -1474,7 +1482,8 @@ stop_own_load() { k delete testrun -n k6 -l reproduce=1 --ignore-not-found --wai
 reset_sut() {  # → state/last-reset.json
   local t0 diffs after
   t0=$(date +%s); REPAIRS=""
-  ( cd "$STATE/s0" && sha256sum -c --quiet SHA256SUMS ) || die "S0 checksums do not match – run ./reproduce prepare"
+  [ -f "$STATE/s0/SHA256SUMS" ] || die "database state S0 missing ($(rel "$STATE/s0")) – run ./reproduce prepare"
+  ( cd "$STATE/s0" && sha256sum -c --quiet SHA256SUMS ) || die "S0 checksums do not match – the saved database state was changed; run ./reproduce prepare"
   load_active && stop_own_load
   marker_set reset
   step "reset: stop PURIS and EDC"
@@ -1615,6 +1624,12 @@ phase_check() {
   fi
   echo "$prof" > "$STATE/profile"
   ok "profile: $prof (configurations: $(configs_of "$prof" | sed 's/ /, /g'))"
+  local plans=""
+  for cfg in $(configs_of "$prof"); do
+    ( load_plan "$(plan_of "$cfg")" ) || exit $?   # stops with the reason (die) – errors in a plan show up now, not after hours
+    plans="$plans, $cfg $(tr ',' '\n' <<<"$( load_plan "$(plan_of "$cfg")"; echo "$RATES")" | wc -l) stages"
+  done
+  ok "measurement plans valid:${plans#,}"
   case "$prof" in
     compact)  info "compact = resource limits of the setup measured in the thesis (fits 8 vCPU)" ;;
     original) info "original = resources as shipped by Tractus-X (needs about 20 vCPU)" ;;
@@ -1981,12 +1996,28 @@ watch_load() {  # name t_apply labels minutes → 0 finished, 1 stalled
     sleep 30
   done
 }
-load_plan() {  # plan → exports plan variables
-  local pf="$SRC/experiments/plans/$1.env"
+PLAN_KEYS="PLAN_KIND RATES STAGE_LABELS STAGE_DURATION MATERIALS_N DRAIN_MAX_MIN STEAL_MAX STEAL_MEAN_MAX"
+PLAN_IGNORED="STATE"   # names a database state of lab; reproduce always resets to its own S0
+readonly PLAN_KEYS PLAN_IGNORED
+load_plan() {  # plan → exports the plan's values; the file is read as data (KEY="value" lines) and never executed
+  local pf="$SRC/experiments/plans/$1.env" line k v n
   [ -r "$pf" ] || die "plan file missing: experiments/plans/$1.env"
-  set -a; # shellcheck disable=SC1090
-  . "$pf"; set +a
-  export PLAN="$1" STATE="s0"   # reproduce always resets to its own S0
+  for k in $PLAN_KEYS; do unset "$k"; done
+  n=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    [[ $line =~ ^[[:space:]]*(#.*)?$ ]] && continue
+    [[ $line =~ ^([A-Z_][A-Z0-9_]*)=\"([^\"\$\`\\]*)\"[[:space:]]*(#.*)?$ ]] || die "plan $1, line $n: not of the form KEY=\"value\": $line"
+    k=${BASH_REMATCH[1]}; v=${BASH_REMATCH[2]}
+    case " $PLAN_KEYS " in *" $k "*) export "$k=$v"; continue ;; esac
+    case " $PLAN_IGNORED " in *" $k "*) continue ;; esac
+    die "plan $1, line $n: unknown key $k – known: ${PLAN_KEYS// /, }"
+  done < "$pf"
+  for k in RATES STAGE_LABELS STAGE_DURATION; do [ -n "${!k:-}" ] || die "plan $1: $k missing"; done
+  [[ $STAGE_DURATION =~ ^[0-9]+$ ]] || die "plan $1: STAGE_DURATION must be whole minutes, is $STAGE_DURATION"
+  [ "$(tr ',' '\n' <<<"$RATES" | wc -l)" = "$(tr ',' '\n' <<<"$STAGE_LABELS" | wc -l)" ] \
+    || die "plan $1: RATES has $(tr ',' '\n' <<<"$RATES" | wc -l) stages, STAGE_LABELS $(tr ',' '\n' <<<"$STAGE_LABELS" | wc -l)"
+  export PLAN="$1" PLAN_STATE="s0"
   if [ "${REPRODUCE_SMOKE:-0}" = 1 ]; then export STAGE_DURATION=2 PLAN_KIND=smoke; fi
 }
 log_probe() {  # configuration results-dir
@@ -2067,6 +2098,7 @@ phase_evaluate() {
   set_phase evaluate
   local rd="${1:-$(cat "$STATE/results-current" 2>/dev/null)}"
   [ -n "$rd" ] && [ -d "$rd" ] || need_fail "no results folder" "./reproduce measure"
+  ls -d "$rd"/*_rep-* >/dev/null 2>&1 || need_fail "no runs in $(rel "$rd") yet" "./reproduce measure"
   py evaluate "$rd" "$SRC/reference"
   ok "evaluation: $rd/verdict.md"
 }
@@ -2428,6 +2460,7 @@ cmd_bundle() {
 on_exit() {
   local rc=$?
   [ "$rc" -ne 0 ] || tab_progress "0;0"
+  [ "$BG" != 1 ] || echo "$rc" > "$STATE/job-exit" 2>/dev/null || true
   if [ "$rc" -ne 0 ] && [ "$LOCKED" = 1 ] && [ -s "$KUBECONFIG" ]; then
     if marker_has run; then stop_own_load; py attempt "$(marker_get run)" "${CURRENT_PHASE:-}" failed "stopped (exit $rc)" 2>/dev/null || true; marker_clear run; fi
   fi
@@ -2437,7 +2470,10 @@ on_exit() {
   return "$rc"
 }
 on_term() {
-  case "${CMD:-}" in status|watch|stop|help|-h|--help) exit 0 ;; esac   # views and stop: nothing to continue
+  case "${CMD:-all}" in   # only commands that do work can be continued; views and helpers close quietly
+    all|_continue|fetch|tools|check|install|deploy|prepare|verify|measure|evaluate|package|bundle|uninstall) ;;
+    *) exit 0 ;;
+  esac
   progress_end; warn "stopped – run $(retry_cmd) again to continue; steps already done are skipped"; exit 4
 }
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0   # sourced (tests): functions only

@@ -720,6 +720,15 @@ Cause: Alloy collects the logs of every pod, including the EDC logs at the chart
 
 ---
 
+### 22.13 Data files changing the script
+
+Found on 2026-10-09 in the first measurement on a cluster: the plans contain `STATE="s0-v2"` (a database state of `lab`); loading them with `source` replaced the script's state folder, and the reset looked for `s0/s0`.
+
+- **Plans are data, never code:** `load_plan` reads only lines of the form `KEY="value"` (no `$`, backquote or backslash), exports only the known keys (`PLAN_KEYS`), ignores `STATE`, and stops at any other key or line with its line number.
+- **Protected variables:** paths (`STATE`, `SRC`, `WORK`, `LOGF`, …), pinned versions and fixed values are `readonly`; an assignment anywhere stops the script at once at that line.
+- **Early check:** phase `check` loads every plan of the chosen profile (keys, number of stages = number of labels).
+- **Tests before every push:** `python3 -m unittest tests.test_reproduce_static` – syntax, embedded Python, plans as data, no plan key among the protected names, `load_plan` keeps the state folder, a broken or executable plan is refused (runtime tests on Linux with bash ≥ 4).
+
 ## 23. Implementation status (2026-10-08)
 
 `reproduce` (≈ 1,500 lines: Bash with an embedded Python helper) implements §1–§22. Checked without a cluster:
