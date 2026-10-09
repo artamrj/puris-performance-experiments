@@ -249,12 +249,35 @@ phase_done_hint() {  # phase → duration and the command to run next
   hint "next: ./reproduce $n – $(phase_desc "$n") · usually $(phase_time "$n")$(in_background "$n" && echo " · runs in the background")"
 }
 # ── Estimate of the remaining time (plans: stages × stage length; measured overheads) ─
-plan_minutes() {  # configuration → minutes of one run: stages × stage length + reset, drain and collection
+RUN_OVERHEAD=""
+run_overhead() {  # → minutes of one run beyond its load stages (reset, function test, drain, collection), learned on this machine
+  [ -n "$RUN_OVERHEAD" ] || RUN_OVERHEAD=$(python3 - "$(cat "$STATE/results-current" 2>/dev/null || true)" "$RESULTS" <<'EOF'
+import glob, json, os, statistics, sys
+from datetime import datetime, timezone
+def learn(folders):
+    vals = []
+    for run in [r for f in folders for r in glob.glob(os.path.join(f, "*_rep-*"))]:
+        meta, sums = os.path.join(run, "meta.json"), os.path.join(run, "SHA256SUMS")
+        try:
+            pv = json.load(open(meta))["plan_values"]
+            start = datetime.strptime(os.path.basename(run)[:15], "%Y-%m-%d_%H%M").replace(tzinfo=timezone.utc).timestamp()
+            vals.append((os.path.getmtime(sums) - start) / 60 - len(pv["rates_per_s"]) * float(pv["stage_minutes"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return vals
+cur, root = sys.argv[1], sys.argv[2]
+vals = learn([cur] if cur else []) or learn(glob.glob(os.path.join(root, "*")))   # this folder first, else every run on this machine
+print(int(round(min(60, max(10, statistics.median(vals))))) if vals else 15)
+EOF
+)
+  echo "$RUN_OVERHEAD"
+}
+plan_minutes() {  # configuration → minutes of one run: stages × stage length + overhead learned on this machine
   local f="$SRC/experiments/plans/$(plan_of "$1").env" n d
   [ -r "$f" ] || { echo 165; return 0; }
   n=$(sed -n 's/^RATES="\(.*\)"/\1/p' "$f" | tr ',' '\n' | grep -c .)
   d=$(sed -n 's/^STAGE_DURATION="\(.*\)"/\1/p' "$f"); ! is_short || d=2
-  echo $(( n * ${d:-10} + 15 ))
+  echo $(( n * ${d:-10} + $(run_overhead) ))
 }
 eta_minutes() {  # → "remaining extra total" in minutes: nominal plan minus the time already spent in the running step
   local p m=0 x=0 t c v i rd r reps dep ph="" el=0 since run rs
@@ -897,7 +920,15 @@ def cmd_dashboard(script, logf, once=""):
     STATUS = re.compile(r"^(\d\d):(\d\d):(\d\d) (\S+) ")
     SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     NS = ["monitoring", "logging", "identity", "customer", "supplier", "k6-operator", "k6"]
-    W = {"snap": None, "pods": None, "node": None, "t": 0.0, "kube": True, "pct": 0}
+    W = {"snap": None, "pods": None, "node": None, "t": 0.0, "kube": True, "pct": 0, "safe": False, "force": False}
+    STATE_DIR = os.path.dirname(os.path.dirname(logf))
+    def job_now():   # the running job from its file (cheap), None if no job runs
+        try:
+            j = dict(t.split("=", 1) for t in open(os.path.join(STATE_DIR, "job")).read().split() if "=" in t)
+            os.kill(int(j.get("pid", "0")), 0); return j
+        except (OSError, ValueError): return None
+    def safe_mode():  # during a measurement the view must not load the measured machine (observer effect)
+        j = job_now(); return bool(j and (j.get("phase") or "").startswith("measure"))
     MODE = {"view": "main", "confirm": False, "all": False, "off": 0, "msg": "", "msg_t": 0.0}
     L = threading.Lock(); wake = threading.Event()
     COLOR = os.environ.get("REPRODUCE_COLOR") == "1"
@@ -916,28 +947,37 @@ def cmd_dashboard(script, logf, once=""):
             return {"cpu": cpu, "cpu_pct": int(f[2].rstrip("%")), "mem": mem, "mem_pct": int(f[4].rstrip("%"))}
         except Exception:
             return None
-    def fetch():
+    def fetch(light=False):   # light: no kubectl calls (measurement-safe mode)
         s_ = run(["bash", script, "_snapshot"], 60)
-        p_ = run(["kubectl", "--request-timeout=5s", "get", "pods", "-A", "-o", "json"], 15)
-        n_ = run(["kubectl", "--request-timeout=5s", "top", "node", "--no-headers"], 15)
+        p_ = None if light else run(["kubectl", "--request-timeout=5s", "get", "pods", "-A", "-o", "json"], 15)
+        n_ = None if light else run(["kubectl", "--request-timeout=5s", "top", "node", "--no-headers"], 15)
         try: snap = json.loads(s_) if s_ else None
         except ValueError: snap = None
         try: pods = json.loads(p_)["items"] if p_ else None
         except (ValueError, KeyError): pods = None
         with L:
             if snap is not None: W["snap"] = snap
-            W["pods"], W["node"], W["kube"], W["t"] = pods, parse_node(n_), p_ is not None, time.time()
-    def loop():
+            W["pods"], W["node"], W["kube"], W["t"] = pods, parse_node(n_), (p_ is not None) or light, time.time()
+    def loop():   # normal: everything every 3 s · measurement-safe: state every 5 min, no kubectl, r refreshes once
+        last = 0.0
         while True:
-            fetch(); wake.wait(3); wake.clear()
-    def log_lines(everything=False):
-        try:
-            with open(logf, "rb") as f:
-                f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 300000)); data = f.read().decode("utf-8", "replace")
-        except OSError:
-            return []
-        ls = data.splitlines()[1 if size > 300000 else 0:]
-        return ls if everything else [l for l in ls if STATUS.match(l)]
+            W["safe"] = safe = safe_mode(); now = time.time()
+            if not safe or W["force"] or now - last >= 300:
+                fetch(light=safe and not W["force"]); last = now; W["force"] = False
+            wake.wait(30 if safe else 3); wake.clear()
+    LOGC = {"key": None, "all": [], "status": []}
+    def log_lines(everything=False):   # re-read only when the log changed
+        try: st = os.stat(logf); key = (st.st_size, st.st_mtime)
+        except OSError: return []
+        if key != LOGC["key"]:
+            try:
+                with open(logf, "rb") as f:
+                    f.seek(max(0, st.st_size - 300000)); data = f.read().decode("utf-8", "replace")
+            except OSError:
+                return []
+            ls = data.splitlines()[1 if st.st_size > 300000 else 0:]
+            LOGC.update(key=key, all=ls, status=[l for l in ls if STATUS.match(l)])
+        return LOGC["all"] if everything else LOGC["status"]
     def line_epoch(l, now):
         m = STATUS.match(l)
         if not m: return now
@@ -1008,7 +1048,7 @@ def cmd_dashboard(script, logf, once=""):
     def draw_cluster(c, y, x, width, pods, node, kube):
         c.put(y, x, "CLUSTER", "d b")
         if pods is None:
-            c.put(y, x + 12, "not reachable" if not kube else "loading …", "d"); return y + 2
+            c.put(y, x + 12, "paused during the measurement (observer effect) – r reads it once" if W["safe"] else ("not reachable" if not kube else "loading …"), "d"); return y + 2
         y += 1; by = {}
         for p_ in pods:
             ns = p_["metadata"]["namespace"]
@@ -1051,8 +1091,10 @@ def cmd_dashboard(script, logf, once=""):
 
     def view_main(c, now, k):
         with L: snap, pods, node, kube = W["snap"], W["pods"], W["node"], W["kube"]
-        w, h = c.w, c.h; sn = snap or {}
-        x = c.put(0, 1, "reproduce", "acc b"); c.put(0, x + 1, "· PURIS saturation experiment", "d")
+        w, h = c.w, c.h; sn = dict(snap or {}); jn = job_now()
+        if snap is not None: sn["job"] = jn
+        x = c.put(0, 1, "reproduce", "acc b"); x = c.put(0, x + 1, "· PURIS saturation experiment", "d")
+        if W["safe"]: c.put(0, x + 2, "◆ measurement-safe · state every 5 min · r refreshes", "warn")
         c.right(0, "%s · %s · %s" % (sn.get("profile") or "–", sn.get("commit") or "–", time.strftime("%H:%M %Z", time.localtime(now))), "d")
         c.put(1, 0, "─" * w, "d")
         y = 2; job = sn.get("job"); phases = sn.get("phases") or []; lines = log_lines()
@@ -1135,7 +1177,7 @@ def cmd_dashboard(script, logf, once=""):
         for i, (t, st) in enumerate(text): c.put(2 + i, 2, t, st)
 
     def request_stop():
-        j = (W["snap"] or {}).get("job") or {}
+        j = job_now() or {}
         try:
             pid = int(j.get("pid", "0")); os.kill(pid, sig.SIGTERM)
             with open(logf, "a") as f:
@@ -1196,16 +1238,17 @@ def cmd_dashboard(script, logf, once=""):
                 try: scr.addstr(y, x, t, attr(st))
                 except curses.error: pass
             scr.refresh()
-            sn = W["snap"] or {}; job = sn.get("job")
+            sn = W["snap"] or {}; job = job_now()
             if prev_job and not job and W["snap"] is not None:   # the job has ended while this view was open
                 flash("the job has ended – see the activity"); n = os.environ.get("REPRODUCE_NOTIFY", "bell")
                 if n != "off": curses.beep()
                 if n == "desktop": term("\033]9;reproduce: the job has ended\a\033]777;notify;reproduce;the job has ended\a")
-            prev_job = job if W["snap"] is not None else prev_job
+            prev_job = job
             if now - t_title > 2:
                 t_title = now; pct = W["pct"] if job else (sn.get("estimate") or {}).get("percent", 0)
                 if os.environ.get("REPRODUCE_TITLE") == "1": term("\033]2;reproduce · %s%s\a" % ((job or {}).get("phase", "idle").split(":")[0], " · %d %%" % pct if job else ""))
                 if os.environ.get("REPRODUCE_TPROG") == "1": term("\033]9;4;%s\a" % ("1;%d" % pct if job else "0;0"))
+            scr.timeout(1000 if W["safe"] else 200)   # fewer frames during a measurement
             ch = scr.getch()
             if ch == -1: k += 1; continue
             if MODE["confirm"]:
@@ -1220,9 +1263,9 @@ def cmd_dashboard(script, logf, once=""):
             elif ch == ord("p"): MODE.update(view="pods", off=0)
             elif ch in (ord("?"), ord("h")): MODE["view"] = "help"
             elif ch == ord("a") and v == "log": MODE["all"] = not MODE["all"]; MODE["off"] = 0
-            elif ch == ord("r"): wake.set(); flash("refreshing …")
+            elif ch == ord("r"): W["force"] = True; wake.set(); flash("refreshing once …")
             elif ch == ord("s"):
-                if (W["snap"] or {}).get("job"): MODE["confirm"] = True
+                if job_now(): MODE["confirm"] = True
                 else: flash("no job is running")
             elif ch in (curses.KEY_UP, ord("k")): MODE["off"] += 1 if v == "log" else -1
             elif ch in (curses.KEY_DOWN, ord("j")): MODE["off"] += -1 if v == "log" else 1
@@ -2132,7 +2175,11 @@ phase_package() {
   [ -f "$rd/summary.json" ] || need_fail "not evaluated" "./reproduce evaluate"
   ( cd "$rd" && find . -type f ! -name SHA256SUMS ! -name '.commit' ! -name '.profile' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
   ok "results complete: $rd ($(du -sh "$rd" | cut -f1))"
-  echo "  copy the run folders into runs/ of the repository, e.g.: cp -r \"$rd\"/*_rep-* <repository>/runs/"
+  if [ "$(cat "$rd/.mode" 2>/dev/null)" = short ] || grep -qs '"kind": "smoke"' "$rd"/*_rep-*/meta.json; then
+    warn "short-test results: they check the pipeline only – never copy them into runs/ of the repository"
+  else
+    hint "copy the run folders into runs/ of the repository, e.g.: cp -r \"$rd\"/*_rep-* <repository>/runs/"
+  fi
 }
 
 # ── snapshot, settings, logs, help ────────────────────────────────────────────────
@@ -2383,8 +2430,8 @@ cmd_status() {
   printf '%s\n' "${C_DIM}  kubectl: export KUBECONFIG=$KUBECONFIG PATH=$TOOLS:\$PATH${C_0}"
 }
 TICKER=0; TK_EXTRA=""
-tk_update() {  # every 30 s: overall percentage and end time for the live line, the tab title and the tab progress
-  local m x t pct
+tk_update() {  # overall percentage and end time for the live line, the tab title and the tab progress
+  local m x t pct; RUN_OVERHEAD=""
   read -r m x t <<<"$(eta_minutes)"
   [ "$t" -gt 0 ] && [ "$m" -gt 0 ] || { TK_EXTRA=""; return 0; }
   pct=$(( (t - m) * 100 / t )); TK_EXTRA=" · $pct % · done ≈ $(date -d "+$m min" +%H:%M)"
@@ -2398,7 +2445,8 @@ ticker() {  # seconds since the last status line, that line without its time →
     *)     txt="working on $(sed -n 's/.*phase=\([^ :]*\).*/\1/p' "$STATE/job" 2>/dev/null)" ;;
   esac
   txt="$txt · $(dur "$1")$TK_EXTRA"
-  w=$(( $(tput cols 2>/dev/null || echo 80) - 13 )); [ "$w" -ge 20 ] || w=20
+  if [ $((SECONDS - ${TK_COLS_T:--100})) -ge 10 ]; then TK_COLS=$(tput cols 2>/dev/null || echo 80); TK_COLS_T=$SECONDS; fi
+  w=$(( ${TK_COLS:-80} - 13 )); [ "$w" -ge 20 ] || w=20
   printf '\r\033[K         %s %s' "$C_RUN${SPIN[$((SECONDS % 10))]}$C_0" "$C_DIM${txt:0:$w}$C_0"
   TICKER=1
 }
@@ -2420,7 +2468,9 @@ cmd_watch() {  # [--all | --from byte-offset] → status lines of the background
   last=$(last_step_line); t_last=$((SECONDS - $(last_line_age "$last"))); last=${last#* }
   local tk_t=-100
   while :; do
-    if [ "$TTY" = 1 ] && [ $((SECONDS - tk_t)) -ge 30 ]; then tk_t=$SECONDS; tk_update; fi
+    if [ "$TTY" = 1 ] && [ $((SECONDS - tk_t)) -ge 30 ]; then   # the estimate costs ~0.5 CPU-s: every 30 s, during a measurement every 5 min
+      if [[ "$(job_field phase)" != measure* ]] || [ $((SECONDS - tk_t)) -ge 300 ]; then tk_t=$SECONDS; tk_update; fi
+    fi
     if IFS= read -r -t 1 line <&8; then
       ticker_clear; if [ -z "$re" ]; then printf '%s\n' "$line"; else paint "$line"; fi
       if [[ $line =~ $sre ]]; then t_last=$SECONDS; last=${line#* }; fi

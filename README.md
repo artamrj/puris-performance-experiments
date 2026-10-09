@@ -287,8 +287,8 @@ Without `tmux`, the terminal must stay connected until the line `The next steps 
 
 Every phase can be called on its own (`fetch`, `tools`, `check`, `install`, `deploy`, `prepare`, `verify`, `measure`, `evaluate`, `package`). `./reproduce dashboard` shows a full-screen live view (progress, end time, components, runs, activity; `q` quits, `s` stops, `l` log, `p` pods), `./reproduce status` a short overview, `./reproduce logs <component> -f` the log of one component, `./reproduce settings` time zone and display options, `./reproduce help` all commands with examples; `./reproduce uninstall` removes the script's own cluster again. Success criterion of the rebuild (fixed in advance): the median tipping point lies at most one load stage outside the range of the reference (for `compact-k0`: 0.5–0.8/s). Specification: [`REPRODUCE.md`](REPRODUCE.md).
 
-> [!IMPORTANT]
-> `reproduce` is implemented and checked without a cluster (ShellCheck, rendered charts, analysis against the NAS runs), but has **not yet run on a cluster**. Planned are the `original` profile on the second environment and the rebuild test with `compact` on the freshly installed NAS VM (comparison with K0 and K1).
+> [!NOTE]
+> `reproduce` ran completely on a cluster for the first time on 2026-10-09: NAS VM, profile `compact`, short test (2-minute stages, 1 run per configuration) – all phases including the configuration switch K0 → K1 and `uninstall`. The faults found are fixed and covered by `tests/test_reproduce_static.py`. The short test checks the pipeline only; its numbers are not results. Still open: the `original` profile on the second environment and the rebuild test with `compact` and the real plan (10-minute stages, 3 runs per configuration).
 
 ### 3. Measurement runs on an existing setup with `lab`
 

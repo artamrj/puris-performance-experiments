@@ -118,6 +118,7 @@ Visual language: the terminal's own 16 colours (works on light and dark themes),
 - activity: the last status lines
 - keys: `q` quit (the job keeps running) · `s` stop the job (asks first) · `l` log (`a` all lines) · `p` pods with state, restarts, age · `?` help · `r` refresh
 - terminal tab: title with phase and %, optional native progress; bell or desktop notification when the job ends (`settings notify`)
+- **measurement-safe mode** (observer effect): while a job is in phase `measure`, the view makes no `kubectl` calls, reads the state every 5 min instead of every 3 s, re-reads the log only when it changed and draws one frame per second; header badge `◆ measurement-safe`, `r` reads everything once. Measured on the NAS VM (60 s, 2026-10-09): 0.19 cores normal (without cluster; with cluster ≈ 0.3) → 0.013 cores measurement-safe. `watch` updates its estimate every 5 min during a measurement.
 - `--once` (or no terminal): one frame as text. An unknown `TERM` (e.g. `xterm-ghostty` on the server) falls back to `xterm-256color`; if the dashboard cannot start, `watch` is shown instead.
 
 ### Output style
@@ -744,7 +745,9 @@ Found on 2026-10-09 in the first measurement on a cluster: the plans contain `ST
 | `evaluate` and `make-reference` on the NAS runs K0 `rep-2`–`rep-4` (complete logs from `nachtrag/`) | tipping stage strict 0.5–0.6/s, relaxed 0.6–0.7/s; comparison "reproduced" |
 | Watchdog of the load (§22.5) with a simulated `kubectl` | stall, on schedule and finished detected |
 
-**Not yet run on a cluster** (first run on the supervisor's VM, §18 step 7): install, deploy, prepare, reset, collection, conformance check, reboot repair (§22.4 – wallet restore untested), Alloy filter (§22.8), log capacity probe, bundle, uninstall.
+**Update 2026-10-09 – first run on a cluster** (NAS VM, `compact`, short test; `LABORBUCH.md`): fetch, tools, check, install, deploy, prepare, verify, measure (K0, switch to K1, K1), evaluate and uninstall ran; probe, reset, collection, validity checks and the Alloy filter worked; faults found and fixed are listed in the lab book (tests: `tests/test_reproduce_static.py`). The estimate learns the overhead per run from finished runs (here 21 min instead of 15). **Still not run:** reboot repair (§22.4), bundle (§22.11), the profile `original`, the real plan (10-minute stages, 3 runs).
+
+Originally not yet run on a cluster (first run planned on the supervisor's VM, §18 step 7): install, deploy, prepare, reset, collection, conformance check, reboot repair (§22.4 – wallet restore untested), Alloy filter (§22.8), log capacity probe, bundle, uninstall.
 
 Reference files: `reference/compact-k0.json` from `rep-2`–`rep-4`; to be rebuilt after `rep-5`–`rep-7` are copied into `runs/`:
 `./reproduce make-reference compact-k0 "<source>" runs/<run>… > reference/compact-k0.json`. `reference/compact-k1.json` follows after the NAS K1 runs.
