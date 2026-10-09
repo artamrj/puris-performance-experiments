@@ -137,6 +137,12 @@ class Runtime(unittest.TestCase):
                         'unset REPRODUCE_REPS REPRODUCE_SMOKE; echo "$(eff_reps) $(is_short && echo short || echo full)"')
         self.assertEqual(r.stdout.strip(), '1 short', r.stderr)
 
+    def test_a_phase_counts_only_after_all_earlier_phases(self):
+        # 09.10.2026: after uninstall, the kept S0 showed "✓ prepare" without a cluster
+        r = self.run_in('echo compact > "$STATE/profile"; mkdir -p "$STATE/s0"; echo x > "$STATE/s0/SHA256SUMS"; '
+                        'phase_state prepare && echo done || echo open')
+        self.assertEqual(r.stdout.strip(), 'open', r.stderr)
+
     def test_broken_plan_stops_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / 'w'

@@ -2317,8 +2317,10 @@ unknown_cmd() {
 }
 
 # ── status, watch, stop ───────────────────────────────────────────────────────────
-phase_state() {  # phase → 0 done
-  local rd c v i
+phase_state() {  # phase → 0 done; a phase counts only if every earlier phase is done (e.g. after uninstall)
+  local rd c v i x prev=""
+  for x in $PHASES; do [ "$x" = "$1" ] && break; prev=$x; done
+  [ -z "$prev" ] || phase_state "$prev" || return 1
   case "$1" in
     fetch)   [ -e "$SRC/.git" ] ;;
     tools)   [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] ;;
@@ -2446,7 +2448,10 @@ cmd_stop() {
 
 # ── uninstall and bundle ──────────────────────────────────────────────────────────
 cmd_uninstall() {
-  [ -f $OWNER ] || die "no cluster of this script on this machine – nothing removed" 3
+  if [ ! -f "$OWNER" ]; then
+    [ ! -x /usr/local/bin/k3s ] || die "a k3s installation not created by this script exists – not touched" 3
+    skip "nothing to remove – the cluster of this script is already removed"; return 0
+  fi
   if [ "${1:-}" != --yes ]; then
     echo "This removes k3s with all pods and volumes, and restores the system settings."
     echo "Kept: $SRC, $RESULTS, $STATE/s0. Type 'uninstall' to continue:"
@@ -2465,7 +2470,12 @@ cmd_uninstall() {
   fi
   sudo rm -f "$OWNER" /etc/rancher/k3s/config.yaml
   rm -f "$KUBECONFIG" "$STATE/config" "$STATE/verified" "$STATE/boot_id" "$STATE/results-current"; rm -rf "$STATE/releases" "$MARKERS"
-  ok "removed; system settings restored. Results kept in $RESULTS"
+  if [ -d "$STATE/s0" ]; then   # S0 belongs to the removed cluster: kept, but a new cluster gets its own (next prepare)
+    local s0old; s0old="$STATE/s0.uninstalled-$(date -u +%Y%m%d-%H%M%S)"; mv "$STATE/s0" "$s0old"
+  fi
+  ok "removed; system settings restored"
+  info "kept: results in $(rel "$RESULTS")${s0old:+, the database state of the removed cluster in $(rel "$s0old")}"
+  hint "a new build: ./reproduce (or ./reproduce install) – prepare then creates a new S0"
 }
 cmd_bundle() {
   [ -f "$STATE/config" ] || need_fail "nothing deployed" "./reproduce deploy"

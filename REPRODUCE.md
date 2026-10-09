@@ -558,7 +558,8 @@ Decision:
 - `./reproduce uninstall` works only if the marker is present; otherwise it stops.
 - Asks for confirmation (type `uninstall`); `--yes` for scripted use.
 - Runs `/usr/local/bin/k3s-uninstall.sh` (removes k3s, containers, volumes), restores the settings saved in `state/system-before.json`, removes the marker.
-- Keeps `src/`, `tools/`, `results/` and `state/s0/` (results are never deleted by the script; removing the work folder is the user's decision).
+- Keeps `src/`, `tools/` and `results/` (results are never deleted by the script; removing the work folder is the user's decision). The database state of the removed cluster is kept as `state/s0.uninstalled-<time>`: a new cluster has a new wallet and new DTRs, so the next `prepare` creates a new S0 (found on 2026-10-09: reusing the old S0 would make `verify` fail).
+- Calling it again when nothing is left reports `↷ nothing to remove` (exit code 0); a k3s not installed by this script is never touched (exit code 3).
 
 ---
 
