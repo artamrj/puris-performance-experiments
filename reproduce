@@ -33,6 +33,17 @@
 set -euo pipefail
 umask 077
 
+# Runs only on the Linux server of the experiment – stop at once and clearly anywhere else
+# (e.g. on a laptop with macOS), before anything is created or locked.
+case "${1:-}" in help|-h|--help) ;; *)
+  if [ "$(uname -s)" != Linux ]; then
+    printf '%s\n' "✗ reproduce runs on the Linux server for the experiment (Ubuntu, amd64) – this machine runs $(uname -s)." \
+      "→ log in to the server (e.g. ssh <server>) and run the two commands from the README there; nothing was changed here."
+    exit 3
+  fi
+  if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then printf '%s\n' "✗ bash 4 or newer required – found $BASH_VERSION"; exit 3; fi ;;
+esac
+
 # ── Fixed versions and sources (REPRODUCE.md §7.2) ────────────────────────────────
 REPO_URL="https://github.com/artamrj/puris-performance-experiments.git"
 K3S_VERSION="v1.37.1+k3s1"
@@ -73,7 +84,7 @@ OWNER=/etc/rancher/reproduce-owner  # outside /etc/rancher/k3s, which k3s create
 export KUBECONFIG="$STATE/kubeconfig"
 export HELM_CACHE_HOME="$STATE/helm/cache" HELM_CONFIG_HOME="$STATE/helm/config" HELM_DATA_HOME="$STATE/helm/data"
 export PATH="$TOOLS:$PATH"
-mkdir -p "$STATE/logs" "$MARKERS" "$RESULTS"
+case "${1:-}" in help|-h|--help) ;; *) mkdir -p "$STATE/logs" "$MARKERS" "$RESULTS" ;; esac   # help creates nothing
 
 # ── Output (REPRODUCE.md §4, "Output style") ─────────────────────────────────────
 # One status line per step: time (UTC), symbol, text. The same plain line goes into the
@@ -783,6 +794,7 @@ py() { python3 -c "$PY" "$@"; }
 # ── Lock, job, markers ────────────────────────────────────────────────────────────
 LOCKED=0
 lock() {
+  command -v flock >/dev/null || { fail "program flock missing – install it with: sudo apt-get install -y util-linux"; exit 3; }
   exec 9>"$STATE/lock"
   if ! flock -n 9; then
     fail "another reproduce job is already running ($(sed -n 's/.*command=\([^ ]*\).*phase=\([^ ]*\).*/command \1, phase \2/p' "$STATE/job" 2>/dev/null || echo unknown))"

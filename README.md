@@ -260,6 +260,8 @@ Dependencies are pinned in [`analysis/requirements.txt`](analysis/requirements.t
 
 [`reproduce`](reproduce) is a single script that installs k3s and all components in their pinned versions on an empty machine, creates the test data, measures, compares the result with a reference and stores the runs in the format of `runs/`. Before starting, a calculator checks whether the machine is large enough for the `original` or the `compact` profile.
 
+Run it **on the server** (Ubuntu Server, amd64, with `sudo` and internet access), for example after `ssh <server>` – not on a laptop:
+
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/artamrj/puris-performance-experiments/main/reproduce
 chmod +x reproduce
