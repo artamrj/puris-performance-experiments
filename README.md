@@ -260,13 +260,23 @@ Dependencies are pinned in [`analysis/requirements.txt`](analysis/requirements.t
 
 [`reproduce`](reproduce) is a single script that installs k3s and all components in their pinned versions on an empty machine, creates the test data, measures, compares the result with a reference and stores the runs in the format of `runs/`. Before starting, a calculator checks whether the machine is large enough for the `original` or the `compact` profile.
 
-Run it **on the server** (Ubuntu Server, amd64, with `sudo` and internet access), for example after `ssh <server>` – not on a laptop:
+Run it **on the server** (Ubuntu Server, amd64, with `sudo` and internet access), for example after `ssh <server>` – not on a laptop – and **inside `tmux`**, so that it keeps running when the terminal is closed or the own computer is switched off:
 
 ```bash
+tmux new -s repro     # session on the server; survives a lost connection (missing: sudo apt-get install -y tmux)
 curl -fsSLO https://raw.githubusercontent.com/artamrj/puris-performance-experiments/main/reproduce
 chmod +x reproduce
-./reproduce
+./reproduce           # never with sudo – it asks for the sudo password itself, once at the start
 ```
+
+After the start:
+
+1. The script asks **once** for the sudo password (only needed to install k3s and to switch off swap and automatic updates).
+2. After a few minutes it prints an **estimate of the end**, e.g. `estimate: about 17 h 55 min left → done around 09:08 UTC on Sat 10 Oct`.
+3. **Now the computer can be switched off:** press `Ctrl-b`, then `d` (the `tmux` session keeps running on the server) and close the terminal. From phase 4 on, the work runs as a background job on the server anyway.
+4. **Coming back later:** `ssh <server>`, then `./reproduce status` (progress and updated estimate) or `./reproduce watch` (live view; `Ctrl-C` closes only the view). `tmux attach -t repro` returns to the session.
+
+Without `tmux`, the terminal must stay connected until the line `The next steps run in the background` appears (after phase `install`, about 20 minutes); a lost connection before that stops the script – running `./reproduce` again continues where it stopped.
 
 | Requirement | Value |
 |---|---|

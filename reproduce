@@ -4,8 +4,9 @@
 # reproduce – repeats the PURIS saturation experiment on one machine, from an
 # empty Ubuntu server to finished, checked results. Specification: REPRODUCE.md.
 #
+#   tmux new -s repro      (recommended: keeps running when the terminal or the computer is closed)
 #   curl -fsSLO https://raw.githubusercontent.com/artamrj/puris-performance-experiments/main/reproduce
-#   chmod +x reproduce && ./reproduce
+#   chmod +x reproduce && ./reproduce      (not with sudo – it asks for the password itself)
 #
 # Commands
 #   ./reproduce                      everything (phases 0–9)
@@ -30,6 +31,8 @@
 # Test values: the database passwords and the PURIS API key below are fixed, public
 # test values ("test only"). They are never used outside this test environment.
 # ══════════════════════════════════════════════════════════════════════════════
+{ # the whole script is one block: bash reads it completely before running it, so replacing
+  # the file while it runs (e.g. downloading a new version) cannot disturb a running call
 set -euo pipefail
 umask 077
 
@@ -41,7 +44,12 @@ case "${1:-}" in help|-h|--help) ;; *)
       "→ log in to the server (e.g. ssh <server>) and run the two commands from the README there; nothing was changed here."
     exit 3
   fi
-  if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then printf '%s\n' "✗ bash 4 or newer required – found $BASH_VERSION"; exit 3; fi ;;
+  if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then printf '%s\n' "✗ bash 4 or newer required – found $BASH_VERSION"; exit 3; fi
+  if [ "$(id -u)" = 0 ] && [ -n "${SUDO_USER:-}" ]; then
+    printf '%s\n' "✗ please start it without sudo: ./reproduce" \
+      "→ it asks for the sudo password itself, once at the start; started with sudo, its files would belong to root"
+    exit 2
+  fi ;;
 esac
 
 # ── Fixed versions and sources (REPRODUCE.md §7.2) ────────────────────────────────
@@ -205,6 +213,46 @@ phase_done_hint() {  # phase → duration and the command to run next
   [ -n "$n" ] || return 0
   hint "next: ./reproduce $n – $(phase_desc "$n") · usually $(phase_time "$n")$(in_background "$n" && echo " · runs in the background")"
 }
+# ── Estimate of the remaining time (plans: stages × stage length; measured overheads) ─
+plan_minutes() {  # configuration → minutes of one run: stages × stage length + reset, drain and collection
+  local f="$SRC/experiments/plans/$(plan_of "$1").env" n d
+  [ -r "$f" ] || { echo 165; return 0; }
+  n=$(sed -n 's/^RATES="\(.*\)"/\1/p' "$f" | tr ',' '\n' | grep -c .)
+  d=$(sed -n 's/^STAGE_DURATION="\(.*\)"/\1/p' "$f"); [ "${REPRODUCE_SMOKE:-0}" != 1 ] || d=2
+  echo $(( n * ${d:-10} + 15 ))
+}
+eta_minutes() {  # → "minutes extra": everything still to do, and the extra time if invalid runs are replaced
+  local p m=0 x=0 c v i rd r
+  p=$(profile); [ -n "$p" ] || { echo "0 0"; return 0; }
+  phase_state install || m=$((m + 15))
+  phase_state deploy  || m=$((m + $( [ "$p" = original ] && echo 30 || echo 45 )))
+  phase_state prepare || m=$((m + 20))
+  rd=$(cat "$STATE/results-current" 2>/dev/null || true)
+  for c in $(configs_of "$p"); do
+    v=0; i=0; if [ -n "$rd" ] && [ -d "$rd" ]; then read -r v i <<<"$(count_runs "$rd" "$c")"; fi
+    [ "$v" -lt "$REPS" ] || continue
+    r=$(plan_minutes "$c")
+    m=$((m + 30 + (REPS - v) * r))                                   # 30: configuration change, check, log probe
+    x=$((x + (MAX_REPLACEMENTS - (i < MAX_REPLACEMENTS ? i : MAX_REPLACEMENTS)) * r))
+  done
+  echo "$((m + 5)) $x"
+}
+hm() { printf '%d h %02d min' $(($1 / 60)) $(($1 % 60)); }
+at_time() {  # minutes from now → clock time (local time of this machine, UTC in brackets if different)
+  local l u; l=$(date -d "+$1 min" '+%H:%M %Z on %a %d %b'); u=$(date -u -d "+$1 min" '+%H:%M UTC')
+  case "$l" in *UTC*) echo "$l" ;; *) echo "$l ($u)" ;; esac
+}
+eta_line() {  # → readable estimate, empty if nothing is left
+  local m x; read -r m x <<<"$(eta_minutes)"
+  [ "$m" -gt 5 ] || return 0
+  echo "about $(hm "$m") left → done around $(at_time "$m")$( [ "$x" -gt 0 ] && echo "; each invalid run that must be repeated adds about $(hm "$(plan_minutes "$(configs_of "$(profile)" | awk '{print $1}')")")")"
+}
+eta_info() { local e; e=$(eta_line); [ -z "$e" ] || info "estimate: $e"; return 0; }
+SUDO_KEEP=""
+sudo_once() {  # ask for the sudo password now and keep it valid until the background part starts
+  sudo -n true 2>/dev/null || { info "sudo password needed once now – for phase install (k3s, swap, automatic updates)"; sudo -v || die "sudo not available" 3; }
+  ( while sleep 60; do sudo -n -v 2>/dev/null || exit 0; done ) & SUDO_KEEP=$!
+}
 banner() {
   [ "$BG" != 1 ] || return 0
   printf '%s\n' "${C_B}reproduce – PURIS saturation experiment, from an empty Ubuntu server to checked results${C_0}"
@@ -212,6 +260,12 @@ banner() {
   printf '%s\n' "${C_DIM}  from phase 4 on the job runs in the background: closing the terminal or losing SSH does not stop it${C_0}"
   printf '%s\n' "${C_DIM}  symbols  ✓ done · ↷ already done, skipped · … working · · information · ! warning · ✗ error · → next step${C_0}"
   [ "${REPRODUCE_SMOKE:-0}" != 1 ] || warn "short test mode (REPRODUCE_SMOKE=1): stages of 2 min, $REPS run(s) per configuration – results are not valid for the thesis"
+  if [ -z "${TMUX:-}" ] && [ -z "${STY:-}" ]; then
+    warn "not running inside tmux: keep this terminal connected for the first ~20 min (until the background job starts)"
+    info "recommended: Ctrl-C now, then start again inside tmux: tmux new -s repro, then ./reproduce – it can then be left with Ctrl-b d and the computer switched off"
+  else
+    info "running inside tmux: once the estimate of the end is shown, leave with Ctrl-b d – the computer can then be switched off"
+  fi
   return 0
 }
 
@@ -830,6 +884,7 @@ detach() {  # command... → continues as a background job and shows its progres
   echo
   printf '%s\n' "${C_DIM}  The next steps run in the background (PID $!). Closing this terminal or losing the SSH connection does not stop them.${C_0}"
   printf '%s\n' "${C_DIM}  Ctrl-C closes only this view · ./reproduce watch opens it again · ./reproduce status · ./reproduce stop${C_0}"
+  [ -z "$SUDO_KEEP" ] || kill "$SUDO_KEEP" 2>/dev/null || true
   cmd_watch --from "$pos"
   exit 0
 }
@@ -1572,6 +1627,7 @@ phase_measure() {
       say "▶" "$cfg: run $rep (valid so far $v of $REPS, invalid $i)"
       one_run "$cfg" "$rep" "$rd" || true
       read -r v i <<<"$(count_runs "$rd" "$cfg")"
+      eta_info
     done
     if [ "$v" -ge "$REPS" ]; then ok "$cfg: $v valid runs"; else warn "$cfg: only $v valid runs after $MAX_REPLACEMENTS replacement runs – reported as failed"; fi
   done
@@ -1642,6 +1698,7 @@ cmd_status() {
     for cfg in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid (target: $REPS valid)"; done
     [ ! -f "$rd/verdict.md" ] || printf '  %-12s %s\n' "verdict" "$(rel "$rd/verdict.md")"
   fi
+  [ -z "$(eta_line)" ] || printf '  %-12s %s\n' "estimate" "$(eta_line)"
   [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || printf '  %-12s %s\n' "interrupted" "$(ls "$MARKERS" | tr '\n' ' ')– completed automatically by the next command"
   if job_alive; then
     printf '  %-12s %s\n' "job" "running in the background – phase ${ph:-?}, PID $(job_pid), since $(sed -n 's/.*started=[0-9-]*T\([0-9:]*\):[0-9]*Z.*/\1/p' "$STATE/job") UTC" \
@@ -1755,6 +1812,7 @@ on_exit() {
   if [ "$rc" -ne 0 ] && [ "$LOCKED" = 1 ] && [ -s "$KUBECONFIG" ]; then
     if marker_has run; then stop_own_load; py attempt "$(marker_get run)" "${CURRENT_PHASE:-}" failed "stopped (exit $rc)" 2>/dev/null || true; marker_clear run; fi
   fi
+  [ -z "$SUDO_KEEP" ] || kill "$SUDO_KEEP" 2>/dev/null || true
   unlock
   [ "$BG" != 1 ] || case "$SCRIPT" in "$STATE"/job-script.*) rm -f "$SCRIPT" ;; esac   # own copy of the background job
   return "$rc"
@@ -1769,10 +1827,13 @@ trap on_exit EXIT
 trap on_term TERM INT HUP
 case "$CMD" in
   all)
-    banner; lock; for x in fetch tools check install; do run_phase "$x"; done
+    banner; lock; sudo_once
+    for x in fetch tools check; do run_phase "$x"; done
+    eta_info
+    run_phase install
     detach _continue ;;
   _continue)
-    lock; for x in deploy prepare verify measure evaluate package; do run_phase "$x"; done
+    lock; eta_info; for x in deploy prepare verify measure evaluate package; do run_phase "$x"; done
     ok "finished – all phases done"
     hint "results: $(rel "$(cat "$STATE/results-current")") · readable summary: verdict.md in that folder" ;;
   fetch|tools|check|install|verify) lock; run_phase "$CMD"; phase_done_hint "$CMD" ;;
@@ -1785,6 +1846,8 @@ case "$CMD" in
   bundle) lock; cmd_bundle ;;
   uninstall) lock; shift; cmd_uninstall "${1:-}" ;;
   make-reference) shift; py make-reference "$@" ;;
-  help|-h|--help) sed -n '3,32p' "$SCRIPT" ;;
-  *) echo "unknown command: $CMD"; sed -n '3,32p' "$SCRIPT"; exit 2 ;;
+  help|-h|--help) sed -n '3,33p' "$SCRIPT" ;;
+  *) echo "unknown command: $CMD"; sed -n '3,33p' "$SCRIPT"; exit 2 ;;
 esac
+exit
+}

@@ -74,11 +74,19 @@ Mapping to the thesis:
 
 ## 4. Usage
 
+On the server, inside `tmux` (missing: `sudo apt-get install -y tmux`):
+
 ```bash
+tmux new -s repro
 curl -fsSLO https://raw.githubusercontent.com/artamrj/puris-performance-experiments/main/reproduce
 chmod +x reproduce
-./reproduce
+./reproduce           # not with sudo: the script asks for the sudo password itself, once at the start
 ```
+
+- Phases 0–3 (`fetch` … `install`) run in the terminal, because `install` needs `sudo` with a terminal; inside `tmux` they also survive a lost connection. From phase 4 on, the work runs as a background job (§22.1).
+- After phase `check`, the script prints an estimate of the end (plans × stage length plus measured overheads); `./reproduce status` and every finished run update it.
+- Once the estimate is shown, the session can be left with `Ctrl-b d` and the own computer switched off. Coming back: `./reproduce status`, `./reproduce watch`, or `tmux attach -t repro`.
+- Without `tmux`, the terminal must stay connected until the background job has started (about 20 minutes); otherwise the script stops and continues with the next call of `./reproduce`.
 
 Requirements on the machine: Ubuntu Server (tested: 26.04.1 LTS), amd64, `sudo`, internet access, enough CPU and RAM (§8). Everything else is installed by the script.
 
@@ -593,10 +601,11 @@ Principle: every situation is either **prevented**, **detected and repaired by a
 
 ### 22.1 Lost SSH connection during a long phase
 
-- `./reproduce`, `deploy`, `prepare` and `measure` always start their work as a **background job** (`setsid`, output only to `reproduce.log`, `SIGHUP` has no effect) and then show the live view in the terminal.
-- Closing the terminal or losing SSH changes nothing. `./reproduce watch` shows the live view again; `./reproduce status` shows phase, configuration, run, stage and expected end.
-- `./reproduce stop` asks the job to end at the next safe point (§14).
-- Works without `tmux` and without `sudo`.
+- `deploy`, `prepare`, `measure` and, after phase `install`, `./reproduce` start their work as a **background job** (`setsid`, output only to `reproduce.log`, `SIGHUP` has no effect) and then show the live view in the terminal. The job runs from its own copy of the script, and the script is one block that bash reads completely before running it – downloading a new `reproduce` never disturbs a running call.
+- Phases 0–3 run in the terminal (`install` needs `sudo` with a terminal). A lost connection there stops the script cleanly; the next call continues. Started inside `tmux` (§4), they survive it.
+- Closing the terminal or losing SSH during the background job changes nothing. `./reproduce watch` shows the live view again; `./reproduce status` shows phase, runs, the last line and the estimated end.
+- `./reproduce stop` asks the job to end at the next safe point (§14) and shows its progress until it has stopped.
+- The background job itself needs neither `tmux` nor `sudo`.
 
 ### 22.2 Two calls at the same time
 
