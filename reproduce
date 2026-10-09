@@ -913,14 +913,14 @@ phase_tools() {
   [ -e "$SRC/.git" ] || need_fail "repository missing" "./reproduce fetch"
   mkdir -p "$TOOLS" "$STATE/charts"
   local t; t=$(mktemp -d)
-  if helm version --short 2>/dev/null | grep -q "^${HELM_VERSION}+"; then skip "helm $HELM_VERSION"
+  if [ -x "$TOOLS/helm" ] && "$TOOLS/helm" version --short 2>/dev/null | grep -q "^${HELM_VERSION}+"; then skip "helm $HELM_VERSION"
   elif [ -x "$BUNDLE/tools/helm" ]; then cp "$BUNDLE/tools/helm" "$TOOLS/helm"; ok "helm from bundle"
   else
     ( cd "$t" && curl -fsSLO "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz" && curl -fsSLO "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz.sha256sum" \
       && sha256sum -c --quiet "helm-$HELM_VERSION-linux-amd64.tar.gz.sha256sum" && tar -xzf "helm-$HELM_VERSION-linux-amd64.tar.gz" ) >>"$LOGF" 2>&1 || die "helm download or checksum failed"
     install -m 755 "$t/linux-amd64/helm" "$TOOLS/helm"; ok "helm $HELM_VERSION (checksum verified)"
   fi
-  if kubectl version --client 2>/dev/null | grep -q "$KUBECTL_VERSION"; then skip "kubectl $KUBECTL_VERSION"
+  if [ -x "$TOOLS/kubectl" ] && "$TOOLS/kubectl" version --client 2>/dev/null | grep -q "$KUBECTL_VERSION"; then skip "kubectl $KUBECTL_VERSION"
   elif [ -x "$BUNDLE/tools/kubectl" ]; then cp "$BUNDLE/tools/kubectl" "$TOOLS/kubectl"; ok "kubectl from bundle"
   else
     ( cd "$t" && curl -fsSLO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl" && curl -fsSLO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl.sha256" \
@@ -1028,6 +1028,7 @@ EOF
     fi
     printf 'installed by reproduce %s, work folder %s\n' "$(now_iso)" "$WORK" | sudo tee /etc/rancher/k3s/reproduce-owner >/dev/null
     sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG"; chmod 600 "$KUBECONFIG"
+    local i; for i in $(seq 60); do [ -n "$(k get node -o name 2>/dev/null)" ] && break; sleep 5; done  # node object appears only after k3s registers it
     q k wait --for=condition=Ready node --all --timeout=300s || die "node not ready"
     ok "k3s $K3S_VERSION installed"
   fi

@@ -336,6 +336,7 @@ Noch offen:
 - [x] `KONZEPT.md` an `reproduce` anpassen (`REPRODUCE.md` §20) – neu 2026-10-08 – erledigt 2026-10-08 (Abschnitt 1 Ergänzung, Abschnitt 12 drei Zeilen)
 - [ ] `reproduce` bauen und testen (`REPRODUCE.md` §18, Schritte 1–7) – neu 2026-10-08 *(2026-10-08: gebaut (`reproduce`, ca. 1500 Zeilen) und ohne Cluster geprüft – shellcheck sauber, Charts geladen, Rechner, TestRun gleich K0 `rep-3`, Auswertung gegen K0, Watchdog; `REPRODUCE.md` §23. Offen: erster Lauf auf der VM der Betreuung (Schritt 7) – Aufbau, Reset, Sammeln, Neustart-Reparatur, Alloy-Filter, Probe, Bundle, uninstall)*
   - [x] CI-Workflow `.github/workflows/check.yml` – neu 2026-10-08 – entfällt (Entscheidung des Verfassers 2026-10-08: kein CI; Änderungen an `reproduce` vor dem Push auf der Maschine testen)
+  - [ ] Probelauf `reproduce` auf der NAS-VM (Snapshot, `k3s-uninstall.sh`, `REPRODUCE_SMOKE=1`), vor dem ersten Lauf auf der VM der Betreuung – neu 2026-10-09
 - [ ] Referenzdateien `reference/compact-k0.json` (nach `rep-5`–`rep-7`) und `reference/compact-k1.json` (nach K1-NAS) – neu 2026-10-08
 - [x] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08 – angelegt 2026-10-08
 - [ ] VM der Betreuung: `original-k0` und `original-k1` mit `reproduce` (je 3 gültige Läufe) – ab Di 20.10. – neu 2026-10-08
