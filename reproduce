@@ -856,11 +856,15 @@ def cmd_evaluate(folder, refdir):
     lines = ["# Result – %s" % os.path.basename(folder), ""]
     mach = rjson(os.path.join(folder, "machine.json")) if os.path.exists(os.path.join(folder, "machine.json")) else {}
     if mach: lines += ["Machine: %s · %s vCPU · %s GiB · single-core score %s" % (mach.get("cpu_model"), mach.get("vcpu"), mach.get("mem_total_gib"), mach.get("cpu_single_core_score")), ""]
+    if any(m.get("kind") == "smoke" for m in metas):
+        lines += ["> **Short test (2-min stages):** checks that the pipeline works. The numbers are not comparable with the reference or the thesis – with short stages no backlog builds up in time.", ""]
     lines += ["| Configuration | valid runs | tipping stage (median, range) | capacity | tx/s per core | recovery | comparison |", "|---|---|---|---|---|---|---|"]
     for cfg in cfgs:
         s = summarize(cfg, [m for m in metas if m.get("configuration") == cfg])
         rp = os.path.join(refdir, cfg + ".json"); ref = rjson(rp) if os.path.exists(rp) else None
         s["comparison"] = compare(s, ref); s["comparison_relaxed"] = compare(s, ref, "relaxed")
+        if any(m.get("kind") == "smoke" for m in metas if m.get("configuration") == cfg):   # 2-min stages: no backlog builds up in time
+            s["comparison"] = s["comparison_relaxed"] = {"verdict": "not compared (short test)", "short_test": True}
         summary["configurations"][cfg] = s; st = s["strict"]
         caps = [r["strict"]["capacity_rate"] for r in s["runs"] if r["strict"]["capacity_rate"]]
         tps = [r["tx_per_s_per_core"] for r in s["runs"] if r["tx_per_s_per_core"]]
@@ -1026,10 +1030,13 @@ def cmd_dashboard(script, logf, once=""):
         target = sn.get("reps") or 3
         c.put(y, x, "RUNS", "d b"); y += 1
         for cf in cfgs:
-            r = (sn.get("runs") or {}).get(cf, {"valid": 0, "invalid": 0}); xx = c.put(y, x, cf.ljust(14), "")
-            for i in range(max(target, r["valid"])): xx = c.put(y, xx, "■" if i < r["valid"] else "□", "ok" if i < r["valid"] else "d")
+            r = (sn.get("runs") or {}).get(cf, {"valid": 0, "invalid": 0, "running": 0}); xx = c.put(y, x, cf.ljust(14), ""); run = r.get("running", 0)
+            for i in range(max(target, r["valid"] + run)):
+                if i < r["valid"]: xx = c.put(y, xx, "■", "ok")
+                elif i < r["valid"] + run: xx = c.put(y, xx, "◐", "acc")
+                else: xx = c.put(y, xx, "□", "d")
             for i in range(r["invalid"]): xx = c.put(y, xx, "✗", "err")
-            c.put(y, xx + 2, "%d of %d valid%s" % (r["valid"], target, " · %d invalid" % r["invalid"] if r["invalid"] else ""), "d"); y += 1
+            c.put(y, xx + 2, "%d of %d valid%s%s" % (r["valid"], target, " · 1 running" if run else "", " · %d invalid" % r["invalid"] if r["invalid"] else ""), "d"); y += 1
         return y + 1
     def footer(c, now):
         y = c.h - 1
@@ -1120,7 +1127,7 @@ def cmd_dashboard(script, logf, once=""):
                 ("  l         log of this script (a: all lines or status lines)", ""), ("  p         pods with state, restarts and age", ""),
                 ("  ↑ ↓ PgUp PgDn Home End   scroll in log and pods", ""), ("  r         refresh now", ""), ("", ""),
                 ("SYMBOLS", "b"), ("  ✓ done   ↷ skipped   … working   · information   ! warning   ✗ error   → next step", ""),
-                ("  ● ready   ◐ starting   ✗ failing   ■ valid run   □ open run   ✗ invalid run", ""), ("", ""),
+                ("  ● ready   ◐ starting   ✗ failing   ■ valid run   ◐ running run   □ open run   ✗ invalid run", ""), ("", ""),
                 ("COMMANDS", "b"), ("  ./reproduce status · watch · logs <component> -f · settings · help", ""), ("", ""),
                 ("The progress bar and the end time come from the plans (stages × stage length) and the measured", "d"),
                 ("overheads; they are updated with every finished step.", "d")]
@@ -1242,7 +1249,7 @@ def cmd_snapshot():
             d["estimate"] = {"remaining_min": m, "extra_max_min": x, "total_min": t,
                              "percent": (100 if m == 0 else max(0, min(99, round((t - m) * 100 / t)))) if t else 0,
                              "end_epoch": int(time.time() + m * 60) if m else None}
-        elif k == "runs": d["runs"][f[1]] = {"valid": int(f[2]), "invalid": int(f[3])}
+        elif k == "runs": d["runs"][f[1]] = {"valid": int(f[2]), "invalid": int(f[3]), "running": int(f[4]) if len(f) > 4 else 0}
         elif k in ("configs", "interrupted"): d[k] = f[1].split() if len(f) > 1 else []
         elif k == "reps": d[k] = int(f[1] or 0)
         else: d[k] = f[1] if len(f) > 1 else ""
@@ -1289,8 +1296,14 @@ set_phase() {
   [ -f "$STATE/job" ] && sed -i.bak -e "s/ phase=[^ ]*/ phase=$1/" -e "s/ since=[^ ]*/ since=$(date +%s)/" "$STATE/job" && rm -f "$STATE/job.bak"; return 0
 }
 job_field() { sed -n "s/.* $1=\([^ ]*\).*/\1/p" "$STATE/job" 2>/dev/null; }
-eff_reps() { local r=""; ! job_alive || r=$(job_field reps); echo "${r:-$REPS}"; }          # repetitions of the running job
-is_short() { [ "${REPRODUCE_SMOKE:-0}" = 1 ] || { job_alive && [ "$(job_field mode)" = short ]; }; }
+res_field() { local d; d=$(cat "$STATE/results-current" 2>/dev/null) && cat "$d/.$1" 2>/dev/null; }   # mode/reps of the current results folder
+eff_reps() {  # target runs: running job > REPRODUCE_REPS of this shell > current results folder > default
+  local r=""; if job_alive; then r=$(job_field reps); elif [ -z "${REPRODUCE_REPS:-}" ]; then r=$(res_field reps || true); fi; echo "${r:-$REPS}"
+}
+is_short() {  # short test: this shell, the running job, or (without either) the current results folder
+  [ "${REPRODUCE_SMOKE:-0}" = 1 ] && return 0
+  if job_alive; then [ "$(job_field mode)" = short ]; elif [ -z "${REPRODUCE_SMOKE:-}" ]; then [ "$(res_field mode || true)" = short ]; else return 1; fi
+}
 job_pid() { sed -n 's/^pid=\([0-9]*\).*/\1/p' "$STATE/job" 2>/dev/null; }
 job_alive() { local p; p=$(job_pid); [ -n "$p" ] && [ "$p" != "$$" ] && kill -0 "$p" 2>/dev/null; }
 marker_set()   { printf '%s\n' "${2:-$(now_iso)}" > "$MARKERS/$1"; }
@@ -1938,11 +1951,13 @@ apply_config() {  # configuration
   marker_clear apply
   ok "configuration $cfg applied (changed:${changed:- none})"
 }
-results_dir() {  # current results folder for this profile and commit
-  local d f
-  f="$STATE/results-current"
-  if [ -f "$f" ] && d=$(cat "$f") && [ -d "$d" ] && [ "$(cat "$d/.commit" 2>/dev/null)" = "$(commit)" ] && [ "$(cat "$d/.profile" 2>/dev/null)" = "$(profile)" ]; then echo "$d"; return; fi
-  d="$RESULTS/$(date -u +%Y-%m-%d_%H%M)_$(profile)"; mkdir -p "$d"; commit > "$d/.commit"; profile > "$d/.profile"
+results_dir() {  # current results folder for this profile, commit and mode – short tests never share a folder with real runs
+  local d f mode
+  f="$STATE/results-current"; mode=$( [ "${REPRODUCE_SMOKE:-0}" = 1 ] && echo short || echo full)
+  if [ -f "$f" ] && d=$(cat "$f") && [ -d "$d" ] && [ "$(cat "$d/.commit" 2>/dev/null)" = "$(commit)" ] && [ "$(cat "$d/.profile" 2>/dev/null)" = "$(profile)" ] \
+     && [ "$(cat "$d/.mode" 2>/dev/null)" = "$mode" ] && [ "$(cat "$d/.reps" 2>/dev/null)" = "$REPS" ]; then echo "$d"; return; fi
+  d="$RESULTS/$(date -u +%Y-%m-%d_%H%M)_$(profile)$( [ "$mode" = short ] && echo _short)"; mkdir -p "$d"
+  commit > "$d/.commit"; profile > "$d/.profile"; echo "$mode" > "$d/.mode"; echo "$REPS" > "$d/.reps"
   cp "$STATE/machine.json" "$d/machine.json"; echo "$d" > "$f"; echo "$d"
 }
 count_runs() {  # results-dir configuration → "valid invalid"
@@ -1956,6 +1971,15 @@ for d in os.listdir(sys.argv[1]):
     else: i += 1
 print(v, i)
 EOF
+}
+run_counts() {  # results-dir configuration → "valid invalid running" for display; the run in progress is not invalid
+  local v i r=0 cur
+  read -r v i <<<"$(count_runs "$1" "$2")"
+  if marker_has run; then
+    cur=$(marker_get run)
+    if [ "$(dirname "$cur")" = "$1" ] && [[ $(basename "$cur") == *"_$2_rep-"* ]] && [ ! -f "$cur/meta.json" ]; then i=$((i > 0 ? i - 1 : 0)); r=1; fi
+  fi
+  echo "$v $i $r"
 }
 gates() {  # disk and noise before a run (REPRODUCE.md §22.7, §22.10)
   local free i steal
@@ -1976,7 +2000,7 @@ start_load() {  # name testid → applies TestRun from the plan environment
   q k delete testrun -n k6 -l reproduce=1 --wait=true --timeout=120s
   q k create -f "$TMPD/testrun.json" || die "TestRun could not be created"
 }
-watch_load() {  # name t_apply labels minutes → 0 finished, 1 stalled
+watch_load() {  # name t_apply labels minutes rates → 0 finished, 1 stalled (rates only for the stage lines)
   local rc msg last="" free
   while true; do
     rc=0; msg=$(py watchdog "$1" "$2" "$3" "$4" 2>&1) || rc=$?
@@ -1985,7 +2009,7 @@ watch_load() {  # name t_apply labels minutes → 0 finished, 1 stalled
       10) local key="${msg%% · *}"
           if [ "$key" != "$last" ]; then
             if [[ $key =~ ^stage\ ([^ ]+)\ \(([0-9]+)/([0-9]+)\)$ ]]; then
-              step "load stage ${BASH_REMATCH[1]} · ${BASH_REMATCH[2]} of ${BASH_REMATCH[3]} · $(echo "$RATES" | cut -d, -f"${BASH_REMATCH[2]}") transactions/s · $STAGE_DURATION min"
+              step "load stage ${BASH_REMATCH[1]} · ${BASH_REMATCH[2]} of ${BASH_REMATCH[3]} · $(echo "${5:-$RATES}" | cut -d, -f"${BASH_REMATCH[2]}") transactions/s · $4 min"
             else info "$msg"; fi
             last="$key"
           fi ;;
@@ -2029,7 +2053,7 @@ log_probe() {  # configuration results-dir
   name="probe-$(date -u +%Y%m%d%H%M%S)"
   ( export RATES="$max" STAGE_LABELS="probe" STAGE_DURATION=3; start_load "$name" "$name" )
   t_apply=$(now_iso)
-  watch_load "$name" "$t_apply" probe 3 || { stop_own_load; die "probe: load generator stalled"; }
+  watch_load "$name" "$t_apply" probe 3 "$max" || { stop_own_load; die "probe: load generator stalled"; }
   if py probe "$name" "$t_apply" > "$rd/probe-$cfg.json"; then ok "log capacity probe passed: $(cat "$rd/probe-$cfg.json")"
   else die "log capacity probe failed – monitoring cannot keep up at $max/s: $(cat "$rd/probe-$cfg.json")"; fi
 }
@@ -2051,7 +2075,7 @@ one_run() {  # configuration rep results-dir
   py attempt "$run" load running ""
   start_load "$name" "$(basename "$run")"; t_apply=$(now_iso); cp "$TMPD/testrun.json" "$run/testrun.json"
   ok "load started: $(basename "$run") ($(echo "$RATES" | tr ',' '\n' | wc -l | tr -d ' ') stages × $STAGE_DURATION min)"
-  if ! watch_load "$name" "$t_apply" "$STAGE_LABELS" "$STAGE_DURATION"; then stop_own_load; py attempt "$run" load failed "load generator stalled"; marker_clear run; return 1; fi
+  if ! watch_load "$name" "$t_apply" "$STAGE_LABELS" "$STAGE_DURATION" "$RATES"; then stop_own_load; py attempt "$run" load failed "load generator stalled"; marker_clear run; return 1; fi
   py attempt "$run" collecting running ""
   step "collecting (drain, Prometheus, Loki, EDC)"
   py collect "$run" "$name" "$(basename "$run")" "$t_apply" "$(commit)" "$TMPD" "$STATE/machine.json" "$(profile)" "$cfg" "$(cp_limit_of "$cfg")" >>"$LOGF" 2>&1 \
@@ -2113,7 +2137,7 @@ phase_package() {
 
 # ── snapshot, settings, logs, help ────────────────────────────────────────────────
 cmd_snapshot() {  # machine-readable state: ./reproduce status --json; read by the dashboard
-  local p rd x st ph="" m xm t c v i
+  local p rd x st ph="" m xm t c v i r
   p=$(profile); ! job_alive || ph=$(job_field phase); ph=${ph%%:*}
   read -r m xm t <<<"$(eta_minutes)"
   rd=$(cat "$STATE/results-current" 2>/dev/null || true)
@@ -2129,7 +2153,7 @@ cmd_snapshot() {  # machine-readable state: ./reproduce status --json; read by t
     printf 'eta\t%s\t%s\t%s\n' "$m" "$xm" "$t"
     if [ -n "$rd" ] && [ -d "$rd" ] && [ -n "$p" ]; then
       printf 'results\t%s\n' "$rd"
-      for c in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$c")"; printf 'runs\t%s\t%s\t%s\n' "$c" "$v" "$i"; done
+      for c in $(configs_of "$p"); do read -r v i r <<<"$(run_counts "$rd" "$c")"; printf 'runs\t%s\t%s\t%s\t%s\n' "$c" "$v" "$i" "$r"; done
     fi
     printf 'interrupted\t%s\nlog\t%s\nkubeconfig\t%s\n' "$(ls "$MARKERS" 2>/dev/null | tr '\n' ' ')" "$LOGF" "$KUBECONFIG"
   } | py snapshot
@@ -2339,11 +2363,12 @@ cmd_status() {
   rd=$(cat "$STATE/results-current" 2>/dev/null || true)
   if [ -n "$rd" ] && [ -d "$rd" ]; then
     printf '  %-12s %s\n' "results" "$(rel "$rd")"
-    for cfg in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid (target: $(eff_reps) valid)"; done
-    [ ! -f "$rd/verdict.md" ] || printf '  %-12s %s\n' "verdict" "$(rel "$rd/verdict.md")"
+    for cfg in $(configs_of "$p"); do read -r v i r <<<"$(run_counts "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid$( [ "$r" = 1 ] && echo ", 1 running") (target: $(eff_reps) valid)"; done
+    ! phase_state evaluate || printf '  %-12s %s\n' "verdict" "$(rel "$rd/verdict.md")"   # only a current evaluation
   fi
   [ -z "$(eta_line)" ] || printf '  %-12s %s\n' "estimate" "$(eta_line)"
-  [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || printf '  %-12s %s\n' "interrupted" "$(ls "$MARKERS" | tr '\n' ' ')– completed automatically by the next command"
+  # open multi-step changes are "in progress" while a job runs, "interrupted" only without one
+  [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || job_alive || printf '  %-12s %s\n' "interrupted" "$(ls "$MARKERS" | tr '\n' ' ')– completed automatically by the next command"
   if job_alive; then
     printf '  %-12s %s\n' "job" "running in the background – phase ${ph:-?}, PID $(job_pid), since $(sed -n 's/.*started=[0-9-]*T\([0-9:]*\):[0-9]*Z.*/\1/p' "$STATE/job") UTC" \
       "last line" "$(last_status_line) ($(dur "$(last_line_age)") ago)"

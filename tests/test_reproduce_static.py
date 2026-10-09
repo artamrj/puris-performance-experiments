@@ -123,6 +123,20 @@ class Runtime(unittest.TestCase):
                         'echo "{}" > "$d/summary.json"; phase_state evaluate && echo done || echo open')
         self.assertEqual(r.stdout.strip(), 'open', r.stderr)
 
+    def test_short_tests_never_share_a_results_folder_with_real_runs(self):
+        # 09.10.2026: a later real measurement would have reused the folder of the short test
+        r = self.run_in('echo compact > "$STATE/profile"; echo "{}" > "$STATE/machine.json"; commit() { echo abc; }; '
+                        'a=$(REPRODUCE_SMOKE=1 results_dir); b=$(results_dir); echo "$a|$b|$(cat "$a/.mode")|$(cat "$b/.mode")"')
+        a, b, ma, mb = r.stdout.strip().split('|')
+        self.assertNotEqual(a, b, r.stderr)
+        self.assertTrue(a.endswith('_short'))
+        self.assertEqual((ma, mb), ('short', 'full'))
+
+    def test_target_runs_come_from_the_results_folder_without_a_job(self):
+        r = self.run_in('d="$RESULTS/x"; mkdir -p "$d"; echo "$d" > "$STATE/results-current"; echo 1 > "$d/.reps"; echo short > "$d/.mode"; '
+                        'unset REPRODUCE_REPS REPRODUCE_SMOKE; echo "$(eff_reps) $(is_short && echo short || echo full)"')
+        self.assertEqual(r.stdout.strip(), '1 short', r.stderr)
+
     def test_broken_plan_stops_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / 'w'

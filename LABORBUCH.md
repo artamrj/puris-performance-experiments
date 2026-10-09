@@ -1425,3 +1425,24 @@ In allen vier Läufen bis 1,0/s alle Stufen vollständig abgeschlossen. Dazu `re
 **Gemacht:** Auf Anweisung des Verfassers („do it“) `./lab reset s0-v2` auf der VM, 13:31:01–13:40:13 UTC (552 s, ohne Reparatur; Control Planes nach 34 s, Data Planes nach 185 s, PURIS nach 271 s bereit). Vorher: Sperre frei, keine Last.
 **Ergebnis:** `./lab status`: Sperre frei, PURIS und EDC 6/6 bereit, keine Last; Marke `reset-incomplete` entfernt; VM auf `setup-v3`, Git-Stand sauber. Konfiguration K1-NAS bleibt angewendet (Rückweg zu K0: `AUFBAU.md`, „Skalierungskonfiguration K1-NAS anwenden“).
 **Beobachtung:** CPU des Knotens vor dem Reset 1016m (13:31 UTC), danach 973m. Das gekippte System hatte sich ohne Last bereits teilweise beruhigt (09:55 UTC: 2648m, drei Stunden nach Lastende von `rep-6`; vor dem Reset gut eine Stunde nach Lastende von `rep-7`). Ob es dabei auch wieder funktionsfähig wurde, ist nicht geprüft (kein Funktionstest vor dem Reset).
+
+## 2026-10-09 – Probelauf `reproduce` auf der NAS-VM (Kurztest), 14:07–19:41 UTC
+
+**Gemacht:** Aufbau `lab` vom Verfasser entfernt (`sudo k3s-uninstall.sh`, ca. 14:07 UTC). Danach `reproduce` in `~/repro-test` (Arbeitsordner `puris-repro`, Repository-Stand `9597dd0`), Kurztest mit `REPRODUCE_SMOKE=1 REPRODUCE_REPS=1` (Stufen 2 min, 1 Lauf je Konfiguration).
+**Ablauf (UTC):**
+- `fetch`/`tools`/`check` 14:10–14:13: Profil `compact` (braucht 7,9 vCPU / 25,0 GiB; `original` bräuchte 20 vCPU / 23,4 GiB); Steal 0,0001 über 60 s.
+- `install` 14:13–14:17: k3s `v1.37.1+k3s1`, alle Images geladen.
+- `deploy` 14:18–15:12: 11 Komponenten; DTR Customer ca. 22 min, DTR Supplier ca. 11 min bis bereit. 15:01 per `stop` unterbrochen (siehe Fehler 5), 15:05–15:12 fortgesetzt (bereits installierte Komponenten übersprungen).
+- `prepare` 15:16–15:35 (19 min): 20 Materialien je Firma, 20 erste Transaktionen, S0 gesichert (7 Datenbanken).
+- `verify` 15:42 (34 s): Konformität `compact-k0`, Wallet/DTR = S0, Testtransaktion erfolgreich.
+- `measure` 15:47 und 15:50 ohne Wirkung abgebrochen (Fehler 7; vor dem ersten Reset, S0 unverändert, Prüfsummen OK). Dritter Versuch 17:10–19:20:
+  - Probe K0 (1/s, 3 min) bestanden; `compact-k0` `rep-1` gültig (621 Auslösungen = 621 im Log, 0 verworfene Iterationen, Steal max. 2,1 %, Mittel 1,2 %); Drain: alle abgeschlossen (95 offen bei Lastende, 0 nach 7 min).
+  - Wechsel auf `compact-k1` 18:01–18:12 (nur EDC und PURIS beider Firmen per `helm upgrade`; Konformität `compact-k1`, Testtransaktion erfolgreich).
+  - Probe K1 (3/s, 3 min) bestanden (530 Anfragen, 0 fehlgeschlagen). 18:27 Steal 1,3 % ≥ 1 % → 2 min auf ruhige Maschine gewartet.
+  - `compact-k1` `rep-1` gültig; Drain: kein Fortschritt für 2 min, 592 offen.
+  - Resets: 356 s, 532 s, 577 s, 630 s.
+- `evaluate` 19:20: K0 kippt bei 1/s, K1 bei 1,5/s – **Kurztest, nicht vergleichbar** (mit 2-min-Stufen baut sich kein Rückstau rechtzeitig auf); in `verdict.md` als „not compared (short test)“ vermerkt.
+**Gefundene und behobene Fehler in `reproduce`** (Änderungen vom Verfasser übernommen): (1) `tools` übersprang helm aus `/usr/local/bin`; (2) Warten auf den Knoten vor dessen Registrierung; (3) Besitzmarke in `/etc/rancher/k3s` (Modus 700) unsichtbar, `fstab`-Sicherung bei Wiederholung überschrieben; (4) Secret `grafana-admin` fehlte; (5) Überschreiben des laufenden Skripts (Download während `deploy`) – Job und eine offene Ansicht `watch` lasen an alter Stelle weiter, die Ansicht führte Bruchstücke aus (ohne Änderung im Arbeitsordner; vom Verfasser beendet); behoben: Skript als ein Block, Hintergrundjob aus eigener Kopie; (6) Bereitschaftsprüfung wertete noch nicht angelegte Pods als bereit; (7) Plan-Variable `STATE="s0-v2"` überschrieb den Zustandsordner (Reset suchte `s0/s0`); behoben: Pläne als Daten, Pfade `readonly`, Prüfung in `check` (`REPRODUCE.md` §22.13); (8) `measure && evaluate` lief nach Fehlschlag weiter; (9) Anzeige: laufender Lauf als ungültig, alte Auswertung als erledigt, Kurztest und echte Läufe im selben Ergebnisordner (jetzt getrennt, Ordner mit `.mode`/`.reps`). Tests: `tests/test_reproduce_static.py`, 14 von 14 auf der NAS-VM.
+**Beobachtung (Messaufwand der Ansicht):** Eine Aktualisierung von `./reproduce dashboard` kostet ca. 0,9 CPU-Sekunden (`_snapshot` 0,53–0,55 s, `kubectl get pods` 0,18 s, `kubectl top node` 0,07 s); bei 3 s Takt ca. 0,3 Kerne auf dem gemessenen Knoten. Während echter Läufe Ansicht geschlossen halten, bis ein messschonender Modus umgesetzt ist.
+**Hinweis:** Der Ergebnisordner `results/2026-10-09_1547_compact` enthält nur Kurztest-Läufe (`kind=smoke`); nachträglich mit `.mode=short`, `.reps=1` gekennzeichnet. Ein vom Fehler 7 angelegter Ordner `~/repro-test/s0/diagnostics` ist ohne Bedeutung.
+**Offen:** `package`, Test von `uninstall`; Bewertung als Nachbau-Test erst mit echten Stufen (10 min, 3 Läufe).
