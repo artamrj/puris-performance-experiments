@@ -117,6 +117,12 @@ class Runtime(unittest.TestCase):
         self.assertEqual(r.returncode, 4)
         self.assertIn('run ./reproduce measure again', r.stdout)
 
+    def test_old_evaluation_does_not_count_as_done(self):
+        # 09.10.2026: a summary.json from an evaluation without runs showed "✓ evaluate" during the measurement
+        r = self.run_in('echo compact > "$STATE/profile"; d="$RESULTS/x"; mkdir -p "$d"; echo "$d" > "$STATE/results-current"; '
+                        'echo "{}" > "$d/summary.json"; phase_state evaluate && echo done || echo open')
+        self.assertEqual(r.stdout.strip(), 'open', r.stderr)
+
     def test_broken_plan_stops_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / 'w'
