@@ -94,6 +94,14 @@ export HELM_CACHE_HOME="$STATE/helm/cache" HELM_CONFIG_HOME="$STATE/helm/config"
 export PATH="$TOOLS:$PATH"
 case "${1:-}" in help|-h|--help) ;; *) mkdir -p "$STATE/logs" "$MARKERS" "$RESULTS" ;; esac   # help creates nothing
 
+# ── Settings (./reproduce settings) – environment variables win over the file ───────
+SETTINGS="$STATE/settings"
+setting() {  # key → value from the settings file, or the default
+  local v; v=$(sed -n "s/^$1=//p" "$SETTINGS" 2>/dev/null | tail -n 1)
+  if [ -n "$v" ]; then echo "$v"; else case "$1" in color|progress) echo auto ;; title) echo on ;; notify) echo bell ;; *) echo "" ;; esac; fi
+}
+if [ -z "${TZ:-}" ] && [ -n "$(setting tz)" ]; then export TZ; TZ=$(setting tz); fi
+
 # ── Output (REPRODUCE.md §4, "Output style") ─────────────────────────────────────
 # One status line per step: time (UTC), symbol, text. The same plain line goes into the
 # log; on a terminal it is coloured. Long command output goes only into the log (q).
@@ -102,10 +110,30 @@ case "${1:-}" in help|-h|--help) ;; *) mkdir -p "$STATE/logs" "$MARKERS" "$RESUL
 BG="${REPRODUCE_BG:-0}"
 if [ "$BG" = 1 ]; then exec >>"$LOGF" 2>&1; fi
 TTY=0; [ "$BG" != 1 ] && [ -t 1 ] && TTY=1
-if [ "$TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+COLOR=0   # NO_COLOR (no-color.org) > FORCE_COLOR / CLICOLOR_FORCE > settings > terminal detection
+if [ -n "${NO_COLOR:-}" ] || [ "$BG" = 1 ]; then COLOR=0
+elif [ "${FORCE_COLOR:-0}" != 0 ] || [ "${CLICOLOR_FORCE:-0}" != 0 ]; then COLOR=1
+else case "$(setting color)" in always) COLOR=1 ;; never) COLOR=0 ;; *) [ "$TTY" = 1 ] && [ "${TERM:-dumb}" != dumb ] && COLOR=1 ;; esac; fi
+if [ "$COLOR" = 1 ]; then
   C_OK=$'\033[32m' C_WARN=$'\033[33m' C_ERR=$'\033[1;31m' C_RUN=$'\033[36m' C_DIM=$'\033[2m' C_B=$'\033[1m' C_0=$'\033[0m'; REPRODUCE_COLOR=1
 else C_OK="" C_WARN="" C_ERR="" C_RUN="" C_DIM="" C_B="" C_0=""; REPRODUCE_COLOR=0; fi
 export LOGF REPRODUCE_BG="$BG" REPRODUCE_COLOR
+# terminal integration: tab title (OSC 2) and native progress in the tab (OSC 9;4 – Windows Terminal,
+# Ghostty 1.2+, iTerm2 3.6.6+, WezTerm); "auto" only where support is known and outside tmux/screen
+TITLE=0; [ "$TTY" = 1 ] && [ "$(setting title)" = on ] && TITLE=1
+TPROG=0
+if [ "$TTY" = 1 ]; then
+  case "$(setting progress)" in
+    on) TPROG=1 ;;
+    auto) if [ -z "${TMUX:-}${STY:-}" ]; then case "${TERM:-}|${TERM_PROGRAM:-}" in *ghostty*|*WezTerm*|*"|vscode") TPROG=1 ;; esac; fi ;;
+  esac
+fi
+tab_title()    { [ "$TITLE" = 1 ] || return 0; printf '\033]2;%s\a' "$1"; }
+tab_progress() { [ "$TPROG" = 1 ] || return 0; printf '\033]9;4;%s\a' "$1"; }   # "1;37" percent · "3;0" busy · "2;100" error · "0;0" off
+notify_end() {  # text → bell or desktop notification when a job ends while a view is open
+  [ "$TTY" = 1 ] || return 0
+  case "$(setting notify)" in off) ;; desktop) printf '\a\033]9;%s\a\033]777;notify;reproduce;%s\a' "$1" "$1" ;; *) printf '\a' ;; esac
+}
 paint() {  # plain status line → coloured line (plain without colours)
   local l="$1" t r s
   [ -n "$C_0" ] || { printf '%s\n' "$l"; return 0; }
@@ -133,11 +161,12 @@ info() { say "·" "$*"; }
 warn() { say "!" "$*"; }
 fail() { say "✗" "$*"; }
 hint() { say "→" "$*"; }
+tell() { [ "$TTY" != 1 ] || printf '\r\033[K'; paint "$(date -u +%H:%M:%S) $1 $2"; }   # terminal only, not into the log
 q()    { "$@" >>"$LOGF" 2>&1; }          # long output only into the log file
 rel()  { case "$1" in "$PWD"/*) printf '%s\n' "${1#"$PWD"/}" ;; "$HOME"/*) printf '~/%s\n' "${1#"$HOME"/}" ;; *) printf '%s\n' "$1" ;; esac; }
 retry_cmd() { case "${CMD:-all}" in all|_continue) echo "./reproduce" ;; *) echo "./reproduce $ARGS_TEXT" ;; esac; }
 die()  {  # message [exit code] – every stop says what failed, where to look and what to run next
-  progress_end; fail "$1"; diagnostics || true
+  progress_end; tab_progress "2;100"; fail "$1"; diagnostics || true
   info "full log: $(rel "$LOGF")"
   hint "fix the cause, then run $(retry_cmd) again – steps already done are skipped"
   exit "${2:-1}"
@@ -149,22 +178,24 @@ dur() { printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); }   # seconds → 2m05s
 progress() {  # done total text [seconds on the current item]
   local w=24 f bar; f=$(($1 * w / ($2 > 0 ? $2 : 1)))
   bar="$(printf '%*s' "$f" '' | tr ' ' '#')$(printf '%*s' $((w - f)) '' | tr ' ' '-')"
+  tab_progress "1;$(($1 * 100 / ($2 > 0 ? $2 : 1)))"
   if [ "$TTY" = 1 ]; then
     printf '\r\033[K%s %s [%s] %d/%d  %s%s' "$C_DIM$(date -u +%H:%M:%S)$C_0" "$C_RUN…$C_0" "$bar" "$1" "$2" "${3:0:60}" "${4:+  ($(dur "$4"))}"
   elif [ -z "${4:-}" ]; then say "…" "$1/$2 $3"; fi
   return 0
 }
-progress_end() { [ "$TTY" = 1 ] && printf '\r\033[K'; return 0; }
+progress_end() { [ "$TTY" = 1 ] && printf '\r\033[K' && tab_progress "0;0"; return 0; }
 SPIN=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
 spin() {  # label expected command... → runs the command with a live timer on a terminal; its stdout passes through
   local label="$1" exp="$2" pid t0=$SECONDS; shift 2
   [ "$TTY" = 1 ] || { "$@"; return; }
+  tab_progress "3;0" >&2
   "$@" & pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     printf '\r\033[K%s %s %s  %s%s' "$C_DIM$(date -u +%H:%M:%S)$C_0" "$C_RUN${SPIN[$((SECONDS % 10))]}$C_0" "$label" "$(dur $((SECONDS - t0)))" "${exp:+ (usually $exp)}" >&2
     sleep 1
   done
-  printf '\r\033[K' >&2
+  printf '\r\033[K' >&2; tab_progress "0;0" >&2
   wait "$pid"
 }
 
@@ -195,11 +226,11 @@ phase_time() {
     deploy)  echo "20–60 min" ;;
     prepare) echo "10–30 min" ;;
     verify)  echo "2–5 min" ;;
-    measure) if [ "${REPRODUCE_SMOKE:-0}" = 1 ]; then echo "about 30–45 min per run (short test mode)"; else echo "about 2–3 h per run, $REPS runs per configuration"; fi ;;
+    measure) if is_short; then echo "about 30–45 min per run (short test mode)"; else echo "about 2–3 h per run, $(eff_reps) runs per configuration"; fi ;;
   esac
 }
 in_background() { case "$1" in deploy|prepare|measure) return 0 ;; *) return 1 ;; esac; }
-phase_header() { say "━━" "phase $(phase_no "$1")/9 · $1 – $(phase_desc "$1") · usually $(phase_time "$1")"; }
+phase_header() { tab_title "reproduce · $1"; say "━━" "phase $(phase_no "$1")/9 · $1 – $(phase_desc "$1") · usually $(phase_time "$1")"; }
 PHASE_SECONDS=0
 run_phase() {  # phase [arguments] → header, phase, duration in PHASE_SECONDS
   local x="$1" t0=$SECONDS; shift
@@ -218,24 +249,35 @@ plan_minutes() {  # configuration → minutes of one run: stages × stage length
   local f="$SRC/experiments/plans/$(plan_of "$1").env" n d
   [ -r "$f" ] || { echo 165; return 0; }
   n=$(sed -n 's/^RATES="\(.*\)"/\1/p' "$f" | tr ',' '\n' | grep -c .)
-  d=$(sed -n 's/^STAGE_DURATION="\(.*\)"/\1/p' "$f"); [ "${REPRODUCE_SMOKE:-0}" != 1 ] || d=2
+  d=$(sed -n 's/^STAGE_DURATION="\(.*\)"/\1/p' "$f"); ! is_short || d=2
   echo $(( n * ${d:-10} + 15 ))
 }
-eta_minutes() {  # → "minutes extra": everything still to do, and the extra time if invalid runs are replaced
-  local p m=0 x=0 c v i rd r
-  p=$(profile); [ -n "$p" ] || { echo "0 0"; return 0; }
+eta_minutes() {  # → "remaining extra total" in minutes: nominal plan minus the time already spent in the running step
+  local p m=0 x=0 t c v i rd r reps dep ph="" el=0 since run rs
+  p=$(profile); [ -n "$p" ] || { echo "0 0 0"; return 0; }
+  reps=$(eff_reps); dep=$( [ "$p" = original ] && echo 30 || echo 45 )
+  if job_alive; then ph=$(job_field phase); since=$(job_field since); [ -z "$since" ] || el=$(( ($(date +%s) - since) / 60 )); fi
+  t=$((15 + dep + 20 + 5))
   phase_state install || m=$((m + 15))
-  phase_state deploy  || m=$((m + $( [ "$p" = original ] && echo 30 || echo 45 )))
-  phase_state prepare || m=$((m + 20))
+  if ! phase_state deploy;  then if [ "$ph" = deploy ];  then m=$((m + (dep - el > 3 ? dep - el : 3))); else m=$((m + dep)); fi; fi
+  if ! phase_state prepare; then if [ "$ph" = prepare ]; then m=$((m + (20 - el > 3 ? 20 - el : 3))); else m=$((m + 20)); fi; fi
   rd=$(cat "$STATE/results-current" 2>/dev/null || true)
   for c in $(configs_of "$p"); do
+    r=$(plan_minutes "$c"); t=$((t + 30 + reps * r))
     v=0; i=0; if [ -n "$rd" ] && [ -d "$rd" ]; then read -r v i <<<"$(count_runs "$rd" "$c")"; fi
-    [ "$v" -lt "$REPS" ] || continue
-    r=$(plan_minutes "$c")
-    m=$((m + 30 + (REPS - v) * r))                                   # 30: configuration change, check, log probe
+    [ "$v" -lt "$reps" ] || continue
+    m=$((m + 30 + (reps - v) * r))                                   # 30: configuration change, check, log probe
     x=$((x + (MAX_REPLACEMENTS - (i < MAX_REPLACEMENTS ? i : MAX_REPLACEMENTS)) * r))
   done
-  echo "$((m + 5)) $x"
+  if marker_has run; then   # a run is in progress: its elapsed minutes are done
+    run=$(basename "$(marker_get run)"); rs=$(date -u -d "${run:0:10} ${run:11:2}:${run:13:2}" +%s 2>/dev/null || true)
+    if [ -n "$rs" ]; then
+      el=$(( ($(date +%s) - rs) / 60 )); r=$(plan_minutes "$(echo "$run" | sed 's/^[0-9-]*_[0-9]*_\(.*\)_rep-.*/\1/')")
+      m=$((m - (el < r - 5 ? el : r - 5)))
+    fi
+  fi
+  [ "$m" -gt 0 ] || m=0
+  echo "$(( m > 0 ? m + 5 : 0 )) $x $t"
 }
 hm() { printf '%d h %02d min' $(($1 / 60)) $(($1 % 60)); }
 at_time() {  # minutes from now → clock time (local time of this machine, UTC in brackets if different)
@@ -243,7 +285,7 @@ at_time() {  # minutes from now → clock time (local time of this machine, UTC 
   case "$l" in *UTC*) echo "$l" ;; *) echo "$l ($u)" ;; esac
 }
 eta_line() {  # → readable estimate, empty if nothing is left
-  local m x; read -r m x <<<"$(eta_minutes)"
+  local m x t; read -r m x t <<<"$(eta_minutes)"
   [ "$m" -gt 5 ] || return 0
   echo "about $(hm "$m") left → done around $(at_time "$m")$( [ "$x" -gt 0 ] && echo "; each invalid run that must be repeated adds about $(hm "$(plan_minutes "$(configs_of "$(profile)" | awk '{print $1}')")")")"
 }
@@ -840,6 +882,378 @@ def cmd_make_reference(cfg, source, *runs):
     s["criterion"] = "reproduced if the median tipping stage of new runs lies within [lowest − 1 stage, highest + 1 stage] of this reference (REPRODUCE.md §13)"
     print(json.dumps(s, indent=1))
 
+def cmd_dashboard(script, logf, once=""):
+    # full-screen live view (curses, standard library); design: REPRODUCE.md §4.1
+    import threading, signal as sig
+    once = once == "once"
+    STATUS = re.compile(r"^(\d\d):(\d\d):(\d\d) (\S+) ")
+    SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    NS = ["monitoring", "logging", "identity", "customer", "supplier", "k6-operator", "k6"]
+    W = {"snap": None, "pods": None, "node": None, "t": 0.0, "kube": True, "pct": 0}
+    MODE = {"view": "main", "confirm": False, "all": False, "off": 0, "msg": "", "msg_t": 0.0}
+    L = threading.Lock(); wake = threading.Event()
+    COLOR = os.environ.get("REPRODUCE_COLOR") == "1"
+
+    def run(cmd, timeout):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            return r.stdout if r.returncode == 0 else None
+        except Exception:
+            return None
+    def parse_node(n):
+        try:
+            f = n.split(); u = {"Ki": 1 / 1048576, "Mi": 1 / 1024, "Gi": 1.0, "Ti": 1024.0}
+            cpu = float(f[1][:-1]) / 1000 if f[1].endswith("m") else float(f[1])
+            mem = next(float(f[3][:-2]) * u[k] for k in u if f[3].endswith(k))
+            return {"cpu": cpu, "cpu_pct": int(f[2].rstrip("%")), "mem": mem, "mem_pct": int(f[4].rstrip("%"))}
+        except Exception:
+            return None
+    def fetch():
+        s_ = run(["bash", script, "_snapshot"], 60)
+        p_ = run(["kubectl", "--request-timeout=5s", "get", "pods", "-A", "-o", "json"], 15)
+        n_ = run(["kubectl", "--request-timeout=5s", "top", "node", "--no-headers"], 15)
+        try: snap = json.loads(s_) if s_ else None
+        except ValueError: snap = None
+        try: pods = json.loads(p_)["items"] if p_ else None
+        except (ValueError, KeyError): pods = None
+        with L:
+            if snap is not None: W["snap"] = snap
+            W["pods"], W["node"], W["kube"], W["t"] = pods, parse_node(n_), p_ is not None, time.time()
+    def loop():
+        while True:
+            fetch(); wake.wait(3); wake.clear()
+    def log_lines(everything=False):
+        try:
+            with open(logf, "rb") as f:
+                f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 300000)); data = f.read().decode("utf-8", "replace")
+        except OSError:
+            return []
+        ls = data.splitlines()[1 if size > 300000 else 0:]
+        return ls if everything else [l for l in ls if STATUS.match(l)]
+    def line_epoch(l, now):
+        m = STATUS.match(l)
+        if not m: return now
+        g = time.gmtime(now); mid = now - (g.tm_hour * 3600 + g.tm_min * 60 + g.tm_sec)
+        e = mid + int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+        return e - 86400 if e > now + 60 else e
+    def dur(x):
+        x = int(max(0, x)); return "%dm%02ds" % (x // 60, x % 60) if x < 3600 else "%dh%02dm" % (x // 3600, x % 3600 // 60)
+    def hm(m): return "%d h %02d min" % (m // 60, m % 60) if m >= 60 else "%d min" % m
+    def clock(e):
+        lt = time.localtime(e); z = time.strftime("%Z", lt)
+        return time.strftime("%H:%M ", lt) + z + time.strftime(" %a %d %b", lt) + ("" if z == "UTC" else time.strftime(" (%H:%M UTC)", time.gmtime(e)))
+    def flash(m): MODE["msg"], MODE["msg_t"] = m, time.time()
+    def cut(t, n): return t if len(t) <= n else (t[:max(0, n - 1)] + "…" if n > 0 else "")
+
+    class Canvas:
+        def __init__(c, w, h): c.w, c.h, c.items = w, h, []
+        def put(c, y, x, text, st=""):
+            if 0 <= y < c.h and 0 <= x < c.w and text: c.items.append((y, x, text[:c.w - x], st))
+            return x + len(text)
+        def right(c, y, text, st=""): return c.put(y, max(0, c.w - len(text) - 1), text, st)
+    SYM = {"✓": "ok", "✗": "err", "!": "warn", "…": "acc", "▶": "acc", "→": "b", "↷": "d", "·": "d"}
+    def log_row(c, y, x, l, width):
+        m = STATUS.match(l)
+        if not m: c.put(y, x, l[:width], "d"); return
+        sym, body = m.group(4), l[m.end():]
+        c.put(y, x, l[:8], "d")
+        if sym.startswith("━"): c.put(y, x + 9, (sym + " " + body)[:max(0, width - 9)], "b"); return
+        st = SYM.get(sym, ""); c.put(y, x + 9, sym, st)
+        c.put(y, x + 11, cut(body, width - 11), st if st in ("err", "warn", "d", "b") else "")
+    def pod_state(p):
+        st = p.get("status") or {}; ph = st.get("phase")
+        if ph == "Succeeded": return "done", "completed"
+        cs = st.get("containerStatuses") or []
+        for c_ in (st.get("initContainerStatuses") or []) + cs:
+            w_ = (c_.get("state") or {}).get("waiting") or {}
+            if w_.get("reason") in ("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "CreateContainerError", "InvalidImageName", "RunContainerError"):
+                return "bad", w_["reason"]
+        if ph == "Failed": return "bad", "failed"
+        if cs and all(c_.get("ready") for c_ in cs): return "ok", "ready"
+        for c_ in cs:
+            w_ = (c_.get("state") or {}).get("waiting") or {}
+            if w_.get("reason"): return "wait", w_["reason"]
+        return "wait", "starting" if ph == "Pending" else "not ready yet"
+    GLYPH = {"ok": ("●", "ok"), "wait": ("◐", "warn"), "bad": ("✗", "err"), "done": ("✓", "d")}
+
+    def meter(c, y, x, width, label, pct, txt):
+        bw = max(6, min(20, width - 28)); f = int(round(bw * min(pct, 100) / 100))
+        sty = "err" if pct >= 90 else ("warn" if pct >= 75 else "acc")
+        c.put(y, x, label.ljust(12), ""); c.put(y, x + 12, "━" * f, sty); c.put(y, x + 12 + f, "─" * (bw - f), "d")
+        c.put(y, x + 13 + bw, "%3d %%  %s" % (pct, txt), "d"); return y + 1
+    def draw_phases(c, y, x, width, phases, k):
+        c.put(y, x, "PHASES", "d b"); y += 1
+        for i, p_ in enumerate(phases):
+            st = p_["state"]; sym, sty = {"done": ("✓", "ok"), "running": (SPIN[k % 10], "acc"), "open": ("○", "d")}[st]
+            c.put(y, x, sym, sty); c.put(y, x + 2, str(i), "d")
+            c.put(y, x + 4, p_["name"], "acc b" if st == "running" else ("" if st == "done" else "d"))
+            c.put(y, x + 14, cut(p_["purpose"], width - 14), "d"); y += 1
+        return y
+    def draw_phases_compact(c, y, x, phases, k):
+        c.put(y, x, "PHASES", "d b"); xx = x + 12
+        for p_ in phases:
+            sym, sty = {"done": ("✓", "ok"), "running": (SPIN[k % 10], "acc"), "open": ("○", "d")}[p_["state"]]
+            c.put(y, xx, sym, sty); xx += 2
+        cur = next((p_ for p_ in phases if p_["state"] == "running"), None) or next((p_ for p_ in phases if p_["state"] == "open"), None)
+        if cur: c.put(y, xx + 1, "%s · %d of 9" % (cur["name"], phases.index(cur)), "d")
+        return y + 1
+    def draw_cluster(c, y, x, width, pods, node, kube):
+        c.put(y, x, "CLUSTER", "d b")
+        if pods is None:
+            c.put(y, x + 12, "not reachable" if not kube else "loading …", "d"); return y + 2
+        y += 1; by = {}
+        for p_ in pods:
+            ns = p_["metadata"]["namespace"]
+            if ns in NS: by.setdefault(ns, []).append(pod_state(p_)[0])
+        for ns in NS:
+            sts = [s_ for s_ in by.get(ns, []) if s_ != "done"]
+            if not sts: continue
+            okn = sts.count("ok"); xx = c.put(y, x, ns.ljust(12), "")
+            for s_ in sts[:max(0, width - 22)]:
+                g, sty = GLYPH[s_]; c.put(y, xx, g, sty); xx += 1
+            c.put(y, xx + 1, "%d/%d ready" % (okn, len(sts)), "d" if okn == len(sts) else "warn"); y += 1
+        if node:
+            y = meter(c, y, x, width, "node cpu", node["cpu_pct"], "%.1f cores" % node["cpu"])
+            y = meter(c, y, x, width, "node memory", node["mem_pct"], "%.1f GiB" % node["mem"])
+        return y
+    def draw_runs(c, y, x, sn):
+        cfgs = sn.get("configs") or []
+        if not cfgs: return y
+        target = sn.get("reps") or 3
+        c.put(y, x, "RUNS", "d b"); y += 1
+        for cf in cfgs:
+            r = (sn.get("runs") or {}).get(cf, {"valid": 0, "invalid": 0}); xx = c.put(y, x, cf.ljust(14), "")
+            for i in range(max(target, r["valid"])): xx = c.put(y, xx, "■" if i < r["valid"] else "□", "ok" if i < r["valid"] else "d")
+            for i in range(r["invalid"]): xx = c.put(y, xx, "✗", "err")
+            c.put(y, xx + 2, "%d of %d valid%s" % (r["valid"], target, " · %d invalid" % r["invalid"] if r["invalid"] else ""), "d"); y += 1
+        return y + 1
+    def footer(c, now):
+        y = c.h - 1
+        if MODE["confirm"]:
+            c.put(y, 1, "Stop the job after its current step?  y = yes · any other key = no", "warn b"); return
+        xx = 1
+        keys = [("q", "back"), ("↑↓", "scroll")] + ([("a", "all lines")] if MODE["view"] == "log" else []) if MODE["view"] != "main" else \
+               [("q", "quit"), ("s", "stop job"), ("l", "log"), ("p", "pods"), ("?", "help")]
+        for kk, label in keys: xx = c.put(y, xx, kk, "acc b"); xx = c.put(y, xx + 1, label, "d") + 3
+        if MODE["msg"] and now - MODE["msg_t"] < 6: c.right(y, MODE["msg"], "warn")
+        else: c.right(y, ("updated %s ago" % dur(now - W["t"])) if W["t"] else "loading …", "d")
+
+    def view_main(c, now, k):
+        with L: snap, pods, node, kube = W["snap"], W["pods"], W["node"], W["kube"]
+        w, h = c.w, c.h; sn = snap or {}
+        x = c.put(0, 1, "reproduce", "acc b"); c.put(0, x + 1, "· PURIS saturation experiment", "d")
+        c.right(0, "%s · %s · %s" % (sn.get("profile") or "–", sn.get("commit") or "–", time.strftime("%H:%M %Z", time.localtime(now))), "d")
+        c.put(1, 0, "─" * w, "d")
+        y = 2; job = sn.get("job"); phases = sn.get("phases") or []; lines = log_lines()
+        step = next((l for l in reversed(lines) if STATUS.match(l).group(4) in ("…", "✓", "↷", "━━", "▶")), "")
+        if snap is None:
+            c.put(y, 2, SPIN[k % 10] + "  reading the state …", "acc"); y += 2
+        elif job:
+            ph = (job.get("phase") or "?").split(":")[0]
+            pi = next((p_ for p_ in phases if p_["name"] == ph), {"purpose": "", "usual": ""})
+            c.put(y, 2, SPIN[k % 10], "acc"); xx = c.put(y, 4, ph, "acc b"); c.put(y, xx + 2, cut(pi["purpose"], w - xx - 20), "")
+            since = int(job.get("since") or 0)
+            if since: c.right(y, "phase %s" % dur(now - since), "d")
+            y += 1
+            if step:
+                m = STATUS.match(step); sym, body = m.group(4), step[m.end():]
+                c.put(y, 4, cut(body if sym in ("…", "▶") else "last: " + body, w - 16), "d"); c.right(y, dur(now - line_epoch(step, now)), "d")
+            y += 1
+            if job.get("mode") == "short": c.put(y, 4, "short test mode – these results are not valid for the thesis", "warn"); y += 1
+        else:
+            nxt = next((p_ for p_ in phases if p_["state"] == "open"), None)
+            c.put(y, 2, "○", "d"); c.put(y, 4, "no job running", "b"); y += 1
+            if nxt:
+                xx = c.put(y, 4, "→ next: ./reproduce %s" % nxt["name"], "b"); c.put(y, xx + 2, "%s · usually %s" % (nxt["purpose"], nxt["usual"]), "d")
+            elif phases: c.put(y, 4, "✓ all phases done", "ok")
+            y += 1
+        y += 1
+        est = sn.get("estimate") or {}
+        if est.get("total_min"):
+            pct = int(est.get("percent") or 0)
+            if job: pct = W["pct"] = max(pct, W["pct"])   # never backwards while a job runs (Harrison et al. 2007)
+            bw = max(10, min(48, w - 64)); f = int(round(bw * pct / 100))
+            c.put(y, 2, "━" * f, "acc"); c.put(y, 2 + f, "─" * (bw - f), "d"); xx = c.put(y, 3 + bw, "%3d %%" % pct, "b")
+            if est.get("remaining_min"):
+                t1 = "done ≈ %s" % clock(est["end_epoch"]); t2 = "%s left" % hm(est["remaining_min"])
+                if xx + 6 + len(t1) + len(t2) < w: xx = c.put(y, xx + 3, t1, ""); c.put(y, xx + 3, t2, "d")
+                else: y += 1; xx = c.put(y, 4, t1, ""); c.put(y, xx + 3, t2, "d")
+            y += 2
+        if w >= 96:
+            colx = w // 2
+            y = max(draw_phases(c, y, 2, colx - 4, phases, k), draw_cluster(c, y, colx, w - colx - 2, pods, node, kube)) + 1
+        else:
+            y = draw_phases_compact(c, y, 2, phases, k) + 1
+            y = draw_cluster(c, y, 2, w - 4, pods, node, kube) + 1
+        y = draw_runs(c, y, 2, sn)
+        avail = h - 2 - y
+        if avail >= 2:
+            c.put(y, 2, "ACTIVITY", "d b"); y += 1
+            for l in lines[-(avail - 1):]: log_row(c, y, 2, l, w - 3); y += 1
+    def view_log(c, now, k):
+        lines = log_lines(MODE["all"])
+        c.put(0, 1, "LOG", "acc b"); c.put(0, 5, "%s · %s" % (logf, "all lines" if MODE["all"] else "status lines"), "d")
+        c.put(1, 0, "─" * c.w, "d")
+        avail = c.h - 3; maxoff = max(0, len(lines) - avail); MODE["off"] = min(MODE["off"], maxoff); start = maxoff - MODE["off"]
+        for i, l in enumerate(lines[start:start + avail]): log_row(c, 2 + i, 1, l, c.w - 2)
+        c.right(0, ("following the end" if MODE["off"] == 0 else "lines %d–%d of %d" % (start + 1, start + avail, len(lines))), "d")
+    def view_pods(c, now, k):
+        with L: pods = W["pods"] or []
+        c.put(0, 1, "PODS", "acc b"); c.put(0, 6, "%d pods · ● ready  ◐ starting  ✗ failing  ✓ completed" % len(pods), "d"); c.put(1, 0, "─" * c.w, "d")
+        rows = []
+        for p_ in sorted(pods, key=lambda q: (q["metadata"]["namespace"], q["metadata"]["name"])):
+            st, why = pod_state(p_); cs = p_["status"].get("containerStatuses") or []
+            age = now - parse(p_["metadata"]["creationTimestamp"]).timestamp()
+            rows.append((st, p_["metadata"]["namespace"], p_["metadata"]["name"], "%d/%d" % (sum(1 for c_ in cs if c_.get("ready")), len(cs)), why, sum(c_.get("restartCount", 0) for c_ in cs), dur(age)))
+        nw = max(20, c.w - 62); avail = c.h - 4; MODE["off"] = min(MODE["off"], max(0, len(rows) - avail))
+        c.put(2, 3, "%-12s %-*s %-6s %-26s %-8s %s" % ("NAMESPACE", nw, "NAME", "READY", "STATE", "RESTARTS", "AGE"), "d b")
+        for i, r in enumerate(rows[MODE["off"]:MODE["off"] + avail]):
+            g, sty = GLYPH[r[0]]; y = 3 + i
+            c.put(y, 1, g, sty); c.put(y, 3, "%-12s %-*s %-6s " % (r[1][:12], nw, r[2][:nw], r[3]), "")
+            c.put(y, 3 + 13 + nw + 1 + 7, "%-26s" % r[4][:26], sty if r[0] != "ok" else "d"); c.put(y, 3 + 13 + nw + 1 + 7 + 27, "%-8s %s" % (r[5], r[6]), "warn" if r[5] else "d")
+    def view_help(c, now, k):
+        text = [("KEYS", "b"), ("  q / Esc   quit – the job keeps running · from a view: back", ""), ("  s         stop the job after its current step (asks first)", ""),
+                ("  l         log of this script (a: all lines or status lines)", ""), ("  p         pods with state, restarts and age", ""),
+                ("  ↑ ↓ PgUp PgDn Home End   scroll in log and pods", ""), ("  r         refresh now", ""), ("", ""),
+                ("SYMBOLS", "b"), ("  ✓ done   ↷ skipped   … working   · information   ! warning   ✗ error   → next step", ""),
+                ("  ● ready   ◐ starting   ✗ failing   ■ valid run   □ open run   ✗ invalid run", ""), ("", ""),
+                ("COMMANDS", "b"), ("  ./reproduce status · watch · logs <component> -f · settings · help", ""), ("", ""),
+                ("The progress bar and the end time come from the plans (stages × stage length) and the measured", "d"),
+                ("overheads; they are updated with every finished step.", "d")]
+        c.put(0, 1, "HELP", "acc b"); c.put(1, 0, "─" * c.w, "d")
+        for i, (t, st) in enumerate(text): c.put(2 + i, 2, t, st)
+
+    def request_stop():
+        j = (W["snap"] or {}).get("job") or {}
+        try:
+            pid = int(j.get("pid", "0")); os.kill(pid, sig.SIGTERM)
+            with open(logf, "a") as f:
+                f.write("%s · stop requested from the dashboard (PID %d) – the job finishes its current step and then stops cleanly\n" % (time.strftime("%H:%M:%S", time.gmtime()), pid))
+            flash("stop requested – the job finishes its current step"); wake.set()
+        except (ValueError, OSError) as e:
+            flash("could not stop: %s" % e)
+    VIEWS = {"main": view_main, "log": view_log, "pods": view_pods, "help": view_help}
+
+    if once:   # one frame as text (no terminal needed)
+        fetch(); w, h = shutil.get_terminal_size((100, 34)); c = Canvas(w, min(h, 40)); view_main(c, time.time(), 0)
+        SG = {"ok": "32", "warn": "33", "err": "1;31", "acc": "36", "b": "1", "d": "2"}
+        rows = {}
+        for y, x, t, st in c.items: rows.setdefault(y, []).append((x, t, st))
+        last = max(rows) if rows else -1
+        for y in range(last + 1):
+            out, col = "", 0
+            for x, t, st in sorted(rows.get(y, [])):
+                if x < col: continue
+                out += " " * (x - col); col = x + len(t)
+                codes = ";".join(SG[a] for a in st.split() if a in SG)
+                out += ("\033[%sm%s\033[0m" % (codes, t)) if COLOR and codes else t
+            print(out.rstrip())
+        return
+
+    import curses
+    os.environ.setdefault("ESCDELAY", "25")
+    try: curses.setupterm()
+    except curses.error: os.environ["TERM"] = "xterm-256color"   # e.g. TERM=xterm-ghostty or xterm-kitty unknown on the server
+    def term(seq):
+        try: os.write(sys.__stdout__.fileno(), seq.encode())
+        except OSError: pass
+    def main(scr):
+        try: curses.curs_set(0)
+        except curses.error: pass
+        P = {}
+        if COLOR and curses.has_colors():
+            curses.start_color()
+            try: curses.use_default_colors(); bg = -1
+            except curses.error: bg = curses.COLOR_BLACK
+            for i, (name, col) in enumerate([("ok", curses.COLOR_GREEN), ("warn", curses.COLOR_YELLOW), ("err", curses.COLOR_RED), ("acc", curses.COLOR_CYAN)], 1):
+                curses.init_pair(i, col, bg); P[name] = curses.color_pair(i)
+        def attr(st):
+            a = 0
+            for t in st.split():
+                a |= {"b": curses.A_BOLD, "d": curses.A_DIM}.get(t, 0) | P.get(t, 0)
+                if t == "err": a |= curses.A_BOLD
+            return a
+        scr.timeout(200); scr.keypad(True)
+        threading.Thread(target=loop, daemon=True).start()
+        k = 0; prev_job = None; t_title = 0.0
+        while True:
+            now = time.time(); h, w = scr.getmaxyx(); c = Canvas(w, h)
+            if w < 50 or h < 16: c.put(0, 0, "window too small – needs at least 50 × 16 · q quits", "warn")
+            else: VIEWS[MODE["view"]](c, now, k); footer(c, now)
+            scr.erase()
+            for y, x, t, st in c.items:
+                try: scr.addstr(y, x, t, attr(st))
+                except curses.error: pass
+            scr.refresh()
+            sn = W["snap"] or {}; job = sn.get("job")
+            if prev_job and not job and W["snap"] is not None:   # the job has ended while this view was open
+                flash("the job has ended – see the activity"); n = os.environ.get("REPRODUCE_NOTIFY", "bell")
+                if n != "off": curses.beep()
+                if n == "desktop": term("\033]9;reproduce: the job has ended\a\033]777;notify;reproduce;the job has ended\a")
+            prev_job = job if W["snap"] is not None else prev_job
+            if now - t_title > 2:
+                t_title = now; pct = W["pct"] if job else (sn.get("estimate") or {}).get("percent", 0)
+                if os.environ.get("REPRODUCE_TITLE") == "1": term("\033]2;reproduce · %s%s\a" % ((job or {}).get("phase", "idle").split(":")[0], " · %d %%" % pct if job else ""))
+                if os.environ.get("REPRODUCE_TPROG") == "1": term("\033]9;4;%s\a" % ("1;%d" % pct if job else "0;0"))
+            ch = scr.getch()
+            if ch == -1: k += 1; continue
+            if MODE["confirm"]:
+                MODE["confirm"] = False
+                if ch in (ord("y"), ord("Y")): request_stop()
+                continue
+            v = MODE["view"]
+            if ch in (ord("q"), ord("Q"), 27):
+                if v == "main": break
+                MODE.update(view="main", off=0)
+            elif ch == ord("l"): MODE.update(view="log", off=0)
+            elif ch == ord("p"): MODE.update(view="pods", off=0)
+            elif ch in (ord("?"), ord("h")): MODE["view"] = "help"
+            elif ch == ord("a") and v == "log": MODE["all"] = not MODE["all"]; MODE["off"] = 0
+            elif ch == ord("r"): wake.set(); flash("refreshing …")
+            elif ch == ord("s"):
+                if (W["snap"] or {}).get("job"): MODE["confirm"] = True
+                else: flash("no job is running")
+            elif ch in (curses.KEY_UP, ord("k")): MODE["off"] += 1 if v == "log" else -1
+            elif ch in (curses.KEY_DOWN, ord("j")): MODE["off"] += -1 if v == "log" else 1
+            elif ch == curses.KEY_PPAGE: MODE["off"] += (h - 4) if v == "log" else -(h - 4)
+            elif ch == curses.KEY_NPAGE: MODE["off"] += -(h - 4) if v == "log" else (h - 4)
+            elif ch in (curses.KEY_HOME, ord("g")): MODE["off"] = 10 ** 9 if v == "log" else 0
+            elif ch in (curses.KEY_END, ord("G")): MODE["off"] = 0 if v == "log" else 10 ** 9
+            MODE["off"] = max(0, MODE["off"])
+        if os.environ.get("REPRODUCE_TPROG") == "1": term("\033]9;4;0;0\a")
+    curses.wrapper(main)
+
+def cmd_snapshot():
+    d = {"phases": [], "runs": {}, "job": None, "interrupted": [], "configs": []}
+    for line in sys.stdin.read().splitlines():
+        f = line.split("\t"); k = f[0]
+        if k == "phase": d["phases"].append({"name": f[1], "state": f[2], "purpose": f[3], "usual": f[4], "background": f[5] == "1"})
+        elif k == "job": d["job"] = dict(t.split("=", 1) for t in f[1].split() if "=" in t)
+        elif k == "eta":
+            m, x, t = int(f[1]), int(f[2]), int(f[3])
+            d["estimate"] = {"remaining_min": m, "extra_max_min": x, "total_min": t,
+                             "percent": (100 if m == 0 else max(0, min(99, round((t - m) * 100 / t)))) if t else 0,
+                             "end_epoch": int(time.time() + m * 60) if m else None}
+        elif k == "runs": d["runs"][f[1]] = {"valid": int(f[2]), "invalid": int(f[3])}
+        elif k in ("configs", "interrupted"): d[k] = f[1].split() if len(f) > 1 else []
+        elif k == "reps": d[k] = int(f[1] or 0)
+        else: d[k] = f[1] if len(f) > 1 else ""
+    print(json.dumps(d, indent=1, ensure_ascii=False))
+
+def cmd_closest(word, *words):
+    import difflib
+    m = difflib.get_close_matches(word, words, 1, 0.55); print(m[0] if m else "")
+
+def cmd_ready(*refs):  # ns/kind/name … → "ready/desired" per reference, one per line
+    items = json.loads(kubectl("get", "deploy,sts,ds", "-A", "-o", "json"))["items"]
+    have = {}
+    for w in items:
+        k = {"Deployment": "deploy", "StatefulSet": "sts", "DaemonSet": "ds"}[w["kind"]]; st = w.get("status") or {}
+        want = st.get("desiredNumberScheduled", 0) if k == "ds" else (w.get("spec") or {}).get("replicas", 1)
+        ok = st.get("numberReady", 0) if k == "ds" else st.get("readyReplicas", 0)
+        have["%s/%s/%s" % (w["metadata"]["namespace"], k, w["metadata"]["name"])] = "%d/%d" % (ok, want)
+    for r in refs: print(have.get(r, "–"))
+
 if __name__ == "__main__":
     cmd = sys.argv[1].replace("-", "_"); globals()["cmd_" + cmd](*sys.argv[2:])
 PYCODE
@@ -856,11 +1270,19 @@ lock() {
     exit 1
   fi
   LOCKED=1
-  printf 'pid=%s command=%s phase=%s started=%s\n' "$$" "${CMD:-}" "start" "$(now_iso)" > "$STATE/job"
+  printf 'pid=%s command=%s phase=%s started=%s since=%s mode=%s reps=%s\n' "$$" "${CMD:-}" "start" "$(now_iso)" "$(date +%s)" \
+    "$( [ "${REPRODUCE_SMOKE:-0}" = 1 ] && echo short || echo full)" "$REPS" > "$STATE/job"
   [ "$BG" != 1 ] || info "background job started (PID $$)"
 }
 unlock() { [ "$LOCKED" = 1 ] || return 0; flock -u 9; exec 9>&-; LOCKED=0; }
-set_phase() { CURRENT_PHASE="$1"; [ -f "$STATE/job" ] && sed -i.bak "s/phase=[^ ]*/phase=$1/" "$STATE/job" && rm -f "$STATE/job.bak"; return 0; }
+set_phase() {
+  case "${CURRENT_PHASE:-}:$1" in measure*:verify) return 0 ;; esac   # the check before every configuration stays part of "measure"
+  CURRENT_PHASE="$1"
+  [ -f "$STATE/job" ] && sed -i.bak -e "s/ phase=[^ ]*/ phase=$1/" -e "s/ since=[^ ]*/ since=$(date +%s)/" "$STATE/job" && rm -f "$STATE/job.bak"; return 0
+}
+job_field() { sed -n "s/.* $1=\([^ ]*\).*/\1/p" "$STATE/job" 2>/dev/null; }
+eff_reps() { local r=""; ! job_alive || r=$(job_field reps); echo "${r:-$REPS}"; }          # repetitions of the running job
+is_short() { [ "${REPRODUCE_SMOKE:-0}" = 1 ] || { job_alive && [ "$(job_field mode)" = short ]; }; }
 job_pid() { sed -n 's/^pid=\([0-9]*\).*/\1/p' "$STATE/job" 2>/dev/null; }
 job_alive() { local p; p=$(job_pid); [ -n "$p" ] && [ "$p" != "$$" ] && kill -0 "$p" 2>/dev/null; }
 marker_set()   { printf '%s\n' "${2:-$(now_iso)}" > "$MARKERS/$1"; }
@@ -876,14 +1298,14 @@ detach() {  # command... → continues as a background job and shows its progres
     hint "follow it: ./reproduce watch · stop it: ./reproduce stop"; exit 1
   fi
   unlock
-  local pos js; pos=$(stat -c %s "$LOGF" 2>/dev/null || echo 0)
+  local pos js; : >> "$LOGF"; pos=$(stat -c %s "$LOGF")   # the log exists before the view follows it
   # the job runs from its own copy: downloading a new ./reproduce never changes a running job
   # (bash reads a script while running it – an overwritten file would be read at the old position)
   js=$(mktemp "$STATE/job-script.XXXXXX"); cp "$SCRIPT" "$js"
   REPRODUCE_BG=1 REPRODUCE_HOME="$WORK" setsid nohup bash "$js" "$@" </dev/null >/dev/null 2>&1 &
   echo
   printf '%s\n' "${C_DIM}  The next steps run in the background (PID $!). Closing this terminal or losing the SSH connection does not stop them.${C_0}"
-  printf '%s\n' "${C_DIM}  Ctrl-C closes only this view · ./reproduce watch opens it again · ./reproduce status · ./reproduce stop${C_0}"
+  printf '%s\n' "${C_DIM}  Ctrl-C closes only this view · ./reproduce dashboard (live overview) · watch · status · stop${C_0}"
   [ -z "$SUDO_KEEP" ] || kill "$SUDO_KEEP" 2>/dev/null || true
   cmd_watch --from "$pos"
   exit 0
@@ -1545,7 +1967,13 @@ watch_load() {  # name t_apply labels minutes → 0 finished, 1 stalled
     rc=0; msg=$(py watchdog "$1" "$2" "$3" "$4" 2>&1) || rc=$?
     case "$rc" in
       0) return 0 ;;
-      10) [ "$msg" = "$last" ] || { say "·" "$msg"; last="$msg"; } ;;
+      10) local key="${msg%% · *}"
+          if [ "$key" != "$last" ]; then
+            if [[ $key =~ ^stage\ ([^ ]+)\ \(([0-9]+)/([0-9]+)\)$ ]]; then
+              step "load stage ${BASH_REMATCH[1]} · ${BASH_REMATCH[2]} of ${BASH_REMATCH[3]} · $(echo "$RATES" | cut -d, -f"${BASH_REMATCH[2]}") transactions/s · $STAGE_DURATION min"
+            else info "$msg"; fi
+            last="$key"
+          fi ;;
       *) fail "load generator stalled: $msg"; return 1 ;;
     esac
     free=$(df -P -BG /var/lib/rancher "$WORK" | awk 'NR>1 {gsub("G","",$4); print $4}' | sort -n | head -1)
@@ -1651,6 +2079,187 @@ phase_package() {
   echo "  copy the run folders into runs/ of the repository, e.g.: cp -r \"$rd\"/*_rep-* <repository>/runs/"
 }
 
+# ── snapshot, settings, logs, help ────────────────────────────────────────────────
+cmd_snapshot() {  # machine-readable state: ./reproduce status --json; read by the dashboard
+  local p rd x st ph="" m xm t c v i
+  p=$(profile); ! job_alive || ph=$(job_field phase); ph=${ph%%:*}
+  read -r m xm t <<<"$(eta_minutes)"
+  rd=$(cat "$STATE/results-current" 2>/dev/null || true)
+  {
+    printf 'work\t%s\ncommit\t%s\nprofile\t%s\ndeployed\t%s\nreps\t%s\nmode\t%s\n' "$WORK" "$(commit 2>/dev/null | cut -c1-7 || true)" "$p" \
+      "$(cat "$STATE/config" 2>/dev/null || true)" "$(eff_reps)" "$(is_short && echo short || echo full)"
+    [ -z "$p" ] || printf 'configs\t%s\n' "$(configs_of "$p")"
+    for x in $PHASES; do
+      if [ "$x" = "$ph" ]; then st=running; elif phase_state "$x"; then st=done; else st=open; fi
+      printf 'phase\t%s\t%s\t%s\t%s\t%s\n' "$x" "$st" "$(phase_desc "$x")" "$(phase_time "$x")" "$(in_background "$x" && echo 1 || echo 0)"
+    done
+    ! job_alive || printf 'job\t%s\n' "$(cat "$STATE/job")"
+    printf 'eta\t%s\t%s\t%s\n' "$m" "$xm" "$t"
+    if [ -n "$rd" ] && [ -d "$rd" ] && [ -n "$p" ]; then
+      printf 'results\t%s\n' "$rd"
+      for c in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$c")"; printf 'runs\t%s\t%s\t%s\n' "$c" "$v" "$i"; done
+    fi
+    printf 'interrupted\t%s\nlog\t%s\nkubeconfig\t%s\n' "$(ls "$MARKERS" 2>/dev/null | tr '\n' ' ')" "$LOGF" "$KUBECONFIG"
+  } | py snapshot
+}
+
+cmd_dashboard() {  # [--once] → full-screen live view; one frame as text without a terminal
+  [ -f "$LOGF" ] || : > "$LOGF"
+  if [ "${1:-}" = --once ] || [ "$TTY" != 1 ]; then REPRODUCE_COLOR=$COLOR py dashboard "$SCRIPT" "$LOGF" once; return 0; fi
+  REPRODUCE_COLOR=$COLOR REPRODUCE_TITLE=$TITLE REPRODUCE_TPROG=$TPROG REPRODUCE_NOTIFY="$(setting notify)" LC_ALL=C.UTF-8 \
+    python3 -c "$PY" dashboard "$SCRIPT" "$LOGF" || { tell "!" "the dashboard could not start – showing the line view instead"; cmd_watch; }
+}
+
+SETTING_KEYS="tz color title progress notify"
+cmd_settings() {  # [key [value]] – shown without arguments; "default" resets a key
+  local k="${1:-}" v="${2:-}" tmp
+  if [ -z "$k" ]; then
+    printf '%s\n' "${C_B}settings${C_0}  ${C_DIM}$(rel "$SETTINGS") · environment variables win (TZ, NO_COLOR, FORCE_COLOR)${C_0}"
+    printf "  %-9s ${C_B}%-15s${C_0} %s\n" \
+      tz "$( [ -n "$(setting tz)" ] && setting tz || echo "server ($(date +%Z))")" "${C_DIM}time zone of all times shown, e.g. Europe/Berlin, UTC${C_0}" \
+      color "$(setting color)" "${C_DIM}auto · always · never${C_0}" \
+      title "$(setting title)" "${C_DIM}terminal tab shows phase and progress: on · off${C_0}" \
+      progress "$(setting progress)" "${C_DIM}progress bar in the terminal tab (Windows Terminal, Ghostty, iTerm2 3.6.6+): auto · on · off${C_0}" \
+      notify "$(setting notify)" "${C_DIM}when a job ends while watch or dashboard is open: bell · desktop · off${C_0}"
+    printf '\n%s\n' "${C_DIM}change: ./reproduce settings <key> <value> · reset: ./reproduce settings <key> default${C_0}"
+    return 0
+  fi
+  case " $SETTING_KEYS " in *" $k "*) ;; *) tell "✗" "unknown setting: $k"; tell "→" "settings: ${SETTING_KEYS// / · }"; exit 2 ;; esac
+  [ -n "$v" ] || { setting "$k"; return 0; }
+  case "$k:$v" in
+    *:default) ;;
+    tz:*) [ -f "/usr/share/zoneinfo/$v" ] || { tell "✗" "unknown time zone: $v"; tell "→" "examples: Europe/Berlin · UTC · America/New_York (all: timedatectl list-timezones)"; exit 2; } ;;
+    color:auto|color:always|color:never|title:on|title:off|progress:auto|progress:on|progress:off|notify:bell|notify:desktop|notify:off) ;;
+    *) tell "✗" "invalid value for $k: $v"; tell "→" "see: ./reproduce settings"; exit 2 ;;
+  esac
+  tmp=$(mktemp "$STATE/settings.XXXXXX"); grep -v "^$k=" "$SETTINGS" 2>/dev/null > "$tmp" || true
+  [ "$v" = default ] || echo "$k=$v" >> "$tmp"; mv "$tmp" "$SETTINGS"
+  tell "✓" "$k = $( [ -n "$(setting "$k")" ] && setting "$k" || echo "server time zone ($(date +%Z))")$( [ "$v" = default ] && echo " (default)")"
+}
+
+# component  namespace  workload  description (./reproduce logs)
+COMPONENTS="puris-customer customer deploy/puris-backend PURIS backend of the customer
+puris-supplier supplier deploy/puris-backend PURIS backend of the supplier
+edc-customer customer deploy/edc-controlplane EDC control plane of the customer
+edc-supplier supplier deploy/edc-controlplane EDC control plane of the supplier
+dataplane-customer customer deploy/edc-dataplane EDC data plane of the customer
+dataplane-supplier supplier deploy/edc-dataplane EDC data plane of the supplier
+dtr-customer customer deploy/dtr digital twin registry of the customer
+dtr-supplier supplier deploy/dtr digital twin registry of the supplier
+wallet identity deploy/ssi-dim-wallet-stub identity wallet (stub)
+loki logging sts/loki log store
+alloy logging ds/alloy log collector
+prometheus monitoring sts/prometheus-monitoring-kube-prometheus-prometheus metrics store
+grafana monitoring deploy/monitoring-grafana dashboards
+k6-operator k6-operator deploy/k6-operator-controller-manager operator of the load generator"
+cmd_logs() {  # [component] [-f] [--tail n]
+  local name="" follow="" tail=100 line ns ref refs="" st n
+  while [ $# -gt 0 ]; do case "$1" in -f|--follow) follow=1 ;; --tail) tail="${2:-100}"; shift ;; *) name="$1" ;; esac; shift; done
+  if [ -z "$name" ]; then
+    printf '%s\n' "${C_B}components${C_0}  ${C_DIM}./reproduce logs <component> [-f] [--tail n]${C_0}"
+    while read -r n ns ref _; do refs="$refs $ns/${ref%%/*}/${ref#*/}"; done <<<"$COMPONENTS"
+    # shellcheck disable=SC2086
+    st=$( [ -s "$KUBECONFIG" ] && py ready $refs 2>/dev/null || true)
+    paste <(echo "$COMPONENTS") <(echo "${st:-}") | while IFS=$'\t' read -r line n; do
+      read -r name ns ref desc <<<"$line"
+      printf "  %-20s %-7s %s\n" "$name" "${n:-–}" "${C_DIM}$desc${C_0}"
+    done
+    printf "  %-20s %-7s %s\n" reproduce "" "${C_DIM}this script's own log ($(rel "$LOGF"))${C_0}"
+    return 0
+  fi
+  if [ "$name" = reproduce ]; then
+    if [ -n "$follow" ]; then exec tail -n "$tail" -F "$LOGF"; else tail -n "$tail" "$LOGF"; fi; return 0
+  fi
+  line=$(echo "$COMPONENTS" | awk -v n="$name" '$1 == n')
+  if [ -z "$line" ]; then
+    tell "✗" "unknown component: $name"
+    n=$(py closest "$name" $(echo "$COMPONENTS" | awk '{print $1}') reproduce); [ -z "$n" ] || tell "→" "did you mean: ./reproduce logs $n"
+    tell "→" "all components: ./reproduce logs"; exit 2
+  fi
+  [ -s "$KUBECONFIG" ] || { tell "✗" "no cluster of this script yet"; tell "→" "run first: ./reproduce install"; exit 2; }
+  read -r name ns ref _ <<<"$line"
+  exec kubectl --request-timeout=30s logs -n "$ns" "$ref" --tail="$tail" ${follow:+-f}
+}
+
+ALL_CMDS="fetch tools check install deploy prepare verify measure evaluate package status dashboard ui watch logs stop settings uninstall bundle help"
+help_main() {
+  local B="$C_B" D="$C_DIM" A="$C_RUN" Z="$C_0"
+  cat <<EOF
+${B}reproduce${Z} – repeats the PURIS saturation experiment on one Linux server,
+from an empty machine to checked results (pinned versions, its own k3s cluster).
+
+${B}Start here${Z}
+  ${A}tmux new -s repro${Z}                ${D}a session on the server that survives a closed terminal${Z}
+  ${A}./reproduce${Z}                      ${D}everything, phases 0–9 · asks once for the sudo password${Z}
+  ${A}./reproduce dashboard${Z}            ${D}live view: progress, end time, components, activity${Z}
+
+${B}Observe${Z}
+  status [--json]                  ${D}phases, runs, estimate and the next step${Z}
+  dashboard (ui)                   ${D}full-screen live view · keys: q quit · s stop · l log · p pods · ? help${Z}
+  watch [--all]                    ${D}follow the background job line by line${Z}
+  logs [component] [-f]            ${D}logs of PURIS, EDC, DTR, … · without a name: list with state${Z}
+
+${B}Run one phase${Z}  ${D}each checks the previous one; work already done is skipped${Z}
+  fetch · tools · check · install · deploy · prepare · verify · measure [configuration] · evaluate · package
+
+${B}Control${Z}
+  stop                             ${D}end the background job at its next safe point${Z}
+  settings [key [value]]           ${D}time zone, colours, tab title and progress, notification${Z}
+  uninstall [--yes]                ${D}remove the cluster of this script, restore the system settings${Z}
+  bundle                           ${D}offline bundle of the running build (needs sudo)${Z}
+
+${B}Examples${Z}
+  ./reproduce help measure                          ${D}details of one command${Z}
+  REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 ./reproduce    ${D}short test: 2-min stages, 1 run – not valid for results${Z}
+  TZ=Europe/Berlin ./reproduce status               ${D}times in German time (permanently: settings tz)${Z}
+  ./reproduce logs puris-customer -f                ${D}follow the PURIS log of the customer${Z}
+
+${B}Environment${Z}  ${D}NO_COLOR · FORCE_COLOR · TZ · REPRODUCE_SMOKE · REPRODUCE_REPS · REPRODUCE_HOME${Z}
+${B}Exit codes${Z}   ${D}0 ok · 1 error · 2 precondition missing · 3 machine unsuitable · 4 stopped${Z}
+${B}More${Z}         ${D}REPRODUCE.md · https://github.com/artamrj/puris-performance-experiments${Z}
+EOF
+}
+help_cmd() {  # command → details
+  local x="$1" prev="" q cfg1=""
+  [ -z "$(profile)" ] || cfg1=$(configs_of "$(profile)" | awk '{print $1}')
+  row() { printf "  ${C_DIM}%-12s${C_0} %s\n" "$1" "$2"; }
+  case " $PHASES " in
+    *" $x "*)
+      for q in $PHASES; do [ "$q" = "$x" ] && break; prev=$q; done
+      printf '%s\n' "${C_B}./reproduce $x$(case "$x" in measure) echo " [configuration]" ;; evaluate|package) echo " [results folder]" ;; esac)${C_0} – $(phase_desc "$x")"
+      row phase "$(phase_no "$x") of 9 · usually $(phase_time "$x")"
+      row runs "$(in_background "$x" && echo "in the background – the terminal can be closed" || echo "in this terminal")"
+      [ -z "$prev" ] || row "needs first" "$prev (checked, not repeated automatically)"
+      case "$x" in
+        install) row sudo "yes – installs k3s, switches off swap and automatic updates (uninstall restores them)" ;;
+        measure) row configs "${cfg1:+$(configs_of "$(profile)" | sed 's/ /, /g') · }without argument: all, $(eff_reps) valid runs each"
+                 row "short test" "REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 ./reproduce measure" ;;
+      esac
+      row example "./reproduce $x$( [ "$x" = measure ] && [ -n "$cfg1" ] && echo " $cfg1")" ;;
+    *)
+      case "$x" in
+        status)    printf '%s\n' "${C_B}./reproduce status [--json]${C_0} – phases, runs, estimate, the running job and the next step"; row json "machine-readable, for scripts" ;;
+        dashboard|ui) printf '%s\n' "${C_B}./reproduce dashboard${C_0} – full-screen live view (alias: ui)"
+                   row keys "q quit · s stop the job · l log · p pods · ? help · r refresh"; row "--once" "print one frame and exit (also used without a terminal)" ;;
+        watch)     printf '%s\n' "${C_B}./reproduce watch [--all]${C_0} – follow the background job line by line; Ctrl-C closes only the view"; row "--all" "the full log incl. helm and kubectl output" ;;
+        logs)      printf '%s\n' "${C_B}./reproduce logs [component] [-f] [--tail n]${C_0} – logs of a component"; row list "./reproduce logs"; row example "./reproduce logs edc-customer --tail 300" ;;
+        stop)      printf '%s\n' "${C_B}./reproduce stop${C_0} – the job finishes its current step, then stops cleanly; a run in progress is closed as invalid"; row continue "the same command as before – work already done is skipped" ;;
+        settings)  printf '%s\n' "${C_B}./reproduce settings [key [value]]${C_0} – show or change: ${SETTING_KEYS// / · }"; row example "./reproduce settings tz Europe/Berlin" ;;
+        uninstall) printf '%s\n' "${C_B}./reproduce uninstall [--yes]${C_0} – removes k3s with all pods and volumes, restores swap and automatic updates"; row kept "src/, results/, state/s0/" ;;
+        bundle)    printf '%s\n' "${C_B}./reproduce bundle${C_0} – charts, images and tools of the running build in bundle/, for a machine without internet" ;;
+        help)      help_main ;;
+        *)         unknown_cmd "$x" ;;
+      esac ;;
+  esac
+}
+cmd_help() { if [ -z "${1:-}" ]; then help_main; else help_cmd "$1"; fi; }
+unknown_cmd() {
+  local m; m=$(py closest "$1" $ALL_CMDS)
+  tell "✗" "unknown command: $1"
+  [ -z "$m" ] || tell "→" "did you mean: ./reproduce $m"
+  tell "→" "all commands: ./reproduce help"; exit 2
+}
+
 # ── status, watch, stop ───────────────────────────────────────────────────────────
 phase_state() {  # phase → 0 done
   local rd c v i
@@ -1664,7 +2273,7 @@ phase_state() {  # phase → 0 done
     verify)  [ -f "$STATE/verified" ] ;;
     measure)
       rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -d "$rd" ] || return 1
-      for c in $(configs_of "$(profile)"); do read -r v i <<<"$(count_runs "$rd" "$c")"; [ "$v" -ge "$REPS" ] || return 1; done ;;
+      for c in $(configs_of "$(profile)"); do read -r v i <<<"$(count_runs "$rd" "$c")"; [ "$v" -ge "$(eff_reps)" ] || return 1; done ;;
     evaluate) rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -f "$rd/summary.json" ] ;;
     package)  rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -f "$rd/SHA256SUMS" ] ;;
   esac
@@ -1695,7 +2304,7 @@ cmd_status() {
   rd=$(cat "$STATE/results-current" 2>/dev/null || true)
   if [ -n "$rd" ] && [ -d "$rd" ]; then
     printf '  %-12s %s\n' "results" "$(rel "$rd")"
-    for cfg in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid (target: $REPS valid)"; done
+    for cfg in $(configs_of "$p"); do read -r v i <<<"$(count_runs "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid (target: $(eff_reps) valid)"; done
     [ ! -f "$rd/verdict.md" ] || printf '  %-12s %s\n' "verdict" "$(rel "$rd/verdict.md")"
   fi
   [ -z "$(eta_line)" ] || printf '  %-12s %s\n' "estimate" "$(eta_line)"
@@ -1703,7 +2312,7 @@ cmd_status() {
   if job_alive; then
     printf '  %-12s %s\n' "job" "running in the background – phase ${ph:-?}, PID $(job_pid), since $(sed -n 's/.*started=[0-9-]*T\([0-9:]*\):[0-9]*Z.*/\1/p' "$STATE/job") UTC" \
       "last line" "$(last_status_line) ($(dur "$(last_line_age)") ago)"
-    printf '\n%s\n' "${C_B}→ follow it: ./reproduce watch${C_0}"
+    printf '\n%s\n' "${C_B}→ follow it: ./reproduce dashboard${C_0}  ${C_DIM}(full-screen) · or: ./reproduce watch${C_0}"
   else
     printf '  %-12s %s\n' "job" "none running"
     if [ -n "$n" ]; then printf '\n%s\n' "${C_B}→ next: ./reproduce $n${C_0}  $C_DIM($(phase_desc "$n") · usually $(phase_time "$n"))$C_0"
@@ -1711,7 +2320,14 @@ cmd_status() {
   fi
   printf '%s\n' "${C_DIM}  kubectl: export KUBECONFIG=$KUBECONFIG PATH=$TOOLS:\$PATH${C_0}"
 }
-TICKER=0
+TICKER=0; TK_EXTRA=""
+tk_update() {  # every 30 s: overall percentage and end time for the live line, the tab title and the tab progress
+  local m x t pct
+  read -r m x t <<<"$(eta_minutes)"
+  [ "$t" -gt 0 ] && [ "$m" -gt 0 ] || { TK_EXTRA=""; return 0; }
+  pct=$(( (t - m) * 100 / t )); TK_EXTRA=" · $pct % · done ≈ $(date -d "+$m min" +%H:%M)"
+  tab_progress "1;$pct"; tab_title "reproduce · $(job_field phase | cut -d: -f1) · $pct %"
+}
 ticker() {  # seconds since the last status line, that line without its time → one live line, always narrower than the terminal
   [ "$TTY" = 1 ] || return 0
   local txt="$2" w
@@ -1719,7 +2335,7 @@ ticker() {  # seconds since the last status line, that line without its time →
     "… "*) txt=${txt#"… "}; txt=${txt%% (*}; txt=${txt%% – *} ;;   # the running step, without its note
     *)     txt="working on $(sed -n 's/.*phase=\([^ :]*\).*/\1/p' "$STATE/job" 2>/dev/null)" ;;
   esac
-  txt="$txt · $(dur "$1")"
+  txt="$txt · $(dur "$1")$TK_EXTRA"
   w=$(( $(tput cols 2>/dev/null || echo 80) - 13 )); [ "$w" -ge 20 ] || w=20
   printf '\r\033[K         %s %s' "$C_RUN${SPIN[$((SECONDS % 10))]}$C_0" "$C_DIM${txt:0:$w}$C_0"
   TICKER=1
@@ -1740,7 +2356,9 @@ cmd_watch() {  # [--all | --from byte-offset] → status lines of the background
   exec 8< <(tail -c +"$((from + 1))" -F --pid=$$ "$LOGF" 2>/dev/null | grep --line-buffered -E "$re")
   trap 'ticker_clear; printf "\n%s\n" "(view closed – the job keeps running · ./reproduce watch opens it again)"; exit 0' INT TERM HUP   # a view never writes into the job's log
   last=$(last_step_line); t_last=$((SECONDS - $(last_line_age "$last"))); last=${last#* }
+  local tk_t=-100
   while :; do
+    if [ "$TTY" = 1 ] && [ $((SECONDS - tk_t)) -ge 30 ]; then tk_t=$SECONDS; tk_update; fi
     if IFS= read -r -t 1 line <&8; then
       ticker_clear; if [ -z "$re" ]; then printf '%s\n' "$line"; else paint "$line"; fi
       if [[ $line =~ $sre ]]; then t_last=$SECONDS; last=${line#* }; fi
@@ -1749,9 +2367,9 @@ cmd_watch() {  # [--all | --from byte-offset] → status lines of the background
       if job_alive; then ticker $((SECONDS - t_last)) "$last"; elif [ "$ended" = 1 ]; then break; else ended=1; fi
     fi
   done
-  ticker_clear
-  if grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2} ' "$LOGF" | tail -n 4 | grep -q '^.\{8\} ✗ '; then printf '\n%s\n' "${C_ERR}(the job stopped with an error – see the ✗ line above)${C_0}"
-  else printf '\n%s\n' "(the job has ended – overview: ./reproduce status)"; fi
+  ticker_clear; tab_progress "0;0"; tab_title "reproduce · job ended"
+  if grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2} ' "$LOGF" | tail -n 4 | grep -q '^.\{8\} ✗ '; then notify_end "reproduce: the job stopped with an error"; printf '\n%s\n' "${C_ERR}(the job stopped with an error – see the ✗ line above)${C_0}"
+  else notify_end "reproduce: the job has ended"; printf '\n%s\n' "(the job has ended – overview: ./reproduce status)"; fi
 }
 cmd_stop() {
   job_alive || { echo "no job is running – nothing to stop"; return 0; }
@@ -1809,6 +2427,7 @@ cmd_bundle() {
 # ── Main ──────────────────────────────────────────────────────────────────────────
 on_exit() {
   local rc=$?
+  [ "$rc" -ne 0 ] || tab_progress "0;0"
   if [ "$rc" -ne 0 ] && [ "$LOCKED" = 1 ] && [ -s "$KUBECONFIG" ]; then
     if marker_has run; then stop_own_load; py attempt "$(marker_get run)" "${CURRENT_PHASE:-}" failed "stopped (exit $rc)" 2>/dev/null || true; marker_clear run; fi
   fi
@@ -1823,10 +2442,15 @@ on_term() {
 }
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0   # sourced (tests): functions only
 CMD="${1:-all}"; ARGS_TEXT="$*"
+for a in "$@"; do case "$a" in -h|--help) [ "$CMD" = "$a" ] && cmd_help || cmd_help "$CMD"; exit 0 ;; esac; done   # help never runs anything
 trap on_exit EXIT
 trap on_term TERM INT HUP
 case "$CMD" in
   all)
+    if job_alive; then   # a job is running: show it instead of an error
+      tell "·" "a job is already running – opening the live view (q closes it; the job keeps running)"
+      if [ "$TTY" = 1 ]; then cmd_dashboard; else cmd_status; fi; exit 0
+    fi
     banner; lock; sudo_once
     for x in fetch tools check; do run_phase "$x"; done
     eta_info
@@ -1840,14 +2464,18 @@ case "$CMD" in
   deploy|prepare) detach "$CMD"; lock; run_phase "$CMD"; phase_done_hint "$CMD" ;;
   measure) detach "$@"; lock; shift; run_phase measure "${1:-}"; phase_done_hint measure ;;
   evaluate|package) shift; run_phase "$CMD" "${1:-}"; phase_done_hint "$CMD" ;;
-  status) cmd_status ;;
+  status) if [ "${2:-}" = --json ]; then cmd_snapshot; else cmd_status; fi ;;
+  _snapshot) cmd_snapshot ;;
+  dashboard|ui) cmd_dashboard "${2:-}" ;;
+  logs|log) shift; cmd_logs "$@" ;;
+  settings) shift; cmd_settings "$@" ;;
   watch)  cmd_watch "${2:-}" ;;
   stop)   cmd_stop ;;
   bundle) lock; cmd_bundle ;;
   uninstall) lock; shift; cmd_uninstall "${1:-}" ;;
   make-reference) shift; py make-reference "$@" ;;
-  help|-h|--help) sed -n '3,33p' "$SCRIPT" ;;
-  *) echo "unknown command: $CMD"; sed -n '3,33p' "$SCRIPT"; exit 2 ;;
+  help|-h|--help) cmd_help "${2:-}" ;;
+  *) unknown_cmd "$CMD" ;;
 esac
 exit
 }

@@ -90,6 +90,36 @@ chmod +x reproduce
 
 Requirements on the machine: Ubuntu Server (tested: 26.04.1 LTS), amd64, `sudo`, internet access, enough CPU and RAM (§8). Everything else is installed by the script.
 
+### 4.1 Interface design
+
+The interface follows published guidance for command-line tools and progress feedback:
+
+| Rule | Source | In `reproduce` |
+|---|---|---|
+| Human-first output; current state always visible; suggest the next command; examples first in help; did-you-mean for typos | [Command Line Interface Guidelines](https://clig.dev/) | `status`, `dashboard`, `→ next:` lines, `help <command>`, suggestions for unknown commands and components |
+| Waits over 10 s need feedback **and** an expected end | Nielsen, *Response Times: The 3 Important Limits* ([NN/g](https://www.nngroup.com/videos/3-response-time-limits-interaction-design/)) | estimate of the end after `check`, in `status`, `dashboard` and after every run |
+| Progress indicators are preferred and make long tasks acceptable | Myers, *The importance of percent-done progress indicators*, CHI 1985 ([PDF](https://www.cs.cmu.edu/~bam/papers/percentdoneCHI85.pdf)) | one overall bar (% of the planned work) |
+| Progress must not move backwards; perceived duration depends on its behaviour | Harrison et al., *Rethinking the progress bar*, UIST 2007 ([project](https://www.chrisharrison.net/index.php/Research/ProgressBars)) | the percentage never decreases while a job runs; it counts down inside long steps |
+| "X of Y" as the standard; spinners only for short steps; one bar for the whole; past tense when done | [Evil Martians: 3 patterns for progress displays](https://evilmartians.com/chronicles/cli-ux-best-practices-3-patterns-for-improving-progress-displays) | `[9/11]`, `stage s4 · 6 of 11`, spinner only while working, `installed`, `ready` |
+| Error messages: readable, with context and a solution | Becker et al., *Compiler Error Messages Considered Unhelpful*, ITiCSE-WGR 2019 ([summary](https://neverworkintheory.org/2021/09/02/compiler-error-messages-considered-unhelpful.html)) | every stop: what failed, reasons per pod, diagnostics, log, the command to run next |
+| Colour is never the only signal | [WCAG 2.x, SC 1.4.1 Use of Color](https://www.w3.org/WAI/WCAG21/Understanding/use-of-color) | symbol + colour (`✓ ✗ ! ● ◐ ■ □`); readable without colour |
+| `NO_COLOR` turns colours off; `FORCE_COLOR`/`CLICOLOR_FORCE` turn them on | [no-color.org](https://no-color.org/), [force-color.org](https://force-color.org/) | precedence: `NO_COLOR` > `FORCE_COLOR` > `settings color` > terminal detection |
+| Native progress in the terminal tab | ConEmu/Windows Terminal "OSC 9;4" ([Microsoft](https://learn.microsoft.com/windows/terminal/tutorials/progress-bar-sequences), [Ghostty](https://ghostty.org/docs/vt/osc/conemu)) | `settings progress auto`: on in Ghostty, WezTerm, VS Code; off inside tmux (needs `allow-passthrough`) |
+
+Visual language: the terminal's own 16 colours (works on light and dark themes), one accent colour (cyan), dim secondary text, thin rules `─`, bars `━━━───`, braille spinner `⠋⠙⠹` only while something runs.
+
+### 4.2 Dashboard
+
+`./reproduce dashboard` (alias `ui`; `./reproduce` while a job runs opens it automatically) is a full-screen view in Python `curses` (standard library), refreshed in a background thread every 3 s:
+
+- header: profile, commit, clock · current phase with spinner and its duration · current step and its age
+- overall bar with percentage, end time (time zone from `settings tz`) and time left
+- phases 0–9 · cluster: pods per namespace (`●` ready, `◐` starting, `✗` failing) and node CPU/memory · runs per configuration (`■` valid, `□` open, `✗` invalid)
+- activity: the last status lines
+- keys: `q` quit (the job keeps running) · `s` stop the job (asks first) · `l` log (`a` all lines) · `p` pods with state, restarts, age · `?` help · `r` refresh
+- terminal tab: title with phase and %, optional native progress; bell or desktop notification when the job ends (`settings notify`)
+- `--once` (or no terminal): one frame as text. An unknown `TERM` (e.g. `xterm-ghostty` on the server) falls back to `xterm-256color`; if the dashboard cannot start, `watch` is shown instead.
+
 ### Output style
 
 - One line per step with time stamp (UTC) and a symbol: `━━` phase header (number, purpose, usual duration), `✓` done, `↷` already done (skipped), `…` working, `·` information, `!` warning, `✗` failed, `→` what to run next.
@@ -108,7 +138,7 @@ Requirements on the machine: Ubuntu Server (tested: 26.04.1 LTS), amd64, `sudo`,
 | Command | Does | Needs first (checked, not repeated) |
 |---|---|---|
 | `./reproduce` | all phases 0–9 in order | – |
-| `./reproduce status` | read-only: every phase (✓ done, … running, ○ open), profile, runs so far, the running job and its last line, the next command | – |
+| `./reproduce status [--json]` | read-only: every phase (✓ done, … running, ○ open), profile, runs so far, estimate, the running job and its last line, the next command; `--json` for scripts | – |
 | `./reproduce fetch` | clone the repository or pull the latest `main` | – |
 | `./reproduce tools` | helm and kubectl in fixed versions | `fetch` |
 | `./reproduce check` | machine scan, calculator, choice of profile | `tools` |
@@ -120,6 +150,10 @@ Requirements on the machine: Ubuntu Server (tested: 26.04.1 LTS), amd64, `sudo`,
 | `./reproduce evaluate [results folder]` | tipping stage, metric, comparison | runs present |
 | `./reproduce package [results folder]` | complete results folder with checksums | `evaluate` |
 | `./reproduce uninstall` | remove own cluster, restore system settings (asks for confirmation) | – |
+| `./reproduce dashboard` (`ui`) | full-screen live view (§4.2); `--once`: one frame as text | – |
+| `./reproduce logs [component] [-f] [--tail n]` | logs of PURIS, EDC, data plane, DTR, wallet, Loki, Alloy, Prometheus, Grafana, k6 operator; without a name: list with readiness | `install` |
+| `./reproduce settings [key [value]]` | `tz`, `color`, `title`, `progress`, `notify`; `default` resets; environment variables win | – |
+| `./reproduce help [command]` | overview with examples, or details of one command (also `<command> --help`); unknown commands get a suggestion | – |
 | `./reproduce watch [--all]` | live view of the running background job: status lines and a live activity line (`--all`: full log; Ctrl-C leaves the view, not the job) | – |
 | `./reproduce stop` | ends the background job cleanly at the next safe point (run → invalid, load stopped) | – |
 | `./reproduce bundle` | writes `bundle/` with charts, images and tools of the running build (§22.11) | `deploy` |
