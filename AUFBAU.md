@@ -1333,6 +1333,25 @@ cd ~/puris-performance-experiments && git pull --ff-only && git fetch --tags && 
 
 ---
 
+## Auswertung (`analysis/`)
+
+**Datum:** 2026-10-09
+**Ziel:** Abbildungen, Tabellen und Zahlen für Kapitel 5 mit einem Befehl aus den Laufordnern erzeugen (`KONZEPT.md`, Abschnitt 9); nie von Hand.
+**Dateien:** [`analysis/evaluation_lib.py`](analysis/evaluation_lib.py) (Werte je Lauf und Stufe, nur Standardbibliothek), [`analysis/evaluation.py`](analysis/evaluation.py) (Abbildungen, Tabellen, Makros), [`analysis/requirements.txt`](analysis/requirements.txt) (feste Versionen), [`tests/test_evaluation.py`](tests/test_evaluation.py).
+
+**Einrichten `[Mac]`** (einmalig; Python 3.14):
+```bash
+python3 -m venv analysis/.venv && analysis/.venv/bin/pip install -r analysis/requirements.txt
+```
+**Ausführen `[Mac]`** (Wurzel des Repositorys; ca. 25 s):
+```bash
+analysis/.venv/bin/python analysis/evaluation.py
+```
+**Ergebnis** in `analysis/out/` (bei jedem Aufruf vollständig neu erzeugt), **je Umgebung** (`NAS`, später `ISST`): `figures/` (`durchsatz_<Umgebung>.pdf`, `dauer_…`, `fehler_…`, `cpu_…`, `kipppunkte_…`, `zeitreihe_<Konfiguration>.pdf`), `tables/` (`laeufe_<Umgebung>.tex`, `kipppunkte_<Umgebung>.tex`, `stufen_<Konfiguration>.tex`; CSV mit allen Werten), `zahlen.tex` (Makros, z. B. `\ZKnullNasKippMittel`, `\ZNasMannWhitneyP`), `manifest.json` (Code-Stand, Versionen, Prüfsummen der Eingaben). Die Namen bleiben stabil, wenn später die Läufe der VM der Betreuung hinzukommen.
+**Regeln:** Konfiguration aus `meta.json` (`plan`); Mittelwerte und Spannen nur über gültige Läufe; Logs aus `nachtrag/`, wenn vorhanden; Sättigung = abgeschlossen < 95 % der Eingangslast, Kipppunkt = erste gesättigte Stufe nach dem Aufwärmen; Dauer nach Verfahren A, Perzentile linear interpoliert und nur für nicht gesättigte Stufen; Fehleranteil = gescheitert / (abgeschlossen + gescheitert) je Stufe nach Zeitpunkt des Endes; CPU je Stufe ohne die erste Minute; Vergleich der Kipppunkte mit exaktem Mann-Whitney-Test (Bindungen mit Mittelrängen). Läufe der VM der Betreuung (Pläne `original-k0`/`original-k1`) erscheinen automatisch als K0-ISST/K1-ISST mit eigenen Dateien; vorher die CPU-Limits der Original-Konfiguration in `LIMITS` (`evaluation_lib.py`) ergänzen.
+
+---
+
 ## Hilfswerkzeuge (optional, kein Teil des Experiments)
 
 ### k9s – Terminal-Oberfläche für Kubernetes

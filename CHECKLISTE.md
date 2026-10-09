@@ -394,7 +394,7 @@ Noch offen:
   - [x] `lab series` mit erster Wiederholung und Schutz vor doppelten Nummern – 2026-10-08, 46/46 Tests lokal
   - [x] `setup-v2` setzen und pushen (Verfasser), VM auf den Tag bringen und prüfen – 2026-10-08: `787f32e` = `setup-v2`, VM geprüft (sauber, `lab status` bereit)
   - [x] Messreihe gelaufen und geprüft *(gestartet 2026-10-08 12:52 UTC auf Wunsch des Verfassers, `tmux` `k0b`; Ende ca. 18:50 UTC)* – beendet 19:01 UTC: `rep-5` bis `rep-7` gültig, auf dem Mac geprüft (`LABORBUCH.md`, „K0-Ergänzung beendet“); Commit durch den Verfasser offen
-- [x] Skalierungskonfiguration K1: 3 Messläufe *(K1-NAS: EDC entlastet, siehe Abschnitt 11)* – 3 gültige Läufe 2026-10-09: `rep-3`, `rep-4`, `rep-6` (kippt bei 1,5/2,0/1,5 je s); `rep-7` in Vorprüfung – abgeschlossen 12:44 UTC mit **4 gültigen Läufen** (`rep-7`: kippt bei 1,5/s); alle Ordner auf den Mac kopiert und geprüft; Commit durch den Verfasser offen *(gestartet 2026-10-08 19:43 UTC, `./lab series k1 3`, `setup-v3`; Ende ca. 04:00 UTC)* *(19:52–19:54 UTC vor Lastbeginn abgebrochen – Anweisung des Verfassers: K1 erst auf sein Kommando; Versuch `rep-1` ohne Last erhalten; Neustart mit `./lab series k1 3 2`)*
+- [x] Skalierungskonfiguration K1: 3 Messläufe *(K1-NAS: EDC entlastet, siehe Abschnitt 11)* – 3 gültige Läufe 2026-10-09: `rep-3`, `rep-4`, `rep-6` (kippt bei 1,5/2,0/1,5 je s); `rep-7` in Vorprüfung – abgeschlossen 12:44 UTC mit **4 gültigen Läufen** (`rep-7`: kippt bei 1,5/s); alle Ordner auf den Mac kopiert und geprüft; Commit `ba896a1`, Prüfsummen aus dem Commit OK, VM-Kopien verschoben *(gestartet 2026-10-08 19:43 UTC, `./lab series k1 3`, `setup-v3`; Ende ca. 04:00 UTC)* *(19:52–19:54 UTC vor Lastbeginn abgebrochen – Anweisung des Verfassers: K1 erst auf sein Kommando; Versuch `rep-1` ohne Last erhalten; Neustart mit `./lab series k1 3 2`)*
 - [x] K1 starten – **erst auf ausdrückliche Anweisung des Verfassers** – neu 2026-10-08 – gestartet 2026-10-09 00:20 MESZ auf Anweisung: `./lab series k1 4 2` (`rep-2` bis `rep-5`), Ende ca. 11:20 MESZ
 - [ ] Skalierungskonfiguration K2 (falls geplant): 3 Messläufe *(2026-10-09: für F1–F3 nicht nötig – K0 und K1 beantworten sie; optional K2a (Control Plane oder Datenbank einzeln entlasten) oder K2b (zusätzlich Vault des Customers) – Entscheidung nach der Auswertung von K1, ca. 20.10.; Vorrang: Schreiben, Nachbau-Test auf der VM der Betreuung)*
 - [ ] VM der Betreuung: Neuaufbau mit den Skripten aus Etappe 2 (zugleich Nachbau-Test), Vorstudie, dann K0-ISST (Original-Konfiguration der Charts, unverändert) und K1-ISST (PostgreSQL mit normalen Ressourcen statt Bitnami-Preset „nano“) – je 3 Messläufe; Ziel bis ca. 20.10.
@@ -403,6 +403,7 @@ Noch offen:
 - [ ] Während der Läufe k9s und Grafana geschlossen; Mac nicht im Lastweg
 - [ ] Nach jedem Lauf Gültigkeit geprüft und im Laborbuch vermerkt
 - [ ] Fehlgeschlagene oder abgebrochene Läufe erhalten und im Laborbuch vermerkt
+- [ ] System nach K1 zurücksetzen (gekippter Zustand verbraucht ohne Last ca. 2,6 Kerne auf dem NAS) – auf Freigabe des Verfassers – neu 2026-10-09
 - [ ] Rohdaten in `runs/` nie verändert, gelöscht oder umbenannt
 - [x] Laufordner byte-genau in Git (`.gitattributes`: `runs/** -text`); nach jedem Commit `SHA256SUMS` gegen den Commit prüfen – Probelauf: CRLF→LF beim ersten Commit, behoben 2026-10-07 – Commit `a4bb002`: 25/25 gleich, frischer Klon 25 × `OK`
 - [ ] Laufend: nach jedem Commit eines Laufordners `SHA256SUMS` gegen den Commit bzw. einen frischen Klon prüfen (in Etappe 2 in `./lab run` oder `check.sh`)
@@ -423,26 +424,29 @@ Noch offen:
 
 ## 14 Auswertung (`analysis/`)
 
-- [ ] Python-Umgebung mit festen Versionen (pandas, matplotlib …) notiert
-- [ ] Auswertung liest für Läufe bis 2026-10-08 die Logzeilen aus `nachtrag/` (`stage_summary.py` umgesetzt 2026-10-08; gilt auch für die spätere Auswertung) – neu 2026-10-08
-- [ ] Liest nur aus `runs/`, schreibt nur nach `out/`
-- [ ] Je Laststufe: Eingangslast, abgeschlossene und fehlgeschlagene Transaktionen/s, Dauer (p50, p95, p99 falls genug Werte), CPU, RAM, Drosselung je Pod
-- [ ] Mittelwert über die Wiederholungen und Streuung (z. B. Variationskoeffizient)
-- [ ] Aufwärmphase ausgeschlossen
-- [ ] Sättigungsbereich je Konfiguration nach dem festgelegten Kriterium
+- [x] Python-Umgebung mit festen Versionen (pandas, matplotlib …) notiert – 2026-10-09: `analysis/requirements.txt` (Python 3.14.6, matplotlib 3.11.2, numpy 2.5.3; ohne pandas)
+- [x] Auswertung liest für Läufe bis 2026-10-08 die Logzeilen aus `nachtrag/` (`stage_summary.py` umgesetzt 2026-10-08; gilt auch für die spätere Auswertung) – neu 2026-10-08 – umgesetzt 2026-10-09 in `evaluation_lib.py`
+- [x] Liest nur aus `runs/`, schreibt nur nach `out/` – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“) – liest zusätzlich `nachtrag/`
+- [x] Je Laststufe: Eingangslast, abgeschlossene und fehlgeschlagene Transaktionen/s, Dauer (p50, p95, p99 falls genug Werte), CPU, RAM, Drosselung je Pod – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“) – RAM noch nicht ausgewertet
+- [x] Mittelwert über die Wiederholungen und Streuung (z. B. Variationskoeffizient) – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“): Mittel bzw. Median mit Spanne (Min.–Max.); Variationskoeffizient nicht berechnet
+- [x] Aufwärmphase ausgeschlossen – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“): nicht in Abbildungen und Kipppunkt; in den Stufentabellen zur Vollständigkeit aufgeführt
+- [x] Sättigungsbereich je Konfiguration nach dem festgelegten Kriterium – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“): K0 0,6–0,7/s, K1 1,5–2,0/s
 - [ ] Engpasskandidaten: Ressourcenauffälligkeit zeitgleich mit dem Leistungsabfall (inkl. Drosselung, Wallet-Stub)
-- [ ] Häufigkeit von `Invalidating Contract data` je Laststufe
+- [x] Häufigkeit von `Invalidating Contract data` je Laststufe – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“)
 - [ ] CPU des gekippten Systems ohne Last (nach Lastende bis zum nächsten Reset) auswerten – Beleg für sich selbst erhaltende Überlast (F2) – neu 2026-10-09
 - [ ] K1: CPU und Drosselung der Control Plane, Datenbank und Vault des Customers am Kipppunkt je Lauf und Minute auswerten – wer sättigt zuerst? *(Schnellprüfung 2026-10-09, `rep-3`/`rep-4`: Control Plane in der Kipp-Stufe 0,69–0,83 von 1,0 bei 98–99 % Drosselung, Datenbank 79–93 %, Vault 100 %; `LABORBUCH.md`)* – neu 2026-10-09
 - [ ] K1: Neustarts im System unter Test (Vault des Customers `OOMKilled`, Control Plane des Customers) je Lauf und Stufe auswerten und als Ergebnis/nächsten Engpass berichten (5.4, 6.2) – neu 2026-10-09
 - [ ] Steal Time in K1 bei hohen Stufen 3–4 % (Last, NAS mit 8 Threads) – als Limitation berichten (6.5) – neu 2026-10-09
 - [ ] Je Lauf: Zeitpunkt und Art des ersten Auslösers (z. B. EDC 409 „currently leased“) und Häufigkeit der 409-Fehler je Laststufe (`loki/edc_warn_error.tsv.gz`) – neu 2026-10-07 (Befund Vorstudie 2) *(2026-10-08: erster Auslöser für Vorstudie 3 und K0 bestimmt – in allen Läufen „Failed to obtain EDR data for DigitalTwinRegistryId…“ (Supplier) vor der ersten Invalidierung, `LABORBUCH.md`; offen: Ursache des EDR-Fehlers, Häufigkeit je Stufe, als Skript in `analysis/`)*
-- [ ] Abbildungen `out/figures/*.pdf`: Last → Durchsatz, Last → p95-Dauer, Last → Fehlerrate, Last → CPU je Komponente; Zeitreihen ausgewählter Läufe
-- [ ] Tabellen `out/tables/*.tex`
-- [ ] Zahlen als LaTeX-Makros in `out/zahlen.tex`
-- [ ] Vergleich der Skalierungskonfigurationen mit K0
+- [x] Abbildungen `out/figures/*.pdf`: Last → Durchsatz, Last → p95-Dauer, Last → Fehlerrate, Last → CPU je Komponente; Zeitreihen ausgewählter Läufe – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“) (für NAS; Prüfung durch den Verfasser offen)
+- [x] Tabellen `out/tables/*.tex` – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“)
+- [x] Zahlen als LaTeX-Makros in `out/zahlen.tex` – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“) (28 Makros)
+- [x] Vergleich der Skalierungskonfigurationen mit K0 – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“): Kipppunkt ×2,4 (Mittel), exakter Mann-Whitney-Test p ≈ 0,005
 - [ ] Nachbau-Test ausgewertet
-- [ ] Auswertung ist mit einem Befehl wiederholbar
+- [x] Auswertung ist mit einem Befehl wiederholbar – 2026-10-09 (`analysis/evaluation.py`, `AUFBAU.md`, „Auswertung“)
+- [ ] Zusatzauswertungen als Skript: erster Auslöser je Lauf, Neustarts in K1, CPU nach Lastende, wer sättigt zuerst (je Minute), RAM – neu 2026-10-09
+- [ ] Abbildungen vom Verfasser geprüft und für die Arbeit freigegeben – neu 2026-10-09
+- [ ] ISST in die Auswertung aufnehmen: CPU-Limits der Original-Konfiguration in `LIMITS` ergänzen, Auswertung erneut ausführen; ggf. Vergleichsabbildung NAS–ISST – nach den Läufen auf der VM der Betreuung – neu 2026-10-09
 
 ## 15 Übernahme in die Arbeit
 

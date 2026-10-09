@@ -1,0 +1,15 @@
+run,config,valid,tip_rate,tip_stage,stable_up_to,first_invalidation_rate,recovery_completed_per_s,steal_max,steal_mean,sut_restarts,log_complete,tag,logs_from,status
+2026-10-07_2341_k0_rep-1,K0-NAS,False,,,1.0,,0.205,0.0601,0.0078,,True,setup-v1,nachtrag,ungültig (Steal Time)
+2026-10-08_0140_k0_rep-2,K0-NAS,True,0.7,s6,0.6,0.5,0.0,0.0188,0.0091,,True,setup-v1,nachtrag,gültig
+2026-10-08_0340_k0_rep-3,K0-NAS,True,0.6,s5,0.5,0.5,0.0,0.0215,0.0111,,True,setup-v1,nachtrag,gültig
+2026-10-08_0540_k0_rep-4,K0-NAS,True,0.7,s6,0.6,0.6,0.0,0.0194,0.0101,,True,setup-v1,nachtrag,gültig
+2026-10-08_1252_k0_rep-5,K0-NAS,True,0.7,s6,0.6,0.5,0.0,0.0237,0.0128,,True,setup-v2,runs,gültig
+2026-10-08_1453_k0_rep-6,K0-NAS,True,0.6,s5,0.5,0.5,0.0,0.019,0.0102,,True,setup-v2,runs,gültig
+2026-10-08_1654_k0_rep-7,K0-NAS,True,0.7,s6,0.6,0.7,0.0,0.0207,0.0108,,True,setup-v2,runs,gültig
+2026-10-08_1943_k1_rep-1,K1-NAS,False,,,,,,,,,,,,Versuch (abgebrochen)
+2026-10-08_2220_k1_rep-2,K1-NAS,False,1.5,s9,1.0,1.5,0.0,0.0909,0.0143,customer/edc-controlplane-fc549bb69-gh8zg/tractusx-connector;customer/edc-vault-0/vault,True,setup-v3,runs,ungültig (Steal Time)
+2026-10-09_0106_k1_rep-3,K1-NAS,True,1.5,s9,1.0,1.5,0.0,0.0353,0.0137,customer/edc-controlplane-fc549bb69-pn7v5/tractusx-connector;customer/edc-vault-0/vault,True,setup-v3,runs,gültig
+2026-10-09_0352_k1_rep-4,K1-NAS,True,2.0,s10,1.5,2.0,0.0,0.0414,0.0146,customer/edc-controlplane-fc549bb69-grkph/tractusx-connector;customer/edc-vault-0/vault,True,setup-v3,runs,gültig
+2026-10-09_0646_k1_rep-5,K1-NAS,False,,,,,,,,,,,,Versuch (Vorprüfung abgelehnt)
+2026-10-09_0701_k1_rep-6,K1-NAS,True,1.5,s9,1.0,1.5,0.0,0.0379,0.0144,customer/edc-controlplane-fc549bb69-xrfzs/tractusx-connector;customer/edc-vault-0/vault,True,setup-v3,runs,gültig
+2026-10-09_0953_k1_rep-7,K1-NAS,True,1.5,s9,1.0,1.5,0.0,0.0381,0.0146,customer/edc-controlplane-fc549bb69-5nnds/tractusx-connector;customer/edc-vault-0/vault,True,setup-v3,runs,gültig

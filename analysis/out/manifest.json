@@ -1,0 +1,93 @@
+{
+ "code": {
+  "git_commit": "ba896a12368ca3b2d6e1b8cb08c5c19d3d8e4e07",
+  "git_dirty": true,
+  "analysis/evaluation.py": "c19e99bec570031160e1f77b1f6a5140aaa27f4da576d7300f669e843cdbfc4f",
+  "analysis/evaluation_lib.py": "be3349c40b0dbaa1f1a5fff7c1d011fb6449a1240122b682972e1b28e6264036"
+ },
+ "versions": {
+  "python": "3.14.6",
+  "matplotlib": "3.11.2",
+  "numpy": "2.5.3"
+ },
+ "rules": {
+  "saturation": "abgeschlossen/s < 95% der Eingangslast",
+  "duration": "Verfahren A, Perzentile linear, nur ungesättigte Stufen"
+ },
+ "runs": {
+  "2026-10-07_2341_k0_rep-1": {
+   "config": "K0-NAS",
+   "status": "ungültig (Steal Time)",
+   "inputs_sha256": "f39125bfd6d484d844254ee3ccea26fca0efad1a4b9428777da4e242e61d0742"
+  },
+  "2026-10-08_0140_k0_rep-2": {
+   "config": "K0-NAS",
+   "status": "gültig",
+   "inputs_sha256": "c2a74a3022e29577a0197d9a4585d0e2b273746bd8b5c5bf26b6518077600a10"
+  },
+  "2026-10-08_0340_k0_rep-3": {
+   "config": "K0-NAS",
+   "status": "gültig",
+   "inputs_sha256": "a26946bb1412151b62c2028d32d0ba2fceae4a761026fa9c31f93e71dea4c8f9"
+  },
+  "2026-10-08_0540_k0_rep-4": {
+   "config": "K0-NAS",
+   "status": "gültig",
+   "inputs_sha256": "97d91ffe9b6f77490403ad9618462efb9c9a99f2da4727c14f5c58b0b1dd5026"
+  },
+  "2026-10-08_1252_k0_rep-5": {
+   "config": "K0-NAS",
+   "status": "gültig",
+   "inputs_sha256": "85fd2c10b90afb85b3051e6b13e9bbf4741ded590a3cdc7ba1dfe4680fdfab36"
+  },
+  "2026-10-08_1453_k0_rep-6": {
+   "config": "K0-NAS",
+   "status": "gültig",
+   "inputs_sha256": "a3c10257f2e8d3c1437c1f9c150651de0e61f91cc70e473533ce19aca243fa0d"
+  },
+  "2026-10-08_1654_k0_rep-7": {
+   "config": "K0-NAS",
+   "status": "gültig",
+   "inputs_sha256": "4625bf1b0acb7016811af20529e99ab24e52c3d7b6cead071eeedf239067a6be"
+  },
+  "2026-10-08_1943_k1_rep-1": {
+   "config": "K1-NAS",
+   "status": "Versuch (abgebrochen)",
+   "inputs_sha256": null
+  },
+  "2026-10-08_2220_k1_rep-2": {
+   "config": "K1-NAS",
+   "status": "ungültig (Steal Time)",
+   "inputs_sha256": "6dbdae5207d794fcc1f7ff0200cbaaae1069661a71a93a32b44c2c5a3c1f4257"
+  },
+  "2026-10-09_0106_k1_rep-3": {
+   "config": "K1-NAS",
+   "status": "gültig",
+   "inputs_sha256": "aa7c291a07c89f54589ec400a9120ab4d190e8f316e5da319ed12615981f4137"
+  },
+  "2026-10-09_0352_k1_rep-4": {
+   "config": "K1-NAS",
+   "status": "gültig",
+   "inputs_sha256": "44ddea062673a3ab93f4df6d2a6054afcc72a4619e362488050671337966a1ed"
+  },
+  "2026-10-09_0646_k1_rep-5": {
+   "config": "K1-NAS",
+   "status": "Versuch (Vorprüfung abgelehnt)",
+   "inputs_sha256": null
+  },
+  "2026-10-09_0701_k1_rep-6": {
+   "config": "K1-NAS",
+   "status": "gültig",
+   "inputs_sha256": "048a6dd88069d582f1bd30e45c3f2f1942aa03d07d3360bb88ac7fe1dfaa6fb7"
+  },
+  "2026-10-09_0953_k1_rep-7": {
+   "config": "K1-NAS",
+   "status": "gültig",
+   "inputs_sha256": "1db0f919467e7f332f610c24c12d86f1cb70f6a7ddf0d1bde998d5e7135cfe16"
+  }
+ },
+ "examples_time_series": {
+  "K0-NAS": "2026-10-08_0140_k0_rep-2",
+  "K1-NAS": "2026-10-09_0106_k1_rep-3"
+ }
+}
