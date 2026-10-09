@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-09 – Etappe 1 abgeschlossen; Vorstudien 1–3 abgeschlossen. **Hauptmessungen auf dem NAS abgeschlossen:** K0 (`setup-v1`/`setup-v2`) 6 gültige Läufe, stabil bis 0,5/s, kippt bei 0,6/s (2×) oder 0,7/s (4×); K1-NAS (`setup-v3`) 4 gültige Läufe, bis 1,0/s fehlerfrei, kippt bei 1,5/s (3×) oder 2,0/s (1×); in beiden keine Erholung, gekipptes System ohne Last weiter beschäftigt. Logs aller Läufe bis 2026-10-08 vollständig in `nachtrag/`. Als Nächstes: K1-Läufe committen, System zurücksetzen, Auswertung (`analysis/`), VM der Betreuung (K0-ISST/K1-ISST, Nachbau-Test). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-09 – Etappe 1 abgeschlossen; Vorstudien 1–3 abgeschlossen. **Hauptmessungen auf dem NAS abgeschlossen:** K0 (`setup-v1`/`setup-v2`) 6 gültige Läufe, stabil bis 0,5/s, kippt bei 0,6/s (2×) oder 0,7/s (4×); K1-NAS (`setup-v3`) 4 gültige Läufe, bis 1,0/s fehlerfrei, kippt bei 1,5/s (3×) oder 2,0/s (1×); in beiden keine Erholung, gekipptes System ohne Last weiter beschäftigt. Logs aller Läufe bis 2026-10-08 vollständig in `nachtrag/`. Als Nächstes: K1-Läufe committen, System zurücksetzen, Auswertung (`analysis/`), VM der Betreuung (K0-ISST/K1-ISST, Nachbau-Test). `README.md` angelegt (2026-10-09). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -77,7 +77,7 @@ Gilt für **jeden** Baustein ab Phase b (`KONZEPT.md`, Abschnitt 3). Ein Baustei
 - [x] Offene Änderungen committen: `AUFBAU.md`, `KONZEPT.md`, `LABORBUCH.md`, `ANLEITUNG.md`, `CHECKLISTE.md`, `setup/b1-monitoring/values.yaml` – Commit `2ae8388`, 2026-10-06
 - [x] Lokale Commits pushen – `77e0323..2ae8388` nach `origin/main`, 2026-10-06
 - [x] Danach im Thesis-Repository den Submodul-Verweis `6-experiment` aktualisieren – Commit `703de48` (Stand `e8e5f88`), 2026-10-06; danach laufend (Thesis-Checkliste, Abschnitt 10)
-- [ ] `README.md` (Schnellstart) anlegen – in `KONZEPT.md`, Abschnitt 2, vorgesehen; spätestens in Etappe 2 (Abschnitt 10)
+- [x] `README.md` (Schnellstart) anlegen – in `KONZEPT.md`, Abschnitt 2, vorgesehen; spätestens in Etappe 2 (Abschnitt 10) – erledigt 2026-10-09 (`README.md`: Zweck, Aufbau, Konfigurationen, Messmethodik, Ergebnisse NAS, Reproduktion, Laufordner, Einschränkungen, Zitation)
 - [ ] Laufend: Bei jeder Änderung an Struktur, Befehl oder Ablauf `KONZEPT.md` (und `README.md`) im selben Zug anpassen
 
 ## 1 Versuchsrechner und Zugang
@@ -328,7 +328,7 @@ Noch offen:
   - [ ] Logs vor dem Ablegen automatisch auf Geheimnisse geprüft und maskiert *(2026-10-07: Prüfung auf den API-Key mit Abbruch umgesetzt; keine Maskierung)*
 - [ ] Messpläne in `experiments/plans/` (Laststufen, Dauer, Wiederholungen) *(2026-10-07: `smoke.env`, `vorstudie.env`; K0 folgt nach der Vorstudie)* *(2026-10-08: `k0.env` angelegt; K1 offen)*
 - [ ] **Vollständiger Neuaufbau** mit den Skripten (`k3s` entfernt → `./lab up all` → `./lab status`); Abweichungen zu `AUFBAU.md` behoben; Dauer und manuelle Eingriffe im Laborbuch
-- [ ] `README.md` mit Schnellstart (Voraussetzungen, Klonen, `.env`, `./lab up all`)
+- [x] `README.md` mit Schnellstart (Voraussetzungen, Klonen, `.env`, `./lab up all`) – 2026-10-09 in geänderter Form: `./lab up all` entfällt (ersetzt durch `reproduce`); Schnellstart mit `reproduce`, Auswertung aus den Rohdaten und `lab` in `README.md`, Abschnitt „Reproduktion“
 - [x] Entscheidung: vollautomatische Kampagne `./lab campaign <datei>` – neu 2026-10-08 – entfällt (ersetzt durch das eigenständige Skript `reproduce`, Entwurf `REPRODUCE.md`, 2026-10-08)
 - [x] Entscheidung: zusätzlich K0-NAS (und ggf. K1-NAS) auf der VM der Betreuung messen – neu 2026-10-08 – entfällt (Entscheidung des Verfassers 2026-10-08: auf der VM der Betreuung läuft das Profil `original`; Nachbau-Test mit `compact` auf der neu aufgesetzten NAS-VM, `REPRODUCE.md` §17)
 - [x] Entwurf `REPRODUCE.md` (eigenständiges Skript `reproduce`: Profile `original`/`compact`, Konfigurationen `-k0`/`-k1`, Phasen einzeln aufrufbar, Ergebnisse im Format von `runs/`) – 2026-10-08
@@ -403,7 +403,7 @@ Noch offen:
 - [ ] Während der Läufe k9s und Grafana geschlossen; Mac nicht im Lastweg
 - [ ] Nach jedem Lauf Gültigkeit geprüft und im Laborbuch vermerkt
 - [ ] Fehlgeschlagene oder abgebrochene Läufe erhalten und im Laborbuch vermerkt
-- [ ] System nach K1 zurücksetzen (gekippter Zustand verbraucht ohne Last ca. 2,6 Kerne auf dem NAS) – auf Freigabe des Verfassers – neu 2026-10-09
+- [x] System nach K1 zurücksetzen (gekippter Zustand verbraucht ohne Last ca. 2,6 Kerne auf dem NAS) – auf Freigabe des Verfassers – neu 2026-10-09 – erledigt 2026-10-09, 13:40 UTC: `./lab reset s0-v2` (552 s, ohne Reparatur), 6/6 bereit, keine Last (`LABORBUCH.md`)
 - [ ] Rohdaten in `runs/` nie verändert, gelöscht oder umbenannt
 - [x] Laufordner byte-genau in Git (`.gitattributes`: `runs/** -text`); nach jedem Commit `SHA256SUMS` gegen den Commit prüfen – Probelauf: CRLF→LF beim ersten Commit, behoben 2026-10-07 – Commit `a4bb002`: 25/25 gleich, frischer Klon 25 × `OK`
 - [ ] Laufend: nach jedem Commit eines Laufordners `SHA256SUMS` gegen den Commit bzw. einen frischen Klon prüfen (in Etappe 2 in `./lab run` oder `check.sh`)
@@ -482,7 +482,7 @@ Zuordnung nach `KONZEPT.md`, Abschnitt 10:
 
 ## 16 Veröffentlichung des Artefakts
 
-- [ ] `README.md` vollständig: Zweck, Hardware, Versionen, Nachbau, Auswertung, Verweis auf die Arbeit
+- [ ] `README.md` vollständig: Zweck, Hardware, Versionen, Nachbau, Auswertung, Verweis auf die Arbeit *(2026-10-09: alle Teile angelegt; offen: Ergebnisse von `original-k0`/`original-k1` und Nachbau-Test, Hinweis „noch nicht auf einem Cluster gelaufen“ zu `reproduce`, Status-Badge, Zitierangabe mit Endstand-Tag bzw. DOI)*
 - [ ] Gesamte Git-Historie auf Geheimnisse geprüft (z. B. gitleaks); Treffer → Geheimnis ändern, nicht nur löschen
 - [ ] Rohdaten abgelegt (Git bzw. Zenodo)
 - [ ] Endstand getaggt und als GitHub-Release veröffentlicht
