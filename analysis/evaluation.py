@@ -339,7 +339,7 @@ def main():
             return hashlib.sha256(fh.read()).hexdigest()
     git = lambda *a: subprocess.run(["git", "-C", L.ROOT, *a], capture_output=True, text=True).stdout.strip()
     manifest = {
-        "code": {"git_commit": git("rev-parse", "HEAD"), "git_dirty": bool(git("status", "--porcelain", "--", "analysis")),
+        "code": {"git_commit": git("rev-parse", "HEAD"), "git_dirty": bool(git("status", "--porcelain", "--", "analysis", ":(exclude)analysis/out")),
                  "analysis/evaluation.py": sha(os.path.abspath(__file__)), "analysis/evaluation_lib.py": sha(os.path.join(L.ROOT, "analysis", "evaluation_lib.py"))},
         "versions": {"python": platform.python_version(), "matplotlib": matplotlib.__version__, "numpy": numpy.__version__},
         "rules": {"saturation": f"abgeschlossen/s < {L.SATURATION:.0%} der Eingangslast", "duration": "Verfahren A, Perzentile linear, nur ungesättigte Stufen"},
