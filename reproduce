@@ -817,9 +817,16 @@ marker_get()   { cat "$MARKERS/$1" 2>/dev/null; }
 # Background job: survives a lost SSH connection (REPRODUCE.md §22.1).
 detach() {  # command... → continues as a background job and shows its progress
   [ "$BG" = 1 ] && return 0
+  if job_alive; then   # refuse before anything is started or copied
+    fail "another reproduce job is already running (command $(sed -n 's/.*command=\([^ ]*\).*/\1/p' "$STATE/job"), phase $(sed -n 's/.*phase=\([^ ]*\).*/\1/p' "$STATE/job"))"
+    hint "follow it: ./reproduce watch · stop it: ./reproduce stop"; exit 1
+  fi
   unlock
-  local pos; pos=$(stat -c %s "$LOGF" 2>/dev/null || echo 0)
-  REPRODUCE_BG=1 setsid nohup "$SCRIPT" "$@" </dev/null >/dev/null 2>&1 &
+  local pos js; pos=$(stat -c %s "$LOGF" 2>/dev/null || echo 0)
+  # the job runs from its own copy: downloading a new ./reproduce never changes a running job
+  # (bash reads a script while running it – an overwritten file would be read at the old position)
+  js=$(mktemp "$STATE/job-script.XXXXXX"); cp "$SCRIPT" "$js"
+  REPRODUCE_BG=1 REPRODUCE_HOME="$WORK" setsid nohup bash "$js" "$@" </dev/null >/dev/null 2>&1 &
   echo
   printf '%s\n' "${C_DIM}  The next steps run in the background (PID $!). Closing this terminal or losing the SSH connection does not stop them.${C_0}"
   printf '%s\n' "${C_DIM}  Ctrl-C closes only this view · ./reproduce watch opens it again · ./reproduce status · ./reproduce stop${C_0}"
@@ -1607,8 +1614,9 @@ phase_state() {  # phase → 0 done
   esac
 }
 last_status_line() { grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2} ' "$LOGF" 2>/dev/null | tail -n 1; }
-last_line_age() {  # seconds since the last status line
-  local t; t=$(last_status_line | cut -c1-8)
+last_step_line() { grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2} (…|✓|↷|━━) ' "$LOGF" 2>/dev/null | tail -n 1; }   # progress of the job itself
+last_line_age() {  # [line] → seconds since that line (default: the last status line)
+  local t; t=$( { [ -n "${1:-}" ] && echo "$1" || last_status_line; } | cut -c1-8)
   [ -n "$t" ] || { echo 0; return 0; }
   echo $(( ( $(date -u +%s) % 86400 - $(date -u -d "1970-01-01 $t" +%s) + 86400 ) % 86400 ))
 }
@@ -1647,33 +1655,41 @@ cmd_status() {
   printf '%s\n' "${C_DIM}  kubectl: export KUBECONFIG=$KUBECONFIG PATH=$TOOLS:\$PATH${C_0}"
 }
 TICKER=0
-ticker() {  # time of the last status line (SECONDS) → live line below the output, terminal only
+ticker() {  # seconds since the last status line, that line without its time → one live line, always narrower than the terminal
   [ "$TTY" = 1 ] || return 0
-  local ph; ph=$(sed -n 's/.*phase=\([^ ]*\).*/\1/p' "$STATE/job" 2>/dev/null)
-  printf '\r\033[K%s' "$C_DIM         $C_0$C_RUN${SPIN[$((SECONDS % 10))]}$C_0$C_DIM working on ${ph:-?} · last update $(dur $((SECONDS - $1))) ago · Ctrl-C closes only this view$C_0"
+  local txt="$2" w
+  case "$txt" in
+    "… "*) txt=${txt#"… "}; txt=${txt%% (*}; txt=${txt%% – *} ;;   # the running step, without its note
+    *)     txt="working on $(sed -n 's/.*phase=\([^ :]*\).*/\1/p' "$STATE/job" 2>/dev/null)" ;;
+  esac
+  txt="$txt · $(dur "$1")"
+  w=$(( $(tput cols 2>/dev/null || echo 80) - 13 )); [ "$w" -ge 20 ] || w=20
+  printf '\r\033[K         %s %s' "$C_RUN${SPIN[$((SECONDS % 10))]}$C_0" "$C_DIM${txt:0:$w}$C_0"
   TICKER=1
 }
 ticker_clear() { [ "$TICKER" = 1 ] && printf '\r\033[K'; TICKER=0; return 0; }
 cmd_watch() {  # [--all | --from byte-offset] → status lines of the background job, live
   [ -f "$LOGF" ] || { echo "nothing to show yet – no log"; return 0; }
-  local re='^[0-9]{2}:[0-9]{2}:[0-9]{2} ' from="" line rc t_last ended=0
+  local re='^[0-9]{2}:[0-9]{2}:[0-9]{2} ' sre='^[0-9]{2}:[0-9]{2}:[0-9]{2} (…|✓|↷|━━) ' from="" line rc t_last ended=0 last
   case "${1:-}" in --all) re='' ;; --from) from="${2:-0}" ;; esac
   if [ -z "$from" ]; then
     if [ -z "$re" ]; then tail -n 40 "$LOGF"; else grep -E "$re" "$LOGF" | tail -n 15 | while IFS= read -r line; do paint "$line"; done; fi
     from=$(stat -c %s "$LOGF")
     job_alive || { printf '\n%s\n' "no job is running – overview: ./reproduce status"; return 0; }
+    printf '%s\n' "${C_DIM}         (live view of the background job – Ctrl-C closes only this view)${C_0}"
   else
     for _ in $(seq 1 15); do job_alive && break; [ "$(stat -c %s "$LOGF")" -le "$from" ] || break; sleep 1; done   # a job started just now registers itself
   fi
   exec 8< <(tail -c +"$((from + 1))" -F --pid=$$ "$LOGF" 2>/dev/null | grep --line-buffered -E "$re")
   trap 'ticker_clear; printf "\n%s\n" "(view closed – the job keeps running · ./reproduce watch opens it again)"; exit 0' INT TERM HUP   # a view never writes into the job's log
-  t_last=$((SECONDS - $(last_line_age)))
+  last=$(last_step_line); t_last=$((SECONDS - $(last_line_age "$last"))); last=${last#* }
   while :; do
     if IFS= read -r -t 1 line <&8; then
-      ticker_clear; if [ -z "$re" ]; then printf '%s\n' "$line"; else paint "$line"; fi; t_last=$SECONDS
+      ticker_clear; if [ -z "$re" ]; then printf '%s\n' "$line"; else paint "$line"; fi
+      if [[ $line =~ $sre ]]; then t_last=$SECONDS; last=${line#* }; fi
     else
       rc=$?; [ "$rc" -gt 128 ] || break
-      if job_alive; then ticker "$t_last"; elif [ "$ended" = 1 ]; then break; else ended=1; fi
+      if job_alive; then ticker $((SECONDS - t_last)) "$last"; elif [ "$ended" = 1 ]; then break; else ended=1; fi
     fi
   done
   ticker_clear
@@ -1681,11 +1697,16 @@ cmd_watch() {  # [--all | --from byte-offset] → status lines of the background
   else printf '\n%s\n' "(the job has ended – overview: ./reproduce status)"; fi
 }
 cmd_stop() {
-  job_alive || { echo "no job running"; return 0; }
-  local p; p=$(job_pid)
-  kill -TERM "$p"; echo "stop requested (PID $p) – waiting for a safe point"
-  for _ in $(seq 1 60); do job_alive || { ok "job ended"; return 0; }; sleep 5; done
-  warn "job still running after 5 min – check ./reproduce status"
+  job_alive || { echo "no job is running – nothing to stop"; return 0; }
+  local p c t0=$SECONDS last; p=$(job_pid); c=$(sed -n 's/.*command=\([^ ]*\).*/\1/p' "$STATE/job")
+  kill -TERM "$p"
+  info "stop requested (PID $p) – the job finishes its current step and then stops cleanly; nothing is lost"
+  info "a step that waits for pods ends when they are ready or at its maximum time – this can take a while"
+  trap 'ticker_clear; printf "\n%s\n" "(the stop request stays – the job stops at the next safe point · ./reproduce status)"; exit 0' INT TERM HUP
+  while job_alive; do last=$(last_step_line); last=${last#* }; ticker $((SECONDS - t0)) "… stopping after the current step: ${last#* }"; sleep 1; done
+  ticker_clear
+  ok "job stopped ($(dur $((SECONDS - t0))))"
+  [ "$c" = _continue ] && c="" ; hint "continue later with: ./reproduce${c:+ $c} – steps already done are skipped"
 }
 
 # ── uninstall and bundle ──────────────────────────────────────────────────────────
@@ -1735,9 +1756,13 @@ on_exit() {
     if marker_has run; then stop_own_load; py attempt "$(marker_get run)" "${CURRENT_PHASE:-}" failed "stopped (exit $rc)" 2>/dev/null || true; marker_clear run; fi
   fi
   unlock
+  [ "$BG" != 1 ] || case "$SCRIPT" in "$STATE"/job-script.*) rm -f "$SCRIPT" ;; esac   # own copy of the background job
   return "$rc"
 }
-on_term() { progress_end; warn "stopped – run $(retry_cmd) again to continue; steps already done are skipped"; exit 4; }
+on_term() {
+  case "${CMD:-}" in status|watch|stop|help|-h|--help) exit 0 ;; esac   # views and stop: nothing to continue
+  progress_end; warn "stopped – run $(retry_cmd) again to continue; steps already done are skipped"; exit 4
+}
 [[ "${BASH_SOURCE[0]}" == "$0" ]] || return 0   # sourced (tests): functions only
 CMD="${1:-all}"; ARGS_TEXT="$*"
 trap on_exit EXIT
