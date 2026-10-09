@@ -73,6 +73,11 @@ class Plans(unittest.TestCase):
         self.assertEqual(set(words('PLAN_KEYS')) & protected(), set())
         self.assertIn('STATE', protected())
 
+    def test_no_assignment_ends_on_a_false_test(self):
+        # x=$( [ … ] && echo …) without "||" returns 1 for a false test and ends the script under set -e
+        bad = [l for l in TEXT.splitlines() if re.search(r'^[^#]*[A-Za-z_]+=("[^"]*)?\$\( *\[[^)]*\] *&& *echo [^|)]*\)', l) and '||' not in l]
+        self.assertEqual(bad, [])
+
     def test_plans_are_never_sourced(self):
         body = TEXT[TEXT.index('load_plan() {'):]
         body = body[:body.index('\n}\n')]
@@ -131,6 +136,15 @@ class Runtime(unittest.TestCase):
         self.assertNotEqual(a, b, r.stderr)
         self.assertTrue(a.endswith('_short'))
         self.assertEqual((ma, mb), ('short', 'full'))
+
+    def test_more_runs_can_be_added_to_the_same_folder(self):
+        # a real measurement with 1 run per configuration can later be extended to 3 in the same results folder
+        r = self.run_in('''echo compact > "$STATE/profile"; echo "{}" > "$STATE/machine.json"
+            a=$(REPRODUCE_REPS=1 bash -c 'source "$1"; commit() { echo abc; }; results_dir' _ "$SCRIPT")
+            commit() { echo abc; }; b=$(results_dir); echo "$a|$b|$(cat "$b/.reps")"''')
+        a, b, reps = r.stdout.strip().split('|')
+        self.assertEqual(a, b, r.stderr)
+        self.assertEqual(reps, '3')
 
     def test_target_runs_come_from_the_results_folder_without_a_job(self):
         r = self.run_in('d="$RESULTS/x"; mkdir -p "$d"; echo "$d" > "$STATE/results-current"; echo 1 > "$d/.reps"; echo short > "$d/.mode"; '
