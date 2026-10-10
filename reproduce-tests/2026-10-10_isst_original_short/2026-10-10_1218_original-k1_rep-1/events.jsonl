@@ -1,0 +1,5 @@
+{"time_utc": "2026-10-10T12:18:32.820007+00:00", "phase": "created", "status": "running", "reason": ""}
+{"time_utc": "2026-10-10T12:18:33.292099+00:00", "phase": "reset", "status": "running", "reason": ""}
+{"time_utc": "2026-10-10T12:22:38.057985+00:00", "phase": "load", "status": "running", "reason": ""}
+{"time_utc": "2026-10-10T12:51:07.010873+00:00", "phase": "collecting", "status": "running", "reason": ""}
+{"time_utc": "2026-10-10T12:59:50.968609+00:00", "phase": "completed", "status": "completed", "reason": "valid=True"}

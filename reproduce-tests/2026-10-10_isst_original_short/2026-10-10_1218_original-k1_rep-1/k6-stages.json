@@ -1,0 +1,72 @@
+{
+ "warmup1": {
+  "start_ms": 1791634969001,
+  "start_utc": "2026-10-10T12:22:49.001Z",
+  "duration_ms_plan": 120000.0
+ },
+ "warmup2": {
+  "start_ms": 1791635089002,
+  "start_utc": "2026-10-10T12:24:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s1": {
+  "start_ms": 1791635209002,
+  "start_utc": "2026-10-10T12:26:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s2": {
+  "start_ms": 1791635329002,
+  "start_utc": "2026-10-10T12:28:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s3": {
+  "start_ms": 1791635449002,
+  "start_utc": "2026-10-10T12:30:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s4": {
+  "start_ms": 1791635569002,
+  "start_utc": "2026-10-10T12:32:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s5": {
+  "start_ms": 1791635689003,
+  "start_utc": "2026-10-10T12:34:49.003Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s6": {
+  "start_ms": 1791635809002,
+  "start_utc": "2026-10-10T12:36:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s7": {
+  "start_ms": 1791635929002,
+  "start_utc": "2026-10-10T12:38:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s8": {
+  "start_ms": 1791636049003,
+  "start_utc": "2026-10-10T12:40:49.003Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s9": {
+  "start_ms": 1791636169002,
+  "start_utc": "2026-10-10T12:42:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s10": {
+  "start_ms": 1791636289002,
+  "start_utc": "2026-10-10T12:44:49.002Z",
+  "duration_ms_plan": 120000.0
+ },
+ "s11": {
+  "start_ms": 1791636409003,
+  "start_utc": "2026-10-10T12:46:49.003Z",
+  "duration_ms_plan": 120000.0
+ },
+ "recovery": {
+  "start_ms": 1791636529002,
+  "start_utc": "2026-10-10T12:48:49.002Z",
+  "duration_ms_plan": 120000.0
+ }
+}

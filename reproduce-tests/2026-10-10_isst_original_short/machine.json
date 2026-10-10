@@ -1,0 +1,18 @@
+{
+ "time_utc": "2026-10-10T11:05:19.059Z",
+ "cpu_model": "Intel(R) Xeon(R) Silver 4314 CPU @ 2.40GHz",
+ "vcpu": 24,
+ "mem_total_gib": 46.13,
+ "os": "Ubuntu 26.04.1 LTS",
+ "os_id": "ubuntu",
+ "kernel": "7.0.0-38-generic",
+ "arch": "x86_64",
+ "virtualization": "vmware",
+ "time_synchronized": "yes",
+ "disk_free_gib": {
+  "work": 444.0,
+  "rancher": 444.0
+ },
+ "boot_id": "de894a1d-6356-4a1b-b0f2-ac9acf7d08bd",
+ "cpu_single_core_score": 1682815
+}

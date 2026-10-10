@@ -1,0 +1,13 @@
+NAME           	NAMESPACE  	REVISION	UPDATED                                	STATUS  	CHART                           	APP VERSION
+alloy          	logging    	1       	2026-10-10 10:39:17.073704525 +0000 UTC	deployed	alloy-1.13.0                    	v1.20.0    
+dtr            	customer   	1       	2026-10-10 10:47:56.311182051 +0000 UTC	deployed	digital-twin-bundle-1.3.0       	           
+dtr            	supplier   	1       	2026-10-10 10:51:33.638860088 +0000 UTC	deployed	digital-twin-bundle-1.3.0       	           
+edc            	customer   	1       	2026-10-10 10:41:22.955385099 +0000 UTC	deployed	dataspace-connector-bundle-1.3.0	           
+edc            	supplier   	1       	2026-10-10 10:42:57.123598374 +0000 UTC	deployed	dataspace-connector-bundle-1.3.0	           
+gateway-api-crd	kube-system	1       	2026-10-10 09:59:54.758678933 +0000 UTC	deployed	gateway-api-crd-1.6.103         	v1.6.1     
+identity       	identity   	1       	2026-10-10 10:39:39.141503449 +0000 UTC	deployed	identity-and-trust-bundle-1.1.3 	           
+k6-operator    	k6-operator	1       	2026-10-10 11:01:55.292652995 +0000 UTC	deployed	k6-operator-4.6.0               	1.6.0      
+loki           	logging    	1       	2026-10-10 10:38:24.565732345 +0000 UTC	deployed	loki-7.3.0                      	3.6.12     
+monitoring     	monitoring 	1       	2026-10-10 10:35:38.088629846 +0000 UTC	deployed	kube-prometheus-stack-91.9.0    	v0.94.1    
+puris          	customer   	1       	2026-10-10 10:55:10.913287723 +0000 UTC	deployed	puris-7.2.0                     	6.2.0      
+puris          	supplier   	1       	2026-10-10 10:58:48.618191139 +0000 UTC	deployed	puris-7.2.0                     	6.2.0      
