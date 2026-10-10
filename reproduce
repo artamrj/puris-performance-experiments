@@ -2396,9 +2396,9 @@ one_run() {  # configuration rep results-dir
   py collect "$run" "$name" "$(basename "$run")" "$t_apply" "$(commit)" "$TMPD" "$STATE/machine.json" "$(profile)" "$cfg" "$(cp_limit_of "$cfg")" >>"$LOGF" 2>&1 \
     || { py attempt "$run" collecting failed "collection failed – see reproduce.log"; marker_clear run; warn "collection failed – run invalid"; return 1; }
   mkdir -p "$run/db"; for n in $(db_names); do db_counts "$n" > "$run/db/$n.zeilen-nach-lauf.txt"; done
-  ( cd "$run" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
   valid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["validity"]["valid"])' "$run/meta.json")
   py attempt "$run" completed completed "valid=$valid"
+  ( cd "$run" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )   # last write of the run (found 2026-10-10)
   marker_clear run
   used1=$(df -P -BG /var/lib/rancher | awk 'NR==2 {gsub("G","",$3); print $3}'); echo $(( used1 > used0 ? used1 - used0 : 1 )) > "$STATE/last_run_used_gb"
   if [ "$valid" = True ]; then ok "run valid: $(basename "$run")"; else warn "run invalid: $(basename "$run") – $(python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["validity"]; print(", ".join(k for k,x in v.items() if k.endswith("_ok") and x is not True))' "$run/meta.json")"; return 1; fi

@@ -343,10 +343,12 @@ Noch offen:
 - [ ] Referenzdateien `reference/compact-k0.json` (nach `rep-5`–`rep-7`) und `reference/compact-k1.json` (nach K1-NAS) – neu 2026-10-08
 - [x] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08 – angelegt 2026-10-08
 - [ ] VM der Betreuung: `original-k0` und `original-k1` mit `reproduce` (je 3 gültige Läufe) – ab Di 20.10. – neu 2026-10-08
-- [ ] Nachbau-Test: NAS-VM nach K1-NAS zurücksetzen, `reproduce` mit `compact` (K0 + K1), Vergleich mit den Referenzen – bis Do 22.10. – neu 2026-10-08
+- [x] Nachbau-Test: NAS-VM nach K1-NAS zurücksetzen, `reproduce` mit `compact` (K0 + K1), Vergleich mit den Referenzen – bis Do 22.10. – neu 2026-10-08 – **erledigt 2026-10-10** mit je 1 Lauf (Entscheidung des Verfassers): K0 kippt bei 0,7/s (Haupt 0,6–0,7), K1 bei 1,5/s (Haupt 1,5–2,0), keine Erholung – Kriterium erfüllt (`LABORBUCH.md`, 10.10.); Erweiterung auf 3 Läufe offen
 - [x] Robustheit von `reproduce` entworfen: 12 Situationen mit festen Lösungen (`REPRODUCE.md` §22: Hintergrundjob, Sperre, Marker, Neustart, Watchdog, idempotente Testdaten, Speicherplatz, Log-Filter und Kapazitätsprobe, Registry-Limits, Steal-Time-Gate, Offline-Bundle, CI-geprüfter Stand) – 2026-10-08
 - [x] Überlagerungen `setup/b3-alloy/reproduce.yaml` (Log-Filter) und `setup/c{2,4}-*-edc/original-k1.yaml` (Preset `small`) – 2026-10-08
-- [ ] `reference/compact-k0.json` nach Übernahme von `rep-5` bis `rep-7` neu erzeugen (`./reproduce make-reference …`); `reference/compact-k1.json` nach K1-NAS – neu 2026-10-08 *(2026-10-08: erste Fassung aus `rep-2` bis `rep-4`)*
+- [ ] Nachbau-Läufe `2026-10-09_2210_compact-k0_rep-1` und `2026-10-10_0040_compact-k1_rep-1` committen (Verfasser), danach `SHA256SUMS` gegen den Commit prüfen – neu 2026-10-10 (Kopie und Prüfsummen geprüft, `LABORBUCH.md` 10.10.)
+- [x] Auswertung trennt Nachbau-Läufe (`tool = reproduce`) von der Hauptmessung; Ausgaben byte-gleich – 2026-10-10 (`analysis/evaluation_lib.py`, Test in `tests/test_evaluation.py`)
+- [ ] `reference/compact-k0.json` nach Übernahme von `rep-5` bis `rep-7` neu erzeugen (`./reproduce make-reference …`); `reference/compact-k1.json` nach K1-NAS – neu 2026-10-08 *(2026-10-08: erste Fassung aus `rep-2` bis `rep-4`)* *(2026-10-10: Nachbau zeigt K0 gegen die veraltete Referenz „reproduced“, K1 „no reference“ – Referenzen aus allen gültigen NAS-Läufen mit dem Durchsatzkriterium erzeugen)*
 - [ ] Veröffentlichung des Offline-Bundles entscheiden (Lizenzen der Images, Größe) – `REPRODUCE.md` §21, Punkt 7 – neu 2026-10-08
 
 ## 11 Etappe 3 – Vorstudie und Einfrieren
@@ -376,7 +378,7 @@ Noch offen:
 - [x] Grenzwert für Steal Time festgelegt (`node_cpu_seconds_total{mode="steal"}`, z. B. < 2 % der CPU-Zeit) – Läufe darüber sind ungültig – 2026-10-07: höchstes 1-min-Mittel < 5 % und Mittel < 2 % (Probelauf max. 1,1 %, Vorstudie 1 max. 2,3 % nur im gekippten Zustand)
 - [x] Sättigungskriterium operational festgelegt (abgeschlossene Transaktionen/s folgen der Eingangslast nicht mehr, Rückstau) – 2026-10-07 (Vorschlag, `KONZEPT.md` Abschnitt 6): < 95 % der Eingangslast abgeschlossen oder > 1 % gescheitert oder mindestens ein „Invalidating …“; in `analysis/stage_summary.py` als Kennzeichen `S`
 - [x] Skalierungskonfigurationen ausgewählt (aus dem Engpasskandidaten der Vorstudie), jeweils als zusätzliche YAML-Datei mit `-f` – K1-NAS 2026-10-08 (`setup/*/k1-nas.yaml`); K0-ISST/K1-ISST folgen auf der VM der Betreuung
-- [ ] Erfolgskriterium des Nachbau-Tests **vorher** festgelegt
+- [x] Erfolgskriterium des Nachbau-Tests **vorher** festgelegt – erledigt: `README.md`, Commit `9597dd0` (2026-10-09 15:54 UTC, vor dem Nachbau-Lauf ab 20:44 UTC)
 - [ ] Gesamtdauer der Hauptmessungen geschätzt (ca. 5 h je Konfiguration laut `ANLEITUNG.md`)
 - [ ] Alle Entscheidungen mit Begründung im Laborbuch
 - [x] Updates einmal eingespielt (Abschnitt 1) – entfällt (Entscheidung 2026-10-07, Abschnitt 1)
