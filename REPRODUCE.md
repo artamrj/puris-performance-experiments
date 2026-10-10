@@ -27,7 +27,7 @@ It provides the four pieces of evidence for reproducibility (`KONZEPT.md`, §8):
 |---|---|
 | Name | `reproduce` (single file in the repository root) |
 | Form | one file, downloaded on its own; it fetches everything else itself |
-| Code version | always the **latest `main`**; new code is pulled **only** in phase `fetch` (or at the start of a full run), never in the middle of measuring |
+| Code version | always the **latest `main`**; new code is pulled **only** in phase `fetch` (or at the start of a full run), never in the middle of measuring; while a measurement is unfinished, a full run keeps the code (since 2026-10-10, §9 phase 0) |
 | Long phases | always run as a background job that survives a lost SSH connection; the terminal only shows a live view (`watch`), `stop` ends it cleanly (§22.1) |
 | Offline bundle | `./reproduce bundle` stores all charts, images and tools of a working build; if a bundle is present, the script needs no internet (§22.11) |
 | Commit hash | always written into every result (`meta.json`, `summary.json`); it is the only record of which code produced a result |
@@ -122,6 +122,7 @@ Visual language: the terminal's own 16 colours (works on light and dark themes),
 - pods view (`p`, or `./reproduce dashboard --once pods`): grouped by the system boundary of the thesis (§4.2 of the thesis) – system under test per company (customer requests the stock, supplier provides it; within a company in data-flow order PURIS → EDC control plane → data plane → DTR, then storage), context (identity), measurement infrastructure (the observer), Kubernetes in one line; per component CPU and memory used against its container limit (USE method), restarts and age; components still starting show their reason and CPU share of the limit; `◀ busiest` marks the highest share of its limit in the system under test; usage (`kubectl top pods`, ≈ 0.04 s) only while the view is open and never in measurement-safe mode
 - terminal tab: title with phase and %, optional native progress; bell or desktop notification when the job ends (`settings notify`)
 - **measurement-safe mode** (observer effect): while a job is in phase `measure`, the view makes no `kubectl` calls, reads the state every 5 min instead of every 3 s, re-reads the log only when it changed and draws one frame per second; header badge `◆ measurement-safe`, `r` reads everything once. Measured on the NAS VM (60 s, 2026-10-09): 0.19 cores normal (without cluster; with cluster ≈ 0.3) → 0.013 cores measurement-safe. `watch` updates its estimate every 5 min during a measurement.
+- added 2026-10-10: when every phase is done, the steps panel shows the **result** (per configuration: comparison, valid runs, tipping stage with range, capacity, status if runs are missing, restarts after the warm-up) instead of an empty "next" box; the runs panel and `status` show `↻ n restarts` per configuration (restarts of the system under test after the warm-up – a result, the runs stay valid); after a reboot without a running job, `status` and the header say that the next command repairs it first
 - `--once` (or no terminal): one frame as text. An unknown `TERM` (e.g. `xterm-ghostty` on the server) falls back to `xterm-256color`; if the dashboard cannot start, `watch` is shown instead.
 
 ### Output style
@@ -289,6 +290,7 @@ otherwise                  → stop (exit 3): "needs X vCPU / Y GiB, this machin
 - Containers **without a limit** in the chart (in `original`: Vault ×2, PostgreSQL of PURIS ×2 and of the wallet) are counted with an assumed **0.1 CPU / 0.25 GiB** each (≈ twice the peak measured in K0); the assumption is printed.
 - `requests` are checked as well (must fit for the pods to start), but the decision uses `limits`: only if all limits fit at the same time does no container wait for another.
 - The calculation is written into `machine.json` (`fits`), printed and stored in every results folder.
+- **Required profile (since 2026-10-10):** `REPRODUCE_PROFILE=original` (or `compact`) requires that profile instead of choosing it; if it does not fit, the script stops (exit 3) instead of switching – so the supervisor's VM can never silently measure `compact`. The value is kept in `state/profile-wanted` (`auto` chooses again; `uninstall` clears it). With `REPRODUCE_SMOKE=1`, a required profile whose **requests** fit (requests + k3s pods + k6 runner + 1 CPU / 3 GiB reserve) is accepted for a functional test on a smaller machine (e.g. `original` on the 8-vCPU NAS VM: requests about 6.1 CPU / 17.8 GiB); `state/profile-short-only` then makes `measure` refuse real runs.
 
 Expected values (calculated 2026-10-08 from the pinned charts; the script recalculates them every time):
 
@@ -327,6 +329,7 @@ already correct? ── yes ──► ↷ skip
 
 - Missing `src/` → `git clone https://github.com/artamrj/puris-performance-experiments.git src`.
 - Present → refuse if `src/` has local changes (print them); otherwise `git -C src pull --ff-only origin main`.
+- **Unfinished measurement (since 2026-10-10):** if the current results folder (same mode) has runs but not yet all valid runs, a full run (`./reproduce`) keeps `src/` as it is (`↷ repository kept at …`). Reason: a new commit starts a new results folder (§6), so a resume after an interruption – e.g. a reboot – would measure every configuration again (up to 9 h per configuration of `original`). `./reproduce fetch` updates anyway.
 - Records the commit in `state/commit`.
 - Retry: yes (network).
 
@@ -359,7 +362,8 @@ already correct? ── yes ──► ↷ skip
 5. Copy the kubeconfig to `state/kubeconfig` (mode 600).
 6. Verify: node `Ready`; `allocatable` = capacity − 1 CPU; version `v1.37.1+k3s1`.
 7. Pull every image of the profile once, one after another (`k3s crictl pull`, needs `sudo`, therefore here and not in `deploy`), with back-off on rate limits (§22.9).
-- Already correct: marker present, version matches, node `Ready`; images already present are skipped.
+- Already correct: marker present **and naming this work folder**, version matches, API answers (after a reboot it waits up to 3 min for k3s); images already present are skipped. A cluster whose marker names another work folder is never taken over (exit 3).
+- The boot ID (§22.4) is written only for a new cluster; an existing one keeps the old ID, so that a reboot before the next `deploy` … `measure` is repaired (found 2026-10-10: `install` overwrote it, and a reboot was never detected by a full run).
 
 ### Phase 4 – `deploy`
 
@@ -526,7 +530,7 @@ Acceptance check for the implementation: the file list and the `meta.json` keys 
 
 **Criterion (fixed before measuring):** reproduced if the **median tipping stage** of the new runs lies within **[lowest tipping stage of the reference − 1 stage, highest tipping stage of the reference + 1 stage]** on the stage grid of the plan. Example `compact-k0`: reference 0.6–0.7/s → accepted range 0.5–0.8/s; `compact-k1`: reference 1.5–2.0/s → accepted range 1.0–2.5/s. The tipping stage uses the criterion of the thesis (`throughput`: fewer than 95 % of the planned transactions completed); the readings `relaxed` and `strict` stay in `summary.json`.
 
-**Output** in `verdict.md`: per configuration tipping stage (median, range), capacity, metric, recovery, comparison (`reproduced ✓` / `not reproduced ✗` / `no reference`), machine and CPU speed of both sides, number of invalid runs and repairs.
+**Output** in `verdict.md`: per configuration tipping stage (median, range), capacity, metric, recovery, restarts of the system under test after the warm-up per valid run, comparison (`reproduced ✓` / `not reproduced ✗` / `no reference`), machine and CPU speed of both sides, number of invalid runs and repairs. A configuration with too few valid runs gets a line with its status (`machine too busy (steal time)` or `failed – n of N valid runs`) and the reasons of its invalid runs; `summary.json` has `status`, `invalid_runs`, `target_valid_runs` and per run `sut_restarts_after_warmup` (since 2026-10-10). A valid run with restarts after the warm-up is also named in the log (`! system under test restarted after the warm-up: customer edc-controlplane 5×, …`).
 
 ---
 
@@ -565,7 +569,8 @@ Situations analysed:
 Decision:
 - `./reproduce uninstall` works only if the marker is present; otherwise it stops.
 - Asks for confirmation (type `uninstall`); `--yes` for scripted use.
-- Runs `/usr/local/bin/k3s-uninstall.sh` (removes k3s, containers, volumes), restores the settings saved in `state/system-before.json`, removes the marker.
+- Asks for the sudo password with a one-line reason. Runs `/usr/local/bin/k3s-uninstall.sh` (removes k3s, containers, volumes), restores the settings saved in `state/system-before.json`, removes the marker. Only the work folder named in the marker can uninstall (exit 3 otherwise).
+- `/etc/fstab` (since 2026-10-10): restored from `/etc/fstab.reproduce-bak` only if it differs from it in nothing but the swap lines `install` commented out; then the backup is removed, so a later `install` saves the then current file (before: the backup stayed, a second `install` skipped commenting, and swap came back after a reboot). Changed by someone else → left as it is, with a warning and the backup kept. `system-before.json` is renamed to `system-before.restored-<time>.json`.
 - Keeps `src/`, `tools/` and `results/` (results are never deleted by the script; removing the work folder is the user's decision). The database state of the removed cluster is kept as `state/s0.uninstalled-<time>`: a new cluster has a new wallet and new DTRs, so the next `prepare` creates a new S0 (found on 2026-10-09: reusing the old S0 would make `verify` fail).
 - Calling it again when nothing is left reports `↷ nothing to remove` (exit code 0); a k3s not installed by this script is never touched (exit code 3).
 
@@ -668,10 +673,12 @@ Write-ahead markers in `state/markers/`:
 
 ### 22.4 Reboot of the machine
 
-- `verify` stores the kernel boot ID (`/proc/sys/kernel/random/boot_id`). A different boot ID on the next call means "reboot happened"; the reboot repair runs before anything else:
-  1. wait until the node is `Ready` and all pods are running (DTRs may take up to 35 min);
-  2. wallet: its database is in memory and lost after a restart → stop the wallet, restore its database from S0, start it, compare row counts;
-  3. full reset (§10.2), then `verify`.
+- `verify` stores the kernel boot ID (`/proc/sys/kernel/random/boot_id`). A different boot ID on the next call means "reboot happened"; the reboot repair runs before anything else (order changed 2026-10-10):
+  1. wait until the Kubernetes API answers and the node is `Ready`; stop a load test of the interrupted run;
+  2. wait for monitoring, logs, identity and the k6 operator – **not** for EDC and PURIS: started at the same time after a reboot, an EDC control plane can stay not ready for good (`LABORBUCH.md`, 2026-10-07); waiting for it would never end, and every new call would wait again;
+  3. stop PURIS and EDC, then wait for the databases, vaults and DTRs (DTRs may take up to 35 min);
+  4. wallet: if its rows differ from S0 → stop the wallet, restore its database from S0, start it, compare row counts;
+  5. full reset (§10.2: restore, clear the data plane registration, ordered start) – before S0 exists only the ordered start without registration – then `verify`.
 - The run interrupted by the reboot is closed as invalid (§22.3) and gets a replacement run.
 - After the reboot the user runs `./reproduce` again; it resumes. (No automatic start at boot: it would surprise a person doing maintenance on the machine.)
 
@@ -712,11 +719,13 @@ Cause: Alloy collects the logs of every pod, including the EDC logs at the chart
 - `check` measures steal time for 60 s and warns (§9, phase 2).
 - Noise gate before every run: steal time over the last 2 min below 1 %; otherwise wait and check again every 2 min, up to 60 min; then start anyway. This prevents runs that would be invalid from the first minute and saves replacement runs.
 - The validity thresholds of §11.1 stay unchanged on every machine.
-- Replacement runs used up because of steal time → the configuration is reported as "machine too busy", not as a failure of PURIS.
+- Replacement runs used up because of steal time → the configuration is reported as "machine too busy", not as a failure of PURIS (in the log, `summary.json` → `status`, and `verdict.md`; implemented 2026-10-10).
 
 ### 22.11 External sources disappear
 
 - `./reproduce bundle` writes `bundle/`: all Helm charts as `.tgz`, all images (with digests) as image archive, the k3s binary and install script, helm and kubectl.
+- Images (fixed 2026-10-10): exported by the names containerd stores (`docker.io/…`, `docker.io/library/…`; a digest instead of tag + digest), checked against `k3s ctr images ls` first (missing ones are named), with `--platform linux/amd64`; the k6 runner and starter images are included (they are in no chart). Before: short names, which `ctr` does not find, and no k6 images.
+- Reason to keep a bundle for the supervisor's VM: the EDC and DTR databases come from `docker.io/bitnamilegacy/postgresql`, which Bitnami no longer updates and describes as a temporary migration aid.
 - If `bundle/` exists next to the script, every phase uses it instead of the internet; k3s imports the images from its air-gap folder (`/var/lib/rancher/k3s/agent/images/`) at start.
 - Every results folder records the image digests (`cluster/images.txt`) in any case.
 - Publishing the bundle: ❓ (§21, item 7).
@@ -759,3 +768,5 @@ Originally not yet run on a cluster (first run planned on the supervisor's VM, �
 Reference files (rebuilt 2026-10-10 with the criterion of the thesis, including the complete logs from `nachtrag/`): `reference/compact-k0.json` from the 6 valid K0 runs, `reference/compact-k1.json` from the 4 valid K1 runs; tipping points per run identical to `analysis/out/tables/runs.csv`. Command: `./reproduce make-reference <configuration> "<source>" runs/<run>… > reference/<configuration>.json`.
 
 **Update 2026-10-10 – rebuild test with the real plan** (NAS VM emptied with `uninstall`, `REPRODUCE_REPS=1 ./reproduce`, 2026-10-09 20:44 → 2026-10-10 03:28 UTC; `LABORBUCH.md`): all ten phases ran without intervention; both runs valid; tipping points K0 0.7/s and K1 1.5/s – within the range of the main measurement, **reproduced** by the criterion fixed in advance (`README.md`, section *Rebuild test*). Found and fixed: `SHA256SUMS` of a run was written one second before the last entry in `attempt.json`/`events.jsonl` (now the last write of a run). **Still not run:** reboot repair (§22.4), bundle (§22.11), the profile `original` (second environment).
+
+**Update 2026-10-10 – review for the supervisor's VM** (`LABORBUCH.md`): fixed – reboot repair waited for EDC/PURIS before the reset that repairs them (§22.4); `install` overwrote the boot ID, so a full run never detected a reboot (§9 phase 3); a resume after a push to `main` started a new results folder (§9 phase 0); `status` and `status --json` ended silently before the first `check`; bundle images by short names and without k6 (§22.11); `uninstall` kept the fstab backup (§16); owner marker not tied to its work folder; old job copies left in `state/`. New: `REPRODUCE_PROFILE` (§8), "machine too busy" and restarts in `summary.json`/`verdict.md` (§13), result panel and reboot hint (§4.2). Tests: `tests/test_reproduce_static.py` 33/33 on the NAS VM (new classes `Images`, `Results`, `Robustness`).

@@ -82,6 +82,9 @@ TEST_API_KEY="reproduce-test-only-puris-api-key"
 TEST_DB_PASSWORD="reproduce-test-only-db"
 REPS="${REPRODUCE_REPS:-3}"           # valid runs per configuration
 MAX_REPLACEMENTS=2
+# load generator images (in no chart: the TestRun is created per run) – pulled in install, part of a bundle
+K6_IMAGE="grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6"
+K6_STARTER_IMAGE="ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────────
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -93,6 +96,7 @@ OWNER=/etc/rancher/reproduce-owner  # outside /etc/rancher/k3s, which k3s create
 # file) stops the script at once with "readonly variable" instead of silently using a wrong path
 readonly SCRIPT WORK SRC TOOLS STATE RESULTS BUNDLE LOGF MARKERS OWNER
 readonly REPO_URL K3S_VERSION HELM_VERSION KUBECTL_VERSION PURIS_GIT PURIS_TAG TX_REPO GF_REPO RELEASES TEST_API_KEY TEST_DB_PASSWORD REPS MAX_REPLACEMENTS
+readonly K6_IMAGE K6_STARTER_IMAGE
 export KUBECONFIG="$STATE/kubeconfig"
 export HELM_CACHE_HOME="$STATE/helm/cache" HELM_CONFIG_HOME="$STATE/helm/config" HELM_DATA_HOME="$STATE/helm/data"
 export PATH="$TOOLS:$PATH"
@@ -848,6 +852,40 @@ def judge_run(meta):
                      "recovered": (not sat(rec)) if rec else None}
     return out
 CP_DEFAULT = {"compact-k0": 0.5, "compact-k1": 1.0, "original-k0": 1.5, "original-k1": 1.5}
+def sut_restarts(meta):   # → {"customer edc-controlplane": 5, …}: restarts of the system under test after the warm-up (a result, run stays valid)
+    out = {}
+    for key, e in ((meta.get("validity") or {}).get("sut_restarts_after_warmup") or {}).items():
+        ns, pod = (key.split("/") + ["", ""])[:2]
+        name = "%s %s" % (ns, re.sub(r"-[a-z0-9]{8,10}-[a-z0-9]{5}$|-\d+$", "", pod))
+        out[name] = out.get(name, 0) + int((e or {}).get("count", 0))
+    return out
+def cmd_restarts(meta_path):
+    print(", ".join("%s %d×" % kv for kv in sorted(sut_restarts(rjson(meta_path)).items())))
+def run_dirs(folder, cfg):
+    return sorted(os.path.join(folder, d) for d in os.listdir(folder) if "_%s_rep-" % cfg in d and os.path.isdir(os.path.join(folder, d)))
+def invalid_reason(run):   # → None for a valid run, otherwise the failed checks or the reason of the attempt
+    p = os.path.join(run, "meta.json")
+    if os.path.isfile(p):
+        v = rjson(p).get("validity") or {}
+        if v.get("valid"): return None
+        return ", ".join(k[:-3] for k, x in v.items() if k.endswith("_ok") and x is not True) or "invalid"
+    a = os.path.join(run, "attempt.json")
+    return (rjson(a).get("reason") or "not finished") if os.path.isfile(a) else "not finished"
+def config_status(folder, cfg, target):   # → status text, reasons of the invalid runs
+    runs = run_dirs(folder, cfg); reasons = [r for r in (invalid_reason(d) for d in runs) if r]
+    valid = len(runs) - len(reasons)
+    if valid >= target: return "complete", reasons
+    if reasons and all(r == "steal" for r in reasons): return "machine too busy (steal time)", reasons
+    return "failed – %d of %d valid runs" % (valid, target), reasons
+def cmd_config_status(folder, cfg, target): print(config_status(folder, cfg, int(target))[0])
+def cmd_run_restarts(folder, cfg):   # restarts after the warm-up summed over the valid runs of one configuration
+    n = 0
+    for d in run_dirs(folder, cfg):
+        p = os.path.join(d, "meta.json")
+        if os.path.isfile(p):
+            m = rjson(p)
+            if (m.get("validity") or {}).get("valid"): n += sum(sut_restarts(m).values())
+    print(n)
 def summarize(cfg, metas):
     valid = [m for m in metas if m.get("validity", {}).get("valid")]
     grid = [s["rate_per_s"] for s in (valid or metas or [{"stages": []}])[0]["stages"] if not s["stage"].startswith("warmup") and s["stage"] != "recovery"]
@@ -855,7 +893,8 @@ def summarize(cfg, metas):
     for m in valid:
         j = judge_run(m); cp = m.get("edc_controlplane_customer_cpu_limit") or CP_DEFAULT.get(cfg)
         res["runs"].append({"run": m["run"], "machine": (m.get("machine") or {}).get("cpu_model") or (m.get("node") or {}).get("cpu_model"), **j,
-                            "tx_per_s_per_core": round(j["throughput"]["capacity_rate"] / cp, 3) if cp and j["throughput"]["capacity_rate"] else None})
+                            "tx_per_s_per_core": round(j["throughput"]["capacity_rate"] / cp, 3) if cp and j["throughput"]["capacity_rate"] else None,
+                            "sut_restarts_after_warmup": sum(sut_restarts(m).values())})
     for mode, _ in MODES:
         rates = [r[mode]["tipping_rate"] for r in res["runs"]]
         num = [r if r is not None else math.inf for r in rates]
@@ -889,9 +928,13 @@ def cmd_evaluate(folder, refdir):
     if mach: lines += ["Machine: %s · %s vCPU · %s GiB · single-core score %s" % (mach.get("cpu_model"), mach.get("vcpu"), mach.get("mem_total_gib"), mach.get("cpu_single_core_score")), ""]
     if any(m.get("kind") == "smoke" for m in metas):
         lines += ["> **Short test (2-min stages):** checks that the pipeline works. The numbers are not comparable with the reference or the thesis – with short stages no backlog builds up in time.", ""]
-    lines += ["| Configuration | valid runs | tipping stage (median, range) | capacity | tx/s per core | recovery | comparison |", "|---|---|---|---|---|---|---|"]
+    try: target = int(open(os.path.join(folder, ".reps")).read().strip())
+    except (OSError, ValueError): target = 3
+    lines += ["| Configuration | valid runs | tipping stage (median, range) | capacity | tx/s per core | recovery | restarts after warm-up | comparison |", "|---|---|---|---|---|---|---|---|"]
+    notes = []
     for cfg in cfgs:
         s = summarize(cfg, [m for m in metas if m.get("configuration") == cfg])
+        s["status"], s["invalid_runs"] = config_status(folder, cfg, target); s["target_valid_runs"] = target
         rp = os.path.join(refdir, cfg + ".json"); ref = rjson(rp) if os.path.exists(rp) else None
         s["comparison"] = compare(s, ref); s["comparison_relaxed"] = compare(s, ref, "relaxed"); s["comparison_strict"] = compare(s, ref, "strict")
         if any(m.get("kind") == "smoke" for m in metas if m.get("configuration") == cfg):   # 2-min stages: no backlog builds up in time
@@ -900,12 +943,17 @@ def cmd_evaluate(folder, refdir):
         caps = [r["throughput"]["capacity_rate"] for r in s["runs"] if r["throughput"]["capacity_rate"]]
         tps = [r["tx_per_s_per_core"] for r in s["runs"] if r["tx_per_s_per_core"]]
         rec = st["recovered"]
-        lines.append("| %s | %d of %d | %s (%s – %s) | %s | %s | %s | %s |" % (cfg, s["runs_valid"], s["runs_total"], fmt(st["tipping_median"]), fmt(st["tipping_min"]), fmt(st["tipping_max"]),
+        lines.append("| %s | %d of %d | %s (%s – %s) | %s | %s | %s | %s | %s |" % (cfg, s["runs_valid"], s["runs_total"], fmt(st["tipping_median"]), fmt(st["tipping_min"]), fmt(st["tipping_max"]),
                      fmt(statistics.median(caps)) if caps else "–", ("%.2f" % statistics.median(tps)) if tps else "–",
-                     "%d of %d" % (sum(1 for x in rec if x), len(rec)) if rec else "–", s["comparison"]["verdict"]))
+                     "%d of %d" % (sum(1 for x in rec if x), len(rec)) if rec else "–",
+                     ", ".join(str(r["sut_restarts_after_warmup"]) for r in s["runs"]) or "–", s["comparison"]["verdict"]))
+        if s["status"] != "complete" or s["invalid_runs"]:
+            notes.append("- `%s`: %s%s" % (cfg, s["status"], " · invalid runs: " + "; ".join(s["invalid_runs"]) if s["invalid_runs"] else ""))
+    if notes: lines += [""] + notes
     lines += ["", "Saturation criterion (as in the thesis): a stage is saturated when fewer than 95 % of its planned transactions are completed;",
               "the tipping stage is the first saturated stage after the warm-up. Further readings in summary.json: `relaxed` (or > 1 % failed),",
-              "`strict` (or ≥ 1 \"Invalidating …\"). References: reference/<configuration>.json (main measurement on the NAS)."]
+              "`strict` (or ≥ 1 \"Invalidating …\"). References: reference/<configuration>.json (main measurement on the NAS).",
+              "Restarts after warm-up: containers of the system under test restarted after the warm-up, per valid run – a result, the run stays valid."]
     wjson(os.path.join(folder, "summary.json"), summary)
     open(os.path.join(folder, "verdict.md"), "w").write("\n".join(lines) + "\n")
     print("\n".join(lines))
@@ -921,6 +969,25 @@ def cmd_make_reference(cfg, source, *runs):
     s = summarize(cfg, metas); s["source"] = source
     s["criterion"] = "reproduced if the median tipping stage of new runs lies within [lowest − 1 stage, highest + 1 stage] of this reference (REPRODUCE.md §13)"
     print(json.dumps(s, indent=1))
+
+# ---------- images for the offline bundle (REPRODUCE.md §22.11) ----------
+def full_ref(r):   # reference as containerd stores it: registry and library/ added; next to a digest, the tag is dropped (CRI pull)
+    name, _, digest = r.strip().partition("@")
+    first = name.split("/")[0]
+    if "/" not in name: name = "docker.io/library/" + name
+    elif not ("." in first or ":" in first or first == "localhost"): name = "docker.io/" + name
+    parts = name.split("/")
+    if parts[0] == "docker.io" and len(parts) == 2: name = "docker.io/library/" + parts[1]
+    if digest:
+        if ":" in name.rsplit("/", 1)[-1]: name = name[:name.rindex(":")]
+        return name + "@" + digest
+    return name if ":" in name.rsplit("/", 1)[-1] else name + ":latest"
+def cmd_export_list(have_file):   # wanted references on stdin → the stored names to export; "MISSING <reference>" for the others
+    have = {l.strip() for l in open(have_file) if l.strip()}
+    for r in (l.strip() for l in sys.stdin if l.strip()):
+        f = full_ref(r); dg = r.partition("@")[2]
+        alt = sorted(h for h in have if dg and h.endswith("@" + dg))
+        print(f if f in have else (alt[0] if alt else "MISSING " + r))
 
 def cmd_dashboard(script, logf, once=""):
     # full-screen live view (curses, standard library); design: REPRODUCE.md §4.1
@@ -1132,6 +1199,24 @@ def cmd_dashboard(script, logf, once=""):
             end = hs[i + 1][1] if i + 1 < len(hs) else (now if n == running else last)
             out[n] = (max(0, end - e), not (i + 1 == len(hs) and n == running))
         return out
+    def result_rows(sn):   # the result of the finished experiment, one line per configuration (summary.json of evaluate)
+        try: s = rjson(os.path.join(sn.get("results") or "", "summary.json"))
+        except (OSError, ValueError): return []
+        out = []
+        for cfg, v in sorted((s.get("configurations") or {}).items()):
+            mode = "throughput" if "throughput" in v else "strict"   # summary.json of an evaluation before 2026-10-10
+            t = v.get(mode) or {}; verdict = (v.get("comparison") or {}).get("verdict", "–")
+            caps = [r[mode]["capacity_rate"] for r in v.get("runs") or [] if (r.get(mode) or {}).get("capacity_rate")]
+            sym, sty = ("✓", "ok") if verdict == "reproduced" else (("✗", "err") if verdict == "not reproduced" else ("·", ""))
+            rng = lambda a: "–" if a is None else ("not saturated" if a == math.inf else "%g" % a)
+            out.append(("%s %-12s %s · %d of %d valid runs" % (sym, cfg, verdict, v.get("runs_valid", 0), v.get("runs_total", 0)), sty))
+            out.append(("  tipping stage %s (range %s–%s) · capacity %s" % (fmt(t.get("tipping_median")), rng(t.get("tipping_min")), rng(t.get("tipping_max")),
+                        fmt(statistics.median(caps)) if caps else "–"), ""))
+            if v.get("status") and v["status"] != "complete": out.append(("  ! %s" % v["status"], "warn"))
+            rs = sum(r.get("sut_restarts_after_warmup") or 0 for r in v.get("runs") or [])
+            if rs: out.append(("  ↻ %d restart%s of the system under test after the warm-up – recorded, runs stay valid" % (rs, "" if rs == 1 else "s"), "warn"))
+        if out: out += [("", ""), ("details: %s/verdict.md" % os.path.basename(sn.get("results") or ""), "d")]
+        return out
     def since_header(lines, name):   # the lines of the last run of a phase
         for i in range(len(lines) - 1, -1, -1):
             sym, t = body(lines[i])
@@ -1157,10 +1242,14 @@ def cmd_dashboard(script, logf, once=""):
             box(c, y, x, h, w, "Steps"); c.put(y + 1, x + 2, SPIN[k % 10] + " reading the state …", "acc"); return
         if not job:
             nxt = next((p_ for p_ in sn.get("phases") or [] if p_["state"] == "open"), None)
-            box(c, y, x, h, w, "Next")
+            res = [] if nxt else result_rows(sn)
+            box(c, y, x, h, w, "Result" if res else "Next", "verdict.md" if res else "")
             if nxt:
                 c.put(y + 1, x + 2, cut("./reproduce %s" % nxt["name"], w - 4), "acc b")
                 c.put(y + 2, x + 2, cut(nxt["purpose"], w - 4), "d"); c.put(y + 3, x + 2, cut("usually " + nxt["usual"], w - 4), "d")
+                if sn.get("rebooted") == "1": c.put(y + 5, x + 2, cut("! the machine restarted – this command repairs it first", w - 4), "warn")
+            elif res:
+                for i, (t, sty) in enumerate(res[:h - 2]): c.put(y + 1 + i, x + 2, cut(t, w - 4), sty)
             else: c.put(y + 1, x + 2, "✓ all phases done", "ok")
             return
         if ph == "deploy":
@@ -1272,7 +1361,9 @@ def cmd_dashboard(script, logf, once=""):
             for j in range(max(target, r["valid"] + run)):
                 g, sty = ("■", "ok") if j < r["valid"] else (("◐", "acc") if j < r["valid"] + run else ("□", "d")); xx = c.put(yy, xx, g, sty)
             for j in range(r["invalid"]): xx = c.put(yy, xx, "✗", "err")
-            c.put(yy, xx + 2, cut("%d of %d%s%s" % (r["valid"], target, " · running" if run else "", " · %d invalid" % r["invalid"] if r["invalid"] else ""), w - (xx - x) - 4), "d")
+            xx = c.put(yy, xx + 2, cut("%d of %d%s%s" % (r["valid"], target, " · running" if run else "", " · %d invalid" % r["invalid"] if r["invalid"] else ""), w - (xx - x) - 4), "d")
+            rs = (sn.get("restarts") or {}).get(cf, 0)   # restarts after the warm-up: a result, shown so that it is not overlooked
+            if rs and xx < x + w - 6: c.put(yy, xx, cut(" · ↻ %d restart%s" % (rs, "" if rs == 1 else "s"), x + w - 2 - xx), "warn")
         if sn.get("results") and h >= len(cfgs) + 4:
             c.put(y + h - 2, x + 2, cut("folder %s · %s" % (os.path.basename(sn["results"]), "short test" if sn.get("mode") == "short" else "real runs"), w - 4), "d")
     NOISE = re.compile(r"installing |installed \(|waiting until |still waiting|^drain: |^load stage |^reset: |waiting for the first stage|^estimate: |^background job started")
@@ -1302,7 +1393,8 @@ def cmd_dashboard(script, logf, once=""):
 
         else:
             nxt = next((p_ for p_ in phases if p_["state"] == "open"), None)
-            c.put(2, 2, "○", "d"); c.put(2, 4, "no job running", "b")
+            c.put(2, 2, "○", "d"); xx = c.put(2, 4, "no job running", "b")
+            if sn.get("rebooted") == "1": c.put(2, xx + 2, cut("! the machine restarted – the next command repairs it first", w - xx - 6), "warn")
             if nxt: xx = c.put(3, 4, "→ next: ./reproduce %s" % nxt["name"], "b"); c.put(3, xx + 2, cut("%s · usually %s" % (nxt["purpose"], nxt["usual"]), w - xx - 4), "d")
             elif phases: c.put(3, 4, "✓ all phases done", "ok")
         est = sn.get("estimate") or {}
@@ -1578,6 +1670,7 @@ def cmd_snapshot():
             d.setdefault("plans", {})[f[1]] = {"labels": v.get("STAGE_LABELS", "").split(","), "rates": v.get("RATES", "").split(","),
                                                "minutes": int(v.get("STAGE_DURATION") or 10)}
         elif k == "reps": d[k] = int(f[1] or 0)
+        elif k == "restarts": d.setdefault("restarts", {})[f[1]] = int(f[2] or 0)
         else: d[k] = f[1] if len(f) > 1 else ""
     print(json.dumps(d, indent=1, ensure_ascii=False))
 
@@ -1611,6 +1704,8 @@ lock() {
     exit 1
   fi
   LOCKED=1
+  local f   # copies of earlier background jobs (killed jobs never remove theirs); no job runs while we hold the lock
+  for f in "$STATE"/job-script.*; do if [ -e "$f" ] && [ "$f" != "$SCRIPT" ]; then rm -f "$f"; fi; done
   printf 'pid=%s command=%s phase=%s started=%s since=%s mode=%s reps=%s\n' "$$" "${CMD:-}" "start" "$(now_iso)" "$(date +%s)" \
     "$( [ "${REPRODUCE_SMOKE:-0}" = 1 ] && echo short || echo full)" "$REPS" > "$STATE/job"
   [ "$BG" != 1 ] || info "background job started (PID $$)"
@@ -1660,7 +1755,7 @@ detach() {  # command... → continues as a background job and shows its progres
 }
 
 # ── Common helpers ────────────────────────────────────────────────────────────────
-profile() { cat "$STATE/profile" 2>/dev/null; }
+profile() { cat "$STATE/profile" 2>/dev/null || true; }   # empty before check (never a failure: p=$(profile) would end the script under set -e)
 configs_of() {  # profile → its configurations; REPRODUCE_CONFIGS (kept in state/configs) selects a subset, e.g. original-k1
   local v="CONFIGS_$1" all sel c out=""
   all="${!v:-}"; sel="${REPRODUCE_CONFIGS:-$(cat "$STATE/configs" 2>/dev/null || true)}"
@@ -1669,12 +1764,24 @@ configs_of() {  # profile → its configurations; REPRODUCE_CONFIGS (kept in sta
 }
 commit() { git -C "$SRC" rev-parse HEAD 2>/dev/null; }
 k() { kubectl --request-timeout=30s "$@"; }
+# the owner marker names the work folder that installed k3s: a second work folder on the same machine never takes over its cluster
+owner_folder() { sed -n 's/.*, work folder \(.*\)$/\1/p' "$OWNER" 2>/dev/null; }
+own_cluster() { [ -f "$OWNER" ] || return 1; local f; f=$(owner_folder); [ -z "$f" ] || [ "$f" = "$WORK" ]; }   # older markers without a folder count as own
+foreign_owner() { [ -f "$OWNER" ] && ! own_cluster; }
+wait_api() {  # → 0 as soon as the Kubernetes API answers; after a reboot k3s needs about a minute
+  k get nodes >/dev/null 2>&1 && return 0
+  step "waiting for the Kubernetes API (k3s needs about a minute after a start)"
+  local i; for i in $(seq 1 36); do sleep 5; k get nodes >/dev/null 2>&1 && return 0; done
+  return 1
+}
+rebooted() { [ -f "$STATE/boot_id" ] && own_cluster && [ "$(cat /proc/sys/kernel/random/boot_id)" != "$(cat "$STATE/boot_id")" ]; }
 release_line() { echo "$RELEASES" | awk -v b="$1" '$1 == b'; }
 chart_ref() {  # block → local chart archive
   local b="$1" _r _n chart _repo ver _s
   read -r _ _r _n chart _repo ver _s <<<"$(release_line "$b")"
   case "$chart" in PURIS) echo "$STATE/charts/puris-$ver.tgz" ;; *) echo "$STATE/charts/$(basename "$chart")-$ver.tgz" ;; esac
 }
+all_images() { py images "$STATE/render"/"$(profile)"-k*/*.yaml; printf '%s\n' "$K6_IMAGE" "$K6_STARTER_IMAGE"; }   # every image of the profile
 cp_limit_of() { case "$1" in compact-k0) echo 0.5 ;; compact-k1) echo 1.0 ;; *) echo 1.5 ;; esac; }
 plan_of() { case "$1" in compact-k0) echo k0 ;; compact-k1) echo k1 ;; *) echo "$1" ;; esac; }
 
@@ -1865,7 +1972,11 @@ phase_fetch() {
   set_phase fetch
   if [ -e "$SRC/.git" ]; then
     [ -z "$(git -C "$SRC" status --porcelain)" ] || die "src/ has local changes – not touched:"$'\n'"$(git -C "$SRC" status --short)"
-    if q git -C "$SRC" pull --ff-only origin main; then ok "repository updated: $(commit | cut -c1-7)"
+    # an unfinished measurement keeps its code: a new commit would start a new results folder and measure everything again
+    if [ "${CMD:-all}" != fetch ] && measurement_open; then
+      skip "repository kept at $(commit | cut -c1-7): the measurement in $(rel "$(cat "$STATE/results-current")") is not finished – all its runs use the same code"
+      info "to update anyway: ./reproduce fetch (later runs then go into a new results folder)"
+    elif q git -C "$SRC" pull --ff-only origin main; then ok "repository updated: $(commit | cut -c1-7)"
     elif [ -f "$BUNDLE/src.bundle" ]; then warn "no network – using src/ as it is ($(commit | cut -c1-7))"
     else die "git pull failed (network?)"; fi
   else
@@ -1924,7 +2035,16 @@ phase_tools() {
 phase_check() {
   set_phase check
   [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] || need_fail "tools missing" "./reproduce tools"
-  local c host steal cfg fp need_cpu need_mem vcpu mem prof="" b line
+  local c host steal cfg fp need_cpu need_mem req_cpu req_mem vcpu mem prof="" b line fits="" startable="" want
+  # REPRODUCE_PROFILE=original|compact requires a profile instead of choosing it (kept in state/profile-wanted; auto: choose again)
+  if [ -n "${REPRODUCE_PROFILE:-}" ]; then
+    case "$REPRODUCE_PROFILE" in
+      original|compact) echo "$REPRODUCE_PROFILE" > "$STATE/profile-wanted" ;;
+      auto) rm -f "$STATE/profile-wanted" ;;
+      *) die "REPRODUCE_PROFILE must be original, compact or auto – is: $REPRODUCE_PROFILE" 2 ;;
+    esac
+  fi
+  want=$(cat "$STATE/profile-wanted" 2>/dev/null || true)
   step "checking requirements (Ubuntu, amd64, programs, sudo, internet, no other Kubernetes)"
   [ "$(uname -m)" = x86_64 ] || die "architecture $(uname -m) – amd64 (x86_64) required" 3
   grep -qi ubuntu /etc/os-release || die "Ubuntu required" 3
@@ -1935,6 +2055,7 @@ phase_check() {
     curl -s -o /dev/null --max-time 10 "https://$host" || { [ -d "$BUNDLE" ] && warn "$host not reachable (bundle present)" || die "$host not reachable – internet access required" 3; }
   done
   if [ -x /usr/local/bin/k3s ] && [ ! -f $OWNER ]; then die "a k3s installation not created by this script exists – not touched" 3; fi
+  if foreign_owner; then die "the k3s on this machine belongs to the work folder $(owner_folder) – use ./reproduce there, or run ./reproduce uninstall there first" 3; fi
   if pgrep -x kubelet >/dev/null || pgrep -f 'microk8s|minikube|kind-control-plane' >/dev/null; then die "another Kubernetes is running on this machine" 3; fi
   if ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ':6443$' && [ ! -f $OWNER ]; then die "port 6443 is in use by another program" 3; fi
   ok "requirements met"
@@ -1948,7 +2069,7 @@ phase_check() {
   # calculator (REPRODUCE.md §8)
   step "calculating the resources each profile needs"
   for p in original compact; do
-    need_cpu=0; need_mem=0
+    need_cpu=0; need_mem=0; req_cpu=0; req_mem=0
     for cfg in $(configs_of "$p"); do
       mkdir -p "$STATE/render/$cfg"
       while read -r line; do b=${line%% *}; render "$b" "$cfg" "$STATE/render/$cfg/$b.yaml" || die "rendering $b ($cfg) failed – see log"; done <<<"$RELEASES"
@@ -1956,16 +2077,30 @@ phase_check() {
       echo "$fp" > "$STATE/render/$cfg/footprint.json"
       need_cpu=$(python3 -c "import json,sys; f=json.loads(sys.argv[1]); print(max(float(sys.argv[2]), f['limits_cpu'] + 1))" "$fp" "$need_cpu")
       need_mem=$(python3 -c "import json,sys; f=json.loads(sys.argv[1]); print(max(float(sys.argv[2]), f['limits_mem_gib'] + 3))" "$fp" "$need_mem")
+      # requests decide whether the pods can start at all: + k3s pods 0.2 CPU / 0.25 GiB and the k6 runner 0.5 / 0.5, + the reserve
+      req_cpu=$(python3 -c "import json,sys; f=json.loads(sys.argv[1]); print(max(float(sys.argv[2]), f['requests_cpu'] + 0.7 + 1))" "$fp" "$req_cpu")
+      req_mem=$(python3 -c "import json,sys; f=json.loads(sys.argv[1]); print(max(float(sys.argv[2]), f['requests_mem_gib'] + 0.75 + 3))" "$fp" "$req_mem")
     done
     if python3 -c "import sys; sys.exit(0 if $need_cpu <= $vcpu and $need_mem <= $mem else 1)"; then
       ok "profile $p fits: needs $(printf %.1f "$need_cpu") vCPU / $(printf %.1f "$need_mem") GiB (incl. reserve)"
-      [ -n "$prof" ] || prof=$p
+      fits="$fits $p"; [ -n "$prof" ] || prof=$p
     else
       say "·" "profile $p does not fit: needs $(printf %.1f "$need_cpu") vCPU / $(printf %.1f "$need_mem") GiB, machine has $vcpu / $mem"
     fi
+    if python3 -c "import sys; sys.exit(0 if $req_cpu <= $vcpu and $req_mem <= $mem else 1)"; then startable="$startable $p"; fi
   done
+  rm -f "$STATE/profile-short-only"
+  if [ -n "$want" ]; then   # a required profile never switches silently
+    if [[ " $fits " == *" $want "* ]]; then prof=$want; info "profile $want required (REPRODUCE_PROFILE) – it fits"
+    elif [ "${REPRODUCE_SMOKE:-0}" = 1 ] && [[ " $startable " == *" $want "* ]]; then
+      prof=$want; touch "$STATE/profile-short-only"   # measure refuses real runs with it
+      warn "profile $want required, but only its requests fit this machine – short test only: it checks that every step works; the CPU limits exceed this machine, so the numbers are not comparable"
+    else
+      die "profile $want required (REPRODUCE_PROFILE=$want), but this machine is too small for it – see above$([ "${REPRODUCE_SMOKE:-0}" = 1 ] || echo "; a functional test on a smaller machine: REPRODUCE_SMOKE=1 REPRODUCE_PROFILE=$want ./reproduce")" 3
+    fi
+  fi
   [ -n "$prof" ] || die "machine too small for every profile (minimum: profile compact, see above)" 3
-  if [ -f "$STATE/profile" ] && [ "$(profile)" != "$prof" ] && [ -f $OWNER ]; then
+  if [ -f "$STATE/profile" ] && [ "$(profile)" != "$prof" ] && own_cluster; then
     die "profile changed from $(profile) to $prof on an installed cluster – run ./reproduce uninstall first" 3
   fi
   echo "$prof" > "$STATE/profile"
@@ -1986,7 +2121,8 @@ phase_check() {
 phase_install() {
   set_phase install
   [ -f "$STATE/profile" ] || need_fail "machine not checked" "./reproduce check"
-  if [ -f $OWNER ] && [ "$(/usr/local/bin/k3s --version 2>/dev/null | awk 'NR==1{print $3}')" = "$K3S_VERSION" ] && k get nodes >/dev/null 2>&1; then
+  ! foreign_owner || die "the k3s on this machine belongs to the work folder $(owner_folder) – use ./reproduce there" 3
+  if own_cluster && [ "$(/usr/local/bin/k3s --version 2>/dev/null | awk 'NR==1{print $3}')" = "$K3S_VERSION" ] && wait_api; then
     skip "k3s $K3S_VERSION already installed by this script"
   else
     sudo -n true 2>/dev/null || info "sudo password needed: k3s is installed system-wide; swap and automatic updates are switched off (./reproduce uninstall restores them)"
@@ -2018,16 +2154,17 @@ EOF
     sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG"; chmod 600 "$KUBECONFIG"
     local i; for i in $(seq 60); do [ -n "$(k get node -o name 2>/dev/null)" ] && break; sleep 5; done  # node object appears only after k3s registers it
     q k wait --for=condition=Ready node --all --timeout=300s || die "node not ready"
+    cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"   # only for a new cluster: after a reboot the old ID makes deploy … measure repair first
     ok "k3s $K3S_VERSION installed"
   fi
   sudo -n test -r /etc/rancher/k3s/k3s.yaml 2>/dev/null && sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG" 2>/dev/null && chmod 600 "$KUBECONFIG" || true
   local alloc cap
   cap=$(k get node -o jsonpath='{.items[0].status.capacity.cpu}'); alloc=$(k get node -o jsonpath='{.items[0].status.allocatable.cpu}')
   [ "$((cap - 1))" = "$alloc" ] || die "allocatable CPU $alloc ≠ capacity $cap − 1 (system-reserved missing)"
-  cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"
+  [ -f "$STATE/boot_id" ] || cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"
   # images once, one after another, with back-off on rate limits (REPRODUCE.md §22.9)
   local img n=0 total wait_s pulled=0 t0=$SECONDS t1 pid list
-  list=$(py images "$STATE/render"/"$(profile)"-k*/*.yaml; printf '%s\n' "grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6" "ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:b97b8e32867a553b7f866acd1e0a2ac91af81480c04c12a6ee55df3ae99d2ad6")
+  list=$(all_images)
   total=$(printf '%s\n' "$list" | grep -c .)
   step "pulling $total images (once)"
   sudo -v || die "sudo not available"   # before the loop: a password prompt from a background pull would hang
@@ -2059,17 +2196,30 @@ ensure_boot() {
   [ -f "$STATE/boot_id" ] || return 0
   [ "$(cat /proc/sys/kernel/random/boot_id)" != "$(cat "$STATE/boot_id")" ] || return 0
   warn "reboot detected – repairing before anything else"
+  wait_api || die "the Kubernetes API does not answer after the reboot – check k3s: sudo systemctl status k3s"
   q k wait --for=condition=Ready node --all --timeout=600s || die "node not ready after reboot"
-  wait_namespaces 2100 monitoring logging identity customer supplier k6-operator || die "pods not ready after reboot"
-  if [ -f "$STATE/s0/SHA256SUMS" ] && [ -n "$(counts_diff c1-wallet)" ]; then
-    step "wallet database lost with the reboot – restoring from S0"
-    scale identity ssi-dim-wallet-stub 0; wait_gone identity ssi-dim-wallet-stub || die "wallet did not stop"
-    db_cmd c1-wallet pg_restore "--clean --if-exists --single-transaction --exit-on-error" < "$STATE/s0/c1-wallet.dump" || die "wallet restore failed"
-    scale identity ssi-dim-wallet-stub 1; wait_ready identity ssi-dim-wallet-stub 600 || die "wallet not ready"
-    [ -z "$(counts_diff c1-wallet)" ] || die "wallet rows differ from S0 after restore"
-    marker_set reset
+  stop_own_load   # a load test of the interrupted run must not start again
+  # EDC and PURIS are not waited for: started at the same time after a reboot, a control plane can stay not ready
+  # for good (LABORBUCH.md, 2026-10-07) – waiting for it would never end. The ordered start below repairs it.
+  step "reboot: waiting for monitoring, logs, identity and the k6 operator"
+  wait_namespaces 2100 monitoring logging identity k6-operator 2>>"$LOGF" || die "pods not ready after reboot"
+  if [ -f "$STATE/config" ]; then   # deploy finished: all workloads exist
+    step "reboot: stopping PURIS and EDC, waiting for databases, vaults and DTRs (a DTR can take up to 20 min)"
+    stop_sut || die "PURIS/EDC did not stop after the reboot"
+    wait_namespaces 2100 customer supplier 2>>"$LOGF" || die "databases, vaults or DTRs not ready after reboot"
+    if [ -f "$STATE/s0/SHA256SUMS" ] && [ -n "$(counts_diff c1-wallet)" ]; then
+      step "wallet database lost with the reboot – restoring from S0"
+      scale identity ssi-dim-wallet-stub 0; wait_gone identity ssi-dim-wallet-stub || die "wallet did not stop"
+      db_cmd c1-wallet pg_restore "--clean --if-exists --single-transaction --exit-on-error" < "$STATE/s0/c1-wallet.dump" || die "wallet restore failed"
+      scale identity ssi-dim-wallet-stub 1; wait_ready identity ssi-dim-wallet-stub 600 || die "wallet not ready"
+      [ -z "$(counts_diff c1-wallet)" ] || die "wallet rows differ from S0 after restore"
+    fi
+    if [ -f "$STATE/s0/SHA256SUMS" ]; then reset_sut   # restore from S0 and ordered start
+    else
+      step "reboot: ordered start without data plane registration (control planes → data planes → PURIS)"
+      dp_clear customer; dp_clear supplier; start_sut || die "PURIS/EDC not ready after reboot"
+    fi
   fi
-  [ ! -f "$STATE/s0/SHA256SUMS" ] || reset_sut
   cat /proc/sys/kernel/random/boot_id > "$STATE/boot_id"
   ok "reboot repaired"
 }
@@ -2171,7 +2321,8 @@ deploy_release() {  # block configuration [prefix]
 }
 phase_deploy() {
   set_phase deploy
-  [ -f $OWNER ] && k get nodes >/dev/null 2>&1 || need_fail "k3s not installed" "./reproduce install"
+  own_cluster || need_fail "k3s not installed" "./reproduce install"
+  wait_api || die "the Kubernetes API does not answer – check k3s: sudo systemctl status k3s"
   ensure_boot
   local cfg ns d line b rc i=0 n to t1
   n=$(echo "$RELEASES" | wc -l | tr -d ' ')
@@ -2296,6 +2447,12 @@ results_dir() {  # current results folder for this profile, commit and mode – 
   d="$RESULTS/$(date -u +%Y-%m-%d_%H%M)_$(profile)$sfx"; mkdir -p "$d"
   commit > "$d/.commit"; profile > "$d/.profile"; echo "$mode" > "$d/.mode"; echo "$REPS" > "$d/.reps"
   cp "$STATE/machine.json" "$d/machine.json"; echo "$d" > "$f"; echo "$d"
+}
+measurement_open() {  # → 0 if the current results folder (same mode as this call) has runs but not yet all valid runs
+  local rd mode
+  rd=$(cat "$STATE/results-current" 2>/dev/null) && [ -d "$rd" ] || return 1
+  mode=$( [ "${REPRODUCE_SMOKE:-0}" = 1 ] && echo short || echo full)
+  [ "$(cat "$rd/.mode" 2>/dev/null)" = "$mode" ] && ls -d "$rd"/*_rep-* >/dev/null 2>&1 && ! phase_state measure
 }
 pct() {  # ratio → "1.5 %" for messages (empty or unreadable → "?")
   python3 -c 'import sys; print("%.1f %%" % (float(sys.argv[1]) * 100))' "${1:-}" 2>/dev/null || echo "?"
@@ -2426,12 +2583,17 @@ one_run() {  # configuration rep results-dir
   ( cd "$run" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )   # last write of the run (found 2026-10-10)
   marker_clear run
   used1=$(df -P -BG /var/lib/rancher | awk 'NR==2 {gsub("G","",$3); print $3}'); echo $(( used1 > used0 ? used1 - used0 : 1 )) > "$STATE/last_run_used_gb"
-  if [ "$valid" = True ]; then ok "run valid: $(basename "$run")"; else warn "run invalid: $(basename "$run") – $(python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["validity"]; print(", ".join(k for k,x in v.items() if k.endswith("_ok") and x is not True))' "$run/meta.json")"; return 1; fi
+  if [ "$valid" = True ]; then ok "run valid: $(basename "$run")"; else warn "run invalid: $(basename "$run") – $(python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["validity"]; print(", ".join(k for k,x in v.items() if k.endswith("_ok") and x is not True))' "$run/meta.json")"; fi
+  local rs; rs=$(py restarts "$run/meta.json" 2>/dev/null || true)   # a result, not a fault: shown so that it is not overlooked
+  [ -z "$rs" ] || warn "system under test restarted after the warm-up: $rs – recorded in meta.json (sut_restarts_after_warmup)$( [ "$valid" != True ] || echo "; the run stays valid")"
+  [ "$valid" = True ]
 }
 phase_measure() {
   set_phase measure
   [ -f "$STATE/s0/SHA256SUMS" ] || need_fail "S0 missing" "./reproduce prepare"
-  local want="${1:-}" cfgs cfg rd v i rep
+  [ ! -f "$STATE/profile-short-only" ] || [ "${REPRODUCE_SMOKE:-0}" = 1 ] \
+    || die "profile $(profile) fits this machine only for short tests (REPRODUCE_SMOKE=1) – real runs need a larger machine (./reproduce check shows the numbers)" 3
+  local want="${1:-}" cfgs cfg rd v i rep st
   cfgs=$(configs_of "$(profile)")
   if [ -n "$want" ]; then echo " $cfgs " | grep -q " $want " || die "configuration $want does not belong to profile $(profile) ($cfgs)" 2; cfgs="$want"; fi
   TMPD=$(mktemp -d)
@@ -2452,7 +2614,12 @@ phase_measure() {
       read -r v i <<<"$(count_runs "$rd" "$cfg")"
       eta_info
     done
-    if [ "$v" -ge "$REPS" ]; then ok "$cfg: $v valid runs"; else warn "$cfg: only $v valid runs after $MAX_REPLACEMENTS replacement runs – reported as failed"; fi
+    st=$(py config-status "$rd" "$cfg" "$REPS" 2>/dev/null || echo "?")
+    case "$st" in
+      complete) ok "$cfg: $v valid run$( [ "$v" = 1 ] || echo s)" ;;
+      "machine too busy"*) warn "$cfg: $st – $v of $REPS valid runs; every invalid run failed on steal time, a property of this machine, not of PURIS" ;;
+      *) warn "$cfg: $st after $MAX_REPLACEMENTS replacement runs – reported in summary.json and verdict.md" ;;
+    esac
   done
   rm -rf "$TMPD"
 }
@@ -2464,18 +2631,18 @@ phase_evaluate() {
   [ -n "$rd" ] && [ -d "$rd" ] || need_fail "no results folder" "./reproduce measure"
   ls -d "$rd"/*_rep-* >/dev/null 2>&1 || need_fail "no runs in $(rel "$rd") yet" "./reproduce measure"
   py evaluate "$rd" "$SRC/reference"
-  ok "evaluation: $rd/verdict.md"
+  ok "evaluation: $(rel "$rd")/verdict.md"
 }
 phase_package() {
   set_phase package
   local rd="${1:-$(cat "$STATE/results-current" 2>/dev/null)}"
   [ -f "$rd/summary.json" ] || need_fail "not evaluated" "./reproduce evaluate"
   ( cd "$rd" && find . -type f ! -name SHA256SUMS ! -name '.commit' ! -name '.profile' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
-  ok "results complete: $rd ($(du -sh "$rd" | cut -f1))"
+  ok "results complete: $(rel "$rd") ($(du -sh "$rd" | cut -f1))"
   if [ "$(cat "$rd/.mode" 2>/dev/null)" = short ] || grep -qs '"kind": "smoke"' "$rd"/*_rep-*/meta.json; then
     warn "short-test results: they check the pipeline only – never copy them into runs/ of the repository"
   else
-    hint "copy the run folders into runs/ of the repository, e.g.: cp -r \"$rd\"/*_rep-* <repository>/runs/"
+    hint "copy the run folders into runs/ of the repository, e.g.: cp -r \"$(rel "$rd")\"/*_rep-* <repository>/runs/"
   fi
 }
 
@@ -2497,9 +2664,13 @@ cmd_snapshot() {  # machine-readable state: ./reproduce status --json; read by t
     printf 'eta\t%s\t%s\t%s\n' "$m" "$xm" "$t"
     if [ -n "$rd" ] && [ -d "$rd" ] && [ -n "$p" ]; then
       printf 'results\t%s\n' "$rd"
-      for c in $(configs_of "$p"); do read -r v i r <<<"$(run_counts "$rd" "$c")"; printf 'runs\t%s\t%s\t%s\t%s\n' "$c" "$v" "$i" "$r"; done
+      for c in $(configs_of "$p"); do
+        read -r v i r <<<"$(run_counts "$rd" "$c")"; printf 'runs\t%s\t%s\t%s\t%s\n' "$c" "$v" "$i" "$r"
+        [ "$v" = 0 ] || printf 'restarts\t%s\t%s\n' "$c" "$(py run-restarts "$rd" "$c" 2>/dev/null || echo 0)"
+      done
     fi
     printf 'interrupted\t%s\nlog\t%s\nkubeconfig\t%s\n' "$(ls "$MARKERS" 2>/dev/null | tr '\n' ' ')" "$LOGF" "$KUBECONFIG"
+    printf 'rebooted\t%s\n' "$( { rebooted && ! job_alive; } && echo 1 || echo 0)"
     printf 'releases\t%s\n' "$(awk '{print $1}' <<<"$RELEASES" | tr '\n' ' ')"
     if [ -n "$p" ]; then for c in $(configs_of "$p"); do printf 'planfile\t%s\t%s\n' "$c" "$SRC/experiments/plans/$(plan_of "$c").env"; done; fi
   } | py snapshot
@@ -2616,7 +2787,7 @@ ${B}Examples${Z}
   TZ=Europe/Berlin ./reproduce status               ${D}times in German time (permanently: settings tz)${Z}
   ./reproduce logs puris-customer -f                ${D}follow the PURIS log of the customer${Z}
 
-${B}Environment${Z}  ${D}NO_COLOR · FORCE_COLOR · TZ · REPRODUCE_SMOKE · REPRODUCE_REPS · REPRODUCE_CONFIGS · REPRODUCE_HOME${Z}
+${B}Environment${Z}  ${D}NO_COLOR · FORCE_COLOR · TZ · REPRODUCE_SMOKE · REPRODUCE_REPS · REPRODUCE_CONFIGS · REPRODUCE_PROFILE · REPRODUCE_HOME${Z}
 ${B}Exit codes${Z}   ${D}0 ok · 1 error · 2 precondition missing · 3 machine unsuitable · 4 stopped${Z}
 ${B}More${Z}         ${D}REPRODUCE.md · https://github.com/artamrj/puris-performance-experiments${Z}
 EOF
@@ -2633,6 +2804,9 @@ help_cmd() {  # command → details
       row runs "$(in_background "$x" && echo "in the background – the terminal can be closed" || echo "in this terminal")"
       [ -z "$prev" ] || row "needs first" "$prev (checked, not repeated automatically)"
       case "$x" in
+        fetch)   row update "pulls the latest main – not while a measurement is unfinished (./reproduce fetch updates anyway)" ;;
+        check)   row profile "chosen by the calculator; REPRODUCE_PROFILE=original|compact requires one (stops if it does not fit; auto: choose again)"
+                 row "short test" "REPRODUCE_SMOKE=1 REPRODUCE_PROFILE=original – a functional test where only the requests fit" ;;
         install) row sudo "yes – installs k3s, switches off swap and automatic updates (uninstall restores them)" ;;
         measure) row configs "${cfg1:+$(configs_of "$(profile)" | sed 's/ /, /g') · }without argument: all, $(eff_reps) valid runs each"
                  row "short test" "REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 ./reproduce measure" ;;
@@ -2671,7 +2845,7 @@ phase_state() {  # phase → 0 done; a phase counts only if every earlier phase 
     fetch)   [ -e "$SRC/.git" ] ;;
     tools)   [ -x "$TOOLS/helm" ] && [ -x "$TOOLS/kubectl" ] ;;
     check)   [ -n "$(profile)" ] ;;
-    install) [ -f "$OWNER" ] ;;
+    install) own_cluster ;;
     deploy)  [ -f "$STATE/config" ] ;;
     prepare) [ -f "$STATE/s0/SHA256SUMS" ] ;;
     verify)  [ -f "$STATE/verified" ] ;;
@@ -2693,7 +2867,7 @@ last_line_age() {  # [line] → seconds since that line (default: the last statu
   echo $(( ( $(date -u +%s) % 86400 - $(date -u -d "1970-01-01 $t" +%s) + 86400 ) % 86400 ))
 }
 cmd_status() {
-  local p rd cfg x st n="" ph="" v i
+  local p rd cfg x st n="" ph="" v i r rs
   p=$(profile)
   ! job_alive || ph=$(sed -n 's/.*phase=\([^ :]*\).*/\1/p' "$STATE/job")
   printf '%s\n' "${C_B}reproduce · PURIS saturation experiment${C_0}"
@@ -2711,12 +2885,16 @@ cmd_status() {
   rd=$(cat "$STATE/results-current" 2>/dev/null || true)
   if [ -n "$rd" ] && [ -d "$rd" ]; then
     printf '  %-12s %s\n' "results" "$(rel "$rd")"
-    for cfg in $(configs_of "$p"); do read -r v i r <<<"$(run_counts "$rd" "$cfg")"; printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid$( [ "$r" = 1 ] && echo ", 1 running") (target: $(eff_reps) valid)"; done
+    for cfg in $(configs_of "$p"); do
+      read -r v i r <<<"$(run_counts "$rd" "$cfg")"; rs=0; [ "$v" = 0 ] || rs=$(py run-restarts "$rd" "$cfg" 2>/dev/null || echo 0)
+      printf '  %-12s %s\n' "" "$cfg: $v valid, $i invalid$( [ "$r" = 1 ] && echo ", 1 running") (target: $(eff_reps) valid)$( [ "$rs" = 0 ] || echo " · ${C_WARN}↻ $rs restarts after warm-up${C_0} (recorded, runs stay valid)")"
+    done
     ! phase_state evaluate || printf '  %-12s %s\n' "verdict" "$(rel "$rd/verdict.md")"   # only a current evaluation
   fi
   [ -z "$(eta_line)" ] || printf '  %-12s %s\n' "estimate" "$(eta_line)"
   # open multi-step changes are "in progress" while a job runs, "interrupted" only without one
   [ -z "$(ls "$MARKERS" 2>/dev/null)" ] || job_alive || printf '  %-12s %s\n' "interrupted" "$(ls "$MARKERS" | tr '\n' ' ')– completed automatically by the next command"
+  ! rebooted || job_alive || printf '  %-12s %s\n' "rebooted" "${C_WARN}! the machine restarted since the last step${C_0} – the next command repairs it first (reset to S0, ordered start), then continues"
   if job_alive; then
     printf '  %-12s %s\n' "job" "running in the background – phase ${ph:-?}, PID $(job_pid), since $(sed -n 's/.*started=[0-9-]*T\([0-9:]*\):[0-9]*Z.*/\1/p' "$STATE/job") UTC" \
       "last line" "$(last_status_line) ($(dur "$(last_line_age)") ago)"
@@ -2796,7 +2974,24 @@ cmd_stop() {
 }
 
 # ── uninstall and bundle ──────────────────────────────────────────────────────────
+restore_fstab() {  # swap-was-active → /etc/fstab as before install, if nothing else was changed in it since; the backup is removed
+  local b=/etc/fstab.reproduce-bak
+  [ -f "$b" ] || return 0
+  if python3 - "$b" <<'EOF'
+import re, sys
+pat = re.compile(r"^([^#][^ ]*\s+[^ ]+\s+swap\s.*)$")   # the lines install commented out (same pattern as its sed)
+before = open(sys.argv[1]).read().splitlines(); now = open(sys.argv[2] if len(sys.argv) > 2 else "/etc/fstab").read().splitlines()
+sys.exit(0 if now == [("#" + l) if pat.match(l) else l for l in before] else 1)
+EOF
+  then
+    q sudo cp "$b" /etc/fstab; q sudo rm -f "$b"   # a later install makes a new backup of the then current file
+    [ "$1" != True ] || q sudo swapon -a
+  else
+    warn "/etc/fstab was changed since install – left as it is; its state before install: $b"
+  fi
+}
 cmd_uninstall() {
+  if foreign_owner; then die "the k3s on this machine belongs to the work folder $(owner_folder) – run ./reproduce uninstall there" 3; fi
   if [ ! -f "$OWNER" ]; then
     [ ! -x /usr/local/bin/k3s ] || die "a k3s installation not created by this script exists – not touched" 3
     skip "nothing to remove – the cluster of this script is already removed"; return 0
@@ -2807,17 +3002,20 @@ cmd_uninstall() {
     local a; read -r a; [ "$a" = uninstall ] || { echo "cancelled"; exit 4; }
   fi
   job_alive && die "a job is running – ./reproduce stop first"
+  sudo -n true 2>/dev/null || info "sudo password needed: k3s is removed system-wide; swap and automatic updates are restored as before install"
+  sudo -v || die "sudo not available" 3
+  step "removing k3s with all pods and volumes"
   q sudo /usr/local/bin/k3s-uninstall.sh || die "k3s-uninstall.sh failed"
   if [ -f "$STATE/system-before.json" ]; then
-    python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["apt-daily.timer"], d["apt-daily-upgrade.timer"], d["snap_hold"], d["swap_active"])' "$STATE/system-before.json" | {
-      read -r a1 a2 sh sw
-      [ "$a1" != enabled ] || q sudo systemctl enable --now apt-daily.timer
-      [ "$a2" != enabled ] || q sudo systemctl enable --now apt-daily-upgrade.timer
-      [ "$sh" = True ] || { ! command -v snap >/dev/null || q sudo snap refresh --unhold; }
-      if [ "$sw" = True ] && [ -f /etc/fstab.reproduce-bak ]; then q sudo cp /etc/fstab.reproduce-bak /etc/fstab; q sudo swapon -a; fi
-    }
+    local a1 a2 sh sw
+    read -r a1 a2 sh sw <<<"$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["apt-daily.timer"], d["apt-daily-upgrade.timer"], d["snap_hold"], d["swap_active"])' "$STATE/system-before.json")"
+    [ "$a1" != enabled ] || q sudo systemctl enable --now apt-daily.timer
+    [ "$a2" != enabled ] || q sudo systemctl enable --now apt-daily-upgrade.timer
+    [ "$sh" = True ] || { ! command -v snap >/dev/null || q sudo snap refresh --unhold; }
+    restore_fstab "$sw"
+    mv "$STATE/system-before.json" "$STATE/system-before.restored-$(date -u +%Y%m%d-%H%M%S).json"   # a later install records the then current settings
   fi
-  sudo rm -f "$OWNER" /etc/rancher/k3s/config.yaml; rm -f "$STATE/configs"
+  sudo rm -f "$OWNER" /etc/rancher/k3s/config.yaml; rm -f "$STATE/configs" "$STATE/profile-wanted" "$STATE/profile-short-only"
   rm -f "$KUBECONFIG" "$STATE/config" "$STATE/verified" "$STATE/boot_id" "$STATE/results-current"; rm -rf "$STATE/releases" "$MARKERS"
   if [ -d "$STATE/s0" ]; then   # S0 belongs to the removed cluster: kept, but a new cluster gets its own (next prepare)
     local s0old; s0old="$STATE/s0.uninstalled-$(date -u +%Y%m%d-%H%M%S)"; mv "$STATE/s0" "$s0old"
@@ -2827,18 +3025,26 @@ cmd_uninstall() {
   hint "a new build: ./reproduce (or ./reproduce install) – prepare then creates a new S0"
 }
 cmd_bundle() {
-  [ -f "$STATE/config" ] || need_fail "nothing deployed" "./reproduce deploy"
-  local u="https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION/+/%2B}"
+  own_cluster && [ -f "$STATE/config" ] || need_fail "nothing deployed" "./reproduce deploy"
+  local u="https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION/+/%2B}" refs missing
   mkdir -p "$BUNDLE/k3s" "$BUNDLE/charts" "$BUNDLE/tools"
   cp "$TOOLS/helm" "$TOOLS/kubectl" "$BUNDLE/tools/"; cp "$STATE/charts"/*.tgz "$BUNDLE/charts/"
   git -C "$SRC" bundle create "$BUNDLE/src.bundle" --all >>"$LOGF" 2>&1
   ( cd "$BUNDLE/k3s" && curl -fsSLO "$u/k3s" && curl -fsSLO "$u/k3s-airgap-images-amd64.tar.zst" && curl -fsSLO "$u/sha256sum-amd64.txt" \
     && grep -E ' (k3s|k3s-airgap-images-amd64.tar.zst)$' sha256sum-amd64.txt | sha256sum -c --quiet && curl -fsSL https://get.k3s.io -o install.sh ) >>"$LOGF" 2>&1 \
     || die "k3s files for the bundle could not be downloaded"
-  step "exporting images"
+  step "exporting images (charts of the profile and the k6 load generator)"
+  sudo -n true 2>/dev/null || info "sudo password needed: the images are read from k3s"
+  sudo -v || die "sudo not available" 3
+  # containerd keeps full names (docker.io/library/…, a digest instead of tag + digest): export by those names, never by the short ones
+  sudo k3s ctr -n k8s.io images ls -q > "$STATE/images-present.txt" 2>>"$LOGF" || die "the images of k3s could not be listed"
+  refs=$(all_images | py export-list "$STATE/images-present.txt")
+  missing=$(sed -n 's/^MISSING //p' <<<"$refs" | tr '\n' ' ')
+  [ -z "$missing" ] || die "images not present in k3s: $missing– run ./reproduce install first (it pulls every image)"
   # shellcheck disable=SC2046
-  q sudo k3s ctr -n k8s.io images export "$BUNDLE/images.tar" $(py images "$STATE/render"/"$(profile)"-k*/*.yaml) || die "image export failed"
+  q sudo k3s ctr -n k8s.io images export --platform linux/amd64 "$BUNDLE/images.tar" $(echo "$refs") || die "image export failed – see log"
   sudo chown "$(id -u):$(id -g)" "$BUNDLE/images.tar"
+  ok "$(grep -c . <<<"$refs") images exported ($(du -h "$BUNDLE/images.tar" | cut -f1))"
   ( cd "$BUNDLE" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs sha256sum > SHA256SUMS )
   ok "bundle: $BUNDLE ($(du -sh "$BUNDLE" | cut -f1)) – licences of the images must be checked before publishing"
 }

@@ -130,6 +130,122 @@ class OriginalProfile(unittest.TestCase):
         self.assertFalse(sat({'planned': 600, 'completed_log': 600, 'failed_log': 30, 'invalidating_contract': 5}))   # nur Durchsatz zählt
 
 
+def py_ns():
+    a = TEXT.index("<<'PYCODE'"); a = TEXT.index('\n', a) + 1; b = TEXT.index('\nPYCODE\n', a)
+    ns = {'__name__': 'reproduce_py'}; exec(compile(TEXT[a:b], 'PY', 'exec'), ns); return ns
+
+
+class Images(unittest.TestCase):
+    """Offline-Paket: containerd speichert volle Namen; Export mit Kurznamen schlug fehl, k6-Images fehlten (Prüfung 10.10.2026)."""
+
+    def test_k6_images_are_the_same_in_bash_and_python(self):
+        ns = py_ns()
+        self.assertEqual(re.search(r'^K6_IMAGE="([^"]+)"', TEXT, re.M).group(1), ns['K6_IMAGE'])
+        self.assertEqual(re.search(r'^K6_STARTER_IMAGE="([^"]+)"', TEXT, re.M).group(1), ns['STARTER_IMAGE'])
+
+    def test_full_names_as_containerd_stores_them(self):
+        f = py_ns()['full_ref']
+        for short, full in (('hashicorp/vault:1.15.2', 'docker.io/hashicorp/vault:1.15.2'),
+                            ('tractusx/app-puris-backend:6.2.0', 'docker.io/tractusx/app-puris-backend:6.2.0'),
+                            ('docker.io/postgres:18.0@sha256:aa', 'docker.io/library/postgres@sha256:aa'),
+                            ('grafana/k6:2.2.0@sha256:bb', 'docker.io/grafana/k6@sha256:bb'),
+                            ('quay.io/prometheus/prometheus:v3.15.0-distroless', 'quay.io/prometheus/prometheus:v3.15.0-distroless'),
+                            ('ghcr.io/grafana/k6-operator:starter-v1.6.0@sha256:cc', 'ghcr.io/grafana/k6-operator@sha256:cc'),
+                            ('nginx', 'docker.io/library/nginx:latest'), ('localhost:5000/a/b:1', 'localhost:5000/a/b:1')):
+            with self.subTest(image=short):
+                self.assertEqual(f(short), full)
+
+    def test_export_list_names_missing_images(self):
+        ns = py_ns()
+        with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False) as h:
+            h.write('docker.io/hashicorp/vault:1.15.2\ndocker.io/grafana/k6:2.2.0@sha256:bb\n')
+        try:
+            import io, contextlib, sys as _sys
+            out = io.StringIO(); old = _sys.stdin
+            _sys.stdin = io.StringIO('hashicorp/vault:1.15.2\ngrafana/k6:2.2.0@sha256:bb\ntractusx/x:1\n')
+            try:
+                with contextlib.redirect_stdout(out): ns['cmd_export_list'](h.name)
+            finally:
+                _sys.stdin = old
+            self.assertEqual(out.getvalue().split('\n')[:3], ['docker.io/hashicorp/vault:1.15.2', 'docker.io/grafana/k6:2.2.0@sha256:bb', 'MISSING tractusx/x:1'])
+        finally:
+            os.unlink(h.name)
+
+
+class Results(unittest.TestCase):
+    """Neustarts nach dem Aufwärmen und Gründe ungültiger Läufe sichtbar (Prüfung 10.10.2026: K1-Nachbau, 7 Neustarts, Meldung nur „run valid“)."""
+    RUN = ROOT / 'runs' / '2026-10-10_0040_compact-k1_rep-1'
+
+    def run_folder(self, tmp, name, validity=None, attempt=None):
+        d = Path(tmp) / name; d.mkdir()
+        if validity is not None: (d / 'meta.json').write_text(__import__('json').dumps({'validity': validity}))
+        if attempt is not None: (d / 'attempt.json').write_text(__import__('json').dumps(attempt))
+
+    def test_restarts_after_warmup_are_named(self):
+        ns = py_ns(); meta = __import__('json').loads((self.RUN / 'meta.json').read_text())
+        self.assertEqual(ns['sut_restarts'](meta), {'customer edc-controlplane': 5, 'customer edc-vault': 2})
+
+    def test_status_of_a_configuration(self):
+        ns = py_ns(); st = ns['config_status']
+        with tempfile.TemporaryDirectory() as tmp:
+            self.run_folder(tmp, 'a_compact-k0_rep-1', {'valid': True})
+            self.run_folder(tmp, 'b_compact-k0_rep-2', {'valid': False, 'steal_ok': False, 'loki_ok': True})
+            self.assertEqual(st(tmp, 'compact-k0', 1)[0], 'complete')
+            self.assertEqual(st(tmp, 'compact-k0', 3), ('machine too busy (steal time)', ['steal']))
+            self.run_folder(tmp, 'c_compact-k0_rep-3', attempt={'reason': 'function test failed'})
+            self.assertEqual(st(tmp, 'compact-k0', 3), ('failed – 1 of 3 valid runs', ['steal', 'function test failed']))
+
+    def test_verdict_shows_restarts_and_missing_runs(self):
+        if not self.RUN.is_dir(): self.skipTest('Lauf fehlt')
+        ns = py_ns()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.symlink(self.RUN, os.path.join(tmp, self.RUN.name)); Path(tmp, '.reps').write_text('3\n')
+            import io, contextlib
+            with contextlib.redirect_stdout(io.StringIO()): ns['cmd_evaluate'](tmp, str(ROOT / 'reference'))
+            verdict = Path(tmp, 'verdict.md').read_text(); summary = __import__('json').loads(Path(tmp, 'summary.json').read_text())
+        self.assertIn('restarts after warm-up', verdict)
+        self.assertIn('| 7 | reproduced |', verdict)
+        self.assertIn('`compact-k1`: failed – 1 of 3 valid runs', verdict)
+        self.assertEqual(summary['configurations']['compact-k1']['runs'][0]['sut_restarts_after_warmup'], 7)
+
+
+class Robustness(unittest.TestCase):
+    """Befunde der Prüfung vom 10.10.2026 (Neustart, Wiederaufnahme, fstab)."""
+
+    def body(self, name):
+        b = TEXT[TEXT.index(name + '() {'):]
+        return b[:b.index('\n}\n')]
+
+    def test_reboot_repair_never_waits_for_edc_or_puris_before_the_reset(self):
+        # gleichzeitig gestartet kann die Control Plane dauerhaft nicht bereit bleiben (LABORBUCH 07.10.); erst der geordnete Start repariert
+        b = self.body('ensure_boot')
+        before_stop = b[:b.index('stop_sut')]
+        self.assertNotRegex(before_stop, r'wait_namespaces[^\n]*\b(customer|supplier)\b')
+        self.assertLess(b.index('stop_sut'), b.index('wait_namespaces 2100 customer supplier'))
+
+    def test_install_keeps_the_boot_id_of_an_existing_cluster(self):
+        # sonst erkennt ./reproduce nach einem Neustart nichts: install lief vor deploy und schrieb die neue Boot-ID
+        b = self.body('phase_install'); skip = b[:b.index('else')]
+        self.assertNotIn('boot_id', skip)
+        self.assertIn('[ -f "$STATE/boot_id" ] || cat /proc/sys/kernel/random/boot_id', b)
+
+    def test_fetch_keeps_the_code_of_an_unfinished_measurement(self):
+        b = self.body('phase_fetch')
+        self.assertLess(b.index('measurement_open'), b.index('pull --ff-only'))
+
+    def test_fstab_is_restored_only_if_unchanged_since_install(self):
+        sed = re.search(r"sed -i\.reproduce-bak -E '([^']+)' /etc/fstab", TEXT).group(1)
+        check = TEXT[TEXT.index('restore_fstab() {'):]; check = check[check.index("<<'EOF'\n") + 8:check.index('\nEOF\n')]
+        before = '/swap.img\tnone\tswap\tsw\t0\t0\nUUID=ab none swap sw 0 0\n#/old.img none swap sw 0 0\n/dev/sda2 /boot ext4 defaults 0 1\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            b, n = Path(tmp, 'bak'), Path(tmp, 'now')
+            b.write_text(before)
+            n.write_text(subprocess.run(['sed', '-E', sed], input=before, capture_output=True, text=True, check=True).stdout)
+            self.assertEqual(subprocess.run(['python3', '-c', check, str(b), str(n)]).returncode, 0)
+            n.write_text(n.read_text() + 'tmpfs /tmp tmpfs defaults 0 0\n')   # changed by someone else since install
+            self.assertEqual(subprocess.run(['python3', '-c', check, str(b), str(n)]).returncode, 1)
+
+
 @unittest.skipUnless(bash4(), 'braucht Linux und bash ≥ 4')
 class Runtime(unittest.TestCase):
     def run_in(self, code):
@@ -202,6 +318,28 @@ class Runtime(unittest.TestCase):
         r = self.run_in('echo compact > "$STATE/profile"; mkdir -p "$STATE/s0"; echo x > "$STATE/s0/SHA256SUMS"; '
                         'phase_state prepare && echo done || echo open')
         self.assertEqual(r.stdout.strip(), 'open', r.stderr)
+
+    def test_measurement_open_only_with_unfinished_runs_of_the_same_mode(self):
+        base = ('echo compact > "$STATE/profile"; d="$RESULTS/x"; mkdir -p "$d"; echo "$d" > "$STATE/results-current"; '
+                'echo full > "$d/.mode"; echo 3 > "$d/.reps"; ')
+        for setup, expected in (('', 'closed'),                                           # no runs yet: updating changes nothing measured
+                                ('mkdir "$d/t_compact-k0_rep-1"; ', 'open'),               # a run exists, 3 valid ones are missing
+                                ('mkdir "$d/t_compact-k0_rep-1"; export REPRODUCE_SMOKE=1; ', 'closed')):   # short test: another folder
+            with self.subTest(setup=setup):
+                r = self.run_in(base + setup + 'unset REPRODUCE_REPS; measurement_open && echo open || echo closed')
+                self.assertEqual(r.stdout.strip(), expected, r.stderr)
+
+    def test_snapshot_reports_a_reboot(self):
+        r = self.run_in('cmd_snapshot')
+        self.assertIn('"rebooted": "0"', r.stdout, r.stderr)
+
+    def test_status_works_before_the_first_check(self):
+        # 10.10.2026: without state/profile, p=$(profile) ended status and status --json silently (set -e)
+        for code in ('cmd_status', 'cmd_snapshot'):
+            with self.subTest(command=code):
+                r = self.run_in(code)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertTrue(r.stdout.strip(), 'no output')
 
     def test_broken_plan_stops_with_reason(self):
         with tempfile.TemporaryDirectory() as tmp:

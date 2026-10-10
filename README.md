@@ -292,6 +292,22 @@ Dependencies are pinned in [`analysis/requirements.txt`](analysis/requirements.t
 | **Produces** | Run folders as in [`runs/`](runs/), `summary.json`, a readable `verdict.md` and checksums |
 | **Specification** | [`REPRODUCE.md`](REPRODUCE.md): every decision, phase, rule and failure case |
 
+#### Before you start
+
+Check the server once. Phase `check` tests the same points (except `tmux`) and stops with a message if one is missing:
+
+| Requirement | How to check | Needed |
+|---|---|---|
+| Ubuntu Server, amd64 | `grep PRETTY_NAME /etc/os-release` · `uname -m` | Ubuntu · `x86_64` |
+| `sudo` for your user | `sudo -v` | asks for your password and succeeds |
+| Size of the machine | `nproc` · `free -g` | `compact`: 8 vCPU, `free -g` total ≥ 25 · `original`: 20 vCPU, total ≥ 28 (24 vCPU / 32 GB RAM recommended) |
+| Free disk space | `df -h ~ /var` | at least 50 GB in your home folder and under `/var` |
+| Programs | `command -v tmux curl git python3` · `python3 -c 'import yaml'` | all present; if not: `sudo apt-get install -y tmux curl git python3 python3-yaml` |
+| Internet without a proxy | `curl -sI https://ghcr.io >/dev/null && echo ok` | `github.com`, `get.k3s.io`, `get.helm.sh`, `dl.k8s.io`, `ghcr.io`, `registry-1.docker.io`, `quay.io` reachable |
+| No other Kubernetes | `systemctl is-active k3s kubelet` · `ss -ltn \| grep 6443` | nothing running, port 6443 free – the script never touches a cluster it did not install |
+
+The script switches off swap and the automatic updates of Ubuntu while it is installed; `./reproduce uninstall` restores them. On a borrowed machine, tell its owner first.
+
 #### Quick start
 
 Run it **on the server** (for example after `ssh <server>`), not on a laptop, and **inside `tmux`**, so that it keeps running when the terminal is closed:
@@ -313,8 +329,23 @@ Without `tmux`, the terminal must stay connected until the line `The next steps 
 ```bash
 REPRODUCE_REPS=1 ./reproduce                  # one valid run per configuration (default: 3); more can be added later
 REPRODUCE_CONFIGS=original-k1 ./reproduce     # only these configurations
+REPRODUCE_PROFILE=original ./reproduce        # require a profile: stops if the machine is too small instead of choosing compact
 REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 ./reproduce   # short test with 2-minute stages – checks the pipeline, not valid for results
 ```
+
+#### First run on a new machine: short test first
+
+On a machine where `reproduce` has never run, start with a short test. It builds everything and runs every configuration once with 2-minute stages, so a problem shows up after a few hours instead of after a day. Inside `tmux`:
+
+```bash
+REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 REPRODUCE_PROFILE=original ./reproduce   # second environment of the thesis (profile original)
+REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 ./reproduce                              # any other machine: the calculator chooses the profile
+```
+
+- **Duration:** about 3–4 h (short test on the NAS VM: build about 1.5 h, both configurations about 2 h 10 min).
+- **Results:** in their own folder `…_short`, marked as short test; they check the pipeline only and are never copied into `runs/`.
+- **Afterwards:** start the real measurement on the same cluster – nothing is rebuilt (`deploy` and `prepare` are skipped): `REPRODUCE_PROFILE=original ./reproduce` or `./reproduce`.
+- **If it stops:** the message names the cause and the next step; `./reproduce status` and `./reproduce logs reproduce --tail 100` show the details.
 
 #### The ten phases
 
@@ -408,7 +439,8 @@ Tractus-X publishes no sizing for production: the umbrella chart is meant for te
 
 #### What the script takes care of
 
-- **Resumable:** after an interruption, `./reproduce` continues where it stopped. The background job runs from its own copy of the script, so a new download does not change a running job.
+- **Resumable:** after an interruption, `./reproduce` continues where it stopped. The background job runs from its own copy of the script, so a new download does not change a running job. While a measurement is unfinished, `./reproduce` keeps the code it started with (a new commit would start a new results folder); `./reproduce fetch` updates anyway.
+- **Reboot:** after a restart of the machine, the next command repairs first – it waits for the cluster, stops PURIS and EDC, resets the databases to S0 and starts the services in order; the interrupted run is closed as invalid and replaced.
 - **Same start for every run:** before each run, all databases are reset to S0 with checksums and the services restart in order. A conformance check confirms that the running resources match the configuration, followed by one test transaction.
 - **Validity as in the thesis:** a run is valid only with low steal time, complete logs, no restarts during warm-up and a complete drain. Invalid runs are kept and replaced automatically.
 - **Quiet machine:** before each run, the script waits up to 60 min until the steal time is below 1 %.
@@ -428,10 +460,12 @@ Each measurement creates a results folder `puris-repro/results/<date>_<time>_<pr
 
 `verdict.md` of the rebuild test, evaluated with the current references:
 
-| Configuration | valid runs | tipping stage (median, range) | capacity | recovery | comparison |
-|---|---|---|---|---|---|
-| compact-k0 | 1 of 1 | 0.7/s (0.7/s – 0.7/s) | 0.6/s | 0 of 1 | reproduced |
-| compact-k1 | 1 of 1 | 1.5/s (1.5/s – 1.5/s) | 1/s | 0 of 1 | reproduced |
+| Configuration | valid runs | tipping stage (median, range) | capacity | recovery | restarts after warm-up | comparison |
+|---|---|---|---|---|---|---|
+| compact-k0 | 1 of 1 | 0.7/s (0.7/s – 0.7/s) | 0.6/s | 0 of 1 | 0 | reproduced |
+| compact-k1 | 1 of 1 | 1.5/s (1.5/s – 1.5/s) | 1/s | 0 of 1 | 7 | reproduced |
+
+*Restarts after warm-up* counts containers of the system under test restarted after the warm-up (here: customer EDC control plane 5×, customer EDC vault 2×, after the tipping point) – a result, the run stays valid. A configuration with too few valid runs gets its status below the table (`machine too busy (steal time)` or `failed – n of N valid runs`) with the reasons of its invalid runs.
 
 **Criterion** (fixed before measuring): a configuration is reproduced if the median tipping stage lies at most one load stage outside the range of the reference. The accepted range is 0.5–0.8/s for `compact-k0` and 1.0–2.5/s for `compact-k1`. A mismatch is not a failure: it is reported and explained, for example by the CPU speed in `machine.json`. To add the runs to the repository, use `cp -r puris-repro/results/<folder>/*_rep-* runs/`; the analysis keeps rebuild runs of the `compact` profile apart from the main measurement.
 
@@ -453,6 +487,7 @@ Not yet run on a cluster: repair after a reboot of the machine (§22.4) and the 
 - **A phase failed – what now?** The message names the cause and the next step (lines with `→`). After the cause is fixed, `./reproduce` continues at that phase. The full log is in `puris-repro/state/logs/`.
 - **Can more runs be added later?** Yes: `REPRODUCE_REPS=3 ./reproduce measure` adds runs to the same results folder until three are valid.
 - **`original-k0` does not start?** That is a result in itself. Measure the other configuration alone with `REPRODUCE_CONFIGS=original-k1 ./reproduce`.
+- **The machine was restarted?** Run `./reproduce` (or the command shown by `./reproduce status`). It detects the restart and repairs first; nothing has to be done by hand.
 - **Does watching change the measurement?** No: during a measurement the dashboard switches to measurement-safe mode (above).
 - **How do I remove everything?** `./reproduce uninstall` removes the cluster and restores the system settings. The results folder is kept.
 
