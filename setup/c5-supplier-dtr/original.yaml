@@ -1,0 +1,21 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Baustein:    DTR – Überlagerung für das Profil original (nur `reproduce`, original-k0 und original-k1)
+# Basis:       Ressourcen wie von Tractus-X ausgeliefert (digital-twin-bundle 1.3.0:
+#              CPU 250m/750m, Speicher 1024Mi).
+# Zweck:       Widerspruch innerhalb der Auslieferung beheben: Das Image
+#              tractusx/sldt-digital-twin-registry:0.11.0 setzt selbst
+#              JAVA_TOOL_OPTIONS=-Xms512m -Xmx2048m (Chart kann das nicht ändern,
+#              belege B18); ein Speicherlimit von 1Gi liegt unter dem eigenen Heap,
+#              der Container würde unter Last vom Kernel beendet (OOMKilled). TRG 5.04
+#              verlangt Standardwerte, die die Mindestanforderungen der Anwendung
+#              erfüllen, und Speicher-Anfrage = Limit. Deshalb nur der Speicher wie
+#              im NAS-Profil (3Gi); CPU bleibt wie ausgeliefert (REPRODUCE.md §7.4).
+# ══════════════════════════════════════════════════════════════════════════════
+
+digital-twin-registry:
+  registry:
+    resources:
+      requests:
+        memory: 3Gi
+      limits:
+        memory: 3Gi

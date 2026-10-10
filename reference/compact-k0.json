@@ -1,7 +1,7 @@
 {
  "configuration": "compact-k0",
- "runs_total": 3,
- "runs_valid": 3,
+ "runs_total": 6,
+ "runs_valid": 6,
  "stage_grid": [
   0.2,
   0.3,
@@ -16,10 +16,10 @@
   {
    "run": "2026-10-08_0140_k0_rep-2",
    "machine": "13th Gen Intel(R) Core(TM) i3-1315U",
-   "strict": {
-    "tipping_stage": "s4",
-    "tipping_rate": 0.5,
-    "capacity_rate": 0.4,
+   "throughput": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
     "recovered": false
    },
    "relaxed": {
@@ -28,15 +28,21 @@
     "capacity_rate": 0.6,
     "recovered": false
    },
-   "tx_per_s_per_core": 0.8
+   "strict": {
+    "tipping_stage": "s4",
+    "tipping_rate": 0.5,
+    "capacity_rate": 0.4,
+    "recovered": false
+   },
+   "tx_per_s_per_core": 1.2
   },
   {
    "run": "2026-10-08_0340_k0_rep-3",
    "machine": "13th Gen Intel(R) Core(TM) i3-1315U",
-   "strict": {
-    "tipping_stage": "s4",
-    "tipping_rate": 0.5,
-    "capacity_rate": 0.4,
+   "throughput": {
+    "tipping_stage": "s5",
+    "tipping_rate": 0.6,
+    "capacity_rate": 0.5,
     "recovered": false
    },
    "relaxed": {
@@ -45,15 +51,21 @@
     "capacity_rate": 0.5,
     "recovered": false
    },
-   "tx_per_s_per_core": 0.8
+   "strict": {
+    "tipping_stage": "s4",
+    "tipping_rate": 0.5,
+    "capacity_rate": 0.4,
+    "recovered": false
+   },
+   "tx_per_s_per_core": 1.0
   },
   {
    "run": "2026-10-08_0540_k0_rep-4",
    "machine": "13th Gen Intel(R) Core(TM) i3-1315U",
-   "strict": {
-    "tipping_stage": "s5",
-    "tipping_rate": 0.6,
-    "capacity_rate": 0.5,
+   "throughput": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
     "recovered": false
    },
    "relaxed": {
@@ -62,26 +74,89 @@
     "capacity_rate": 0.6,
     "recovered": false
    },
+   "strict": {
+    "tipping_stage": "s5",
+    "tipping_rate": 0.6,
+    "capacity_rate": 0.5,
+    "recovered": false
+   },
+   "tx_per_s_per_core": 1.2
+  },
+  {
+   "run": "2026-10-08_1252_k0_rep-5",
+   "machine": "13th Gen Intel(R) Core(TM) i3-1315U",
+   "throughput": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
+    "recovered": false
+   },
+   "relaxed": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
+    "recovered": false
+   },
+   "strict": {
+    "tipping_stage": "s4",
+    "tipping_rate": 0.5,
+    "capacity_rate": 0.4,
+    "recovered": false
+   },
+   "tx_per_s_per_core": 1.2
+  },
+  {
+   "run": "2026-10-08_1453_k0_rep-6",
+   "machine": "13th Gen Intel(R) Core(TM) i3-1315U",
+   "throughput": {
+    "tipping_stage": "s5",
+    "tipping_rate": 0.6,
+    "capacity_rate": 0.5,
+    "recovered": false
+   },
+   "relaxed": {
+    "tipping_stage": "s5",
+    "tipping_rate": 0.6,
+    "capacity_rate": 0.5,
+    "recovered": false
+   },
+   "strict": {
+    "tipping_stage": "s4",
+    "tipping_rate": 0.5,
+    "capacity_rate": 0.4,
+    "recovered": false
+   },
    "tx_per_s_per_core": 1.0
+  },
+  {
+   "run": "2026-10-08_1654_k0_rep-7",
+   "machine": "13th Gen Intel(R) Core(TM) i3-1315U",
+   "throughput": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
+    "recovered": false
+   },
+   "relaxed": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
+    "recovered": false
+   },
+   "strict": {
+    "tipping_stage": "s6",
+    "tipping_rate": 0.7,
+    "capacity_rate": 0.6,
+    "recovered": false
+   },
+   "tx_per_s_per_core": 1.2
   }
  ],
- "strict": {
+ "throughput": {
   "tipping_rates": [
-   0.5,
-   0.5,
-   0.6
-  ],
-  "tipping_min": 0.5,
-  "tipping_max": 0.6,
-  "tipping_median": 0.5,
-  "recovered": [
-   false,
-   false,
-   false
-  ]
- },
- "relaxed": {
-  "tipping_rates": [
+   0.7,
+   0.6,
+   0.7,
    0.7,
    0.6,
    0.7
@@ -92,9 +167,54 @@
   "recovered": [
    false,
    false,
+   false,
+   false,
+   false,
    false
   ]
  },
- "source": "NAS VM, lab, setup-v1 (runs rep-2 to rep-4)",
+ "relaxed": {
+  "tipping_rates": [
+   0.7,
+   0.6,
+   0.7,
+   0.7,
+   0.6,
+   0.7
+  ],
+  "tipping_min": 0.6,
+  "tipping_max": 0.7,
+  "tipping_median": 0.7,
+  "recovered": [
+   false,
+   false,
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "strict": {
+  "tipping_rates": [
+   0.5,
+   0.5,
+   0.6,
+   0.5,
+   0.5,
+   0.7
+  ],
+  "tipping_min": 0.5,
+  "tipping_max": 0.7,
+  "tipping_median": 0.5,
+  "recovered": [
+   false,
+   false,
+   false,
+   false,
+   false,
+   false
+  ]
+ },
+ "source": "NAS VM, lab, main measurement K0-NAS (6 valid runs: rep-2 to rep-7)",
  "criterion": "reproduced if the median tipping stage of new runs lies within [lowest \u2212 1 stage, highest + 1 stage] of this reference (REPRODUCE.md \u00a713)"
 }

@@ -372,13 +372,17 @@ def mem_q(v):
     return float(s)
 
 # ---------- values: profile original = chart defaults for resources ----------
-def cmd_strip(src, dst):
+# Profile original (decision 2026-10-10, lab book): the same conditions as the NAS profile – health checks, log level,
+# PURIS batch off, frontend off, vault, persistence –, only the resource settings as shipped by the Tractus-X charts:
+# resources, resource presets and the JVM heap setting. ISST and NAS then differ only in resources (and hardware).
+ORIGINAL_RESET = ("resources", "resourcesPreset", "JAVA_TOOL_OPTIONS")
+def cmd_strip(src, dst, block=""):
     import yaml
     def s(n):
         if isinstance(n, dict):
-            return {k: s(v) for k, v in n.items() if k not in ("resources", "resourcesPreset", "JAVA_TOOL_OPTIONS")}
+            return {k: s(v) for k, v in n.items() if k not in ORIGINAL_RESET}
         if isinstance(n, list):
-            return [s(x) for x in n if not (isinstance(x, dict) and x.get("name") == "JAVA_TOOL_OPTIONS")]
+            return [s(x) for x in n if not (isinstance(x, dict) and x.get("name") in ORIGINAL_RESET)]
         return n
     with open(src) as f: data = yaml.safe_load(f) or {}
     with open(dst, "w") as f: yaml.safe_dump(s(data), f, sort_keys=False)
@@ -829,16 +833,19 @@ def saturated(s, strict):
     trig = max(s.get("triggered_log", 0), 1)
     return (s.get("completed_log", 0) < 0.95 * planned or s.get("failed_log", 0) / trig > 0.01
             or (strict and s.get("invalidating_contract", 0) >= 1))
+def saturated_throughput(s):   # criterion of the thesis (lab book 2026-10-09): completed < 95 % of the planned transactions
+    return s.get("completed_log", 0) < 0.95 * (s.get("planned") or 1)
+MODES = (("throughput", saturated_throughput), ("relaxed", lambda s: saturated(s, False)), ("strict", lambda s: saturated(s, True)))
 def judge_run(meta):
     st = [s for s in meta["stages"] if not s["stage"].startswith("warmup") and s["stage"] != "recovery"]
     rec = next((s for s in meta["stages"] if s["stage"] == "recovery"), None)
     out = {}
-    for mode, strict in (("strict", True), ("relaxed", False)):
-        tip = next((s for s in st if saturated(s, strict)), None)
+    for mode, sat in MODES:
+        tip = next((s for s in st if sat(s)), None)
         before = [s for s in st if tip is None or st.index(s) < st.index(tip)]
         out[mode] = {"tipping_stage": tip["stage"] if tip else None, "tipping_rate": tip["rate_per_s"] if tip else None,
                      "capacity_rate": before[-1]["rate_per_s"] if before else None,
-                     "recovered": (not saturated(rec, strict)) if rec else None}
+                     "recovered": (not sat(rec)) if rec else None}
     return out
 CP_DEFAULT = {"compact-k0": 0.5, "compact-k1": 1.0, "original-k0": 1.5, "original-k1": 1.5}
 def summarize(cfg, metas):
@@ -848,17 +855,17 @@ def summarize(cfg, metas):
     for m in valid:
         j = judge_run(m); cp = m.get("edc_controlplane_customer_cpu_limit") or CP_DEFAULT.get(cfg)
         res["runs"].append({"run": m["run"], "machine": (m.get("machine") or {}).get("cpu_model") or (m.get("node") or {}).get("cpu_model"), **j,
-                            "tx_per_s_per_core": round(j["strict"]["capacity_rate"] / cp, 3) if cp and j["strict"]["capacity_rate"] else None})
-    for mode in ("strict", "relaxed"):
+                            "tx_per_s_per_core": round(j["throughput"]["capacity_rate"] / cp, 3) if cp and j["throughput"]["capacity_rate"] else None})
+    for mode, _ in MODES:
         rates = [r[mode]["tipping_rate"] for r in res["runs"]]
         num = [r if r is not None else math.inf for r in rates]
         res[mode] = {"tipping_rates": rates, "tipping_min": min(num) if num else None, "tipping_max": max(num) if num else None,
                      "tipping_median": statistics.median(num) if num else None,
                      "recovered": [r[mode]["recovered"] for r in res["runs"]]}
     return res
-def compare(summary, ref, mode="strict"):
+def compare(summary, ref, mode="throughput"):
     grid = summary["stage_grid"]
-    if not ref or not grid: return {"verdict": "no reference"}
+    if not ref or not grid or mode not in ref: return {"verdict": "no reference"}
     lo, hi = ref[mode]["tipping_min"], ref[mode]["tipping_max"]
     med = summary[mode]["tipping_median"]
     if med is None: return {"verdict": "no valid runs"}
@@ -886,18 +893,19 @@ def cmd_evaluate(folder, refdir):
     for cfg in cfgs:
         s = summarize(cfg, [m for m in metas if m.get("configuration") == cfg])
         rp = os.path.join(refdir, cfg + ".json"); ref = rjson(rp) if os.path.exists(rp) else None
-        s["comparison"] = compare(s, ref); s["comparison_relaxed"] = compare(s, ref, "relaxed")
+        s["comparison"] = compare(s, ref); s["comparison_relaxed"] = compare(s, ref, "relaxed"); s["comparison_strict"] = compare(s, ref, "strict")
         if any(m.get("kind") == "smoke" for m in metas if m.get("configuration") == cfg):   # 2-min stages: no backlog builds up in time
             s["comparison"] = s["comparison_relaxed"] = {"verdict": "not compared (short test)", "short_test": True}
-        summary["configurations"][cfg] = s; st = s["strict"]
-        caps = [r["strict"]["capacity_rate"] for r in s["runs"] if r["strict"]["capacity_rate"]]
+        summary["configurations"][cfg] = s; st = s["throughput"]
+        caps = [r["throughput"]["capacity_rate"] for r in s["runs"] if r["throughput"]["capacity_rate"]]
         tps = [r["tx_per_s_per_core"] for r in s["runs"] if r["tx_per_s_per_core"]]
         rec = st["recovered"]
         lines.append("| %s | %d of %d | %s (%s – %s) | %s | %s | %s | %s |" % (cfg, s["runs_valid"], s["runs_total"], fmt(st["tipping_median"]), fmt(st["tipping_min"]), fmt(st["tipping_max"]),
                      fmt(statistics.median(caps)) if caps else "–", ("%.2f" % statistics.median(tps)) if tps else "–",
                      "%d of %d" % (sum(1 for x in rec if x), len(rec)) if rec else "–", s["comparison"]["verdict"]))
-    lines += ["", "Saturation criterion: completed < 95 % of the input rate, or > 1 % failed, or ≥ 1 \"Invalidating …\" (strict).",
-              "The relaxed reading without the third condition is in summary.json (`relaxed`, `comparison_relaxed`)."]
+    lines += ["", "Saturation criterion (as in the thesis): a stage is saturated when fewer than 95 % of its planned transactions are completed;",
+              "the tipping stage is the first saturated stage after the warm-up. Further readings in summary.json: `relaxed` (or > 1 % failed),",
+              "`strict` (or ≥ 1 \"Invalidating …\"). References: reference/<configuration>.json (main measurement on the NAS)."]
     wjson(os.path.join(folder, "summary.json"), summary)
     open(os.path.join(folder, "verdict.md"), "w").write("\n".join(lines) + "\n")
     print("\n".join(lines))
@@ -1602,6 +1610,7 @@ lock() {
   printf 'pid=%s command=%s phase=%s started=%s since=%s mode=%s reps=%s\n' "$$" "${CMD:-}" "start" "$(now_iso)" "$(date +%s)" \
     "$( [ "${REPRODUCE_SMOKE:-0}" = 1 ] && echo short || echo full)" "$REPS" > "$STATE/job"
   [ "$BG" != 1 ] || info "background job started (PID $$)"
+  if [ -n "${REPRODUCE_CONFIGS:-}" ]; then echo "$REPRODUCE_CONFIGS" > "$STATE/configs"; [ "$BG" = 1 ] || info "configurations selected: $REPRODUCE_CONFIGS (kept until changed; all: REPRODUCE_CONFIGS=all)"; fi
 }
 unlock() { [ "$LOCKED" = 1 ] || return 0; flock -u 9; exec 9>&-; LOCKED=0; }
 set_phase() {
@@ -1648,7 +1657,12 @@ detach() {  # command... → continues as a background job and shows its progres
 
 # ── Common helpers ────────────────────────────────────────────────────────────────
 profile() { cat "$STATE/profile" 2>/dev/null; }
-configs_of() { local v="CONFIGS_$1"; echo "${!v:-}"; }
+configs_of() {  # profile → its configurations; REPRODUCE_CONFIGS (kept in state/configs) selects a subset, e.g. original-k1
+  local v="CONFIGS_$1" all sel c out=""
+  all="${!v:-}"; sel="${REPRODUCE_CONFIGS:-$(cat "$STATE/configs" 2>/dev/null || true)}"
+  for c in $all; do case " ${sel//,/ } " in *" $c "*) out="$out $c" ;; esac; done
+  out="${out# }"; echo "${out:-$all}"
+}
 commit() { git -C "$SRC" rev-parse HEAD 2>/dev/null; }
 k() { kubectl --request-timeout=30s "$@"; }
 release_line() { echo "$RELEASES" | awk -v b="$1" '$1 == b'; }
@@ -1667,12 +1681,13 @@ values_files() {  # block configuration → one path per line
   base="$SRC/setup/$b/values.yaml"
   if [ "$prof" = original ] && [ "$sut" = 1 ]; then
     out="$STATE/values/$cfg/$b.yaml"; mkdir -p "$(dirname "$out")"
-    py strip "$base" "$out"; echo "$out"
+    py strip "$base" "$out" "$b"; echo "$out"
   else
     echo "$base"
   fi
   [ "$b" != b3-alloy ] || echo "$SRC/setup/b3-alloy/reproduce.yaml"
   case "$b" in d1-*|d2-*) passwords_file; ;; esac
+  case "$cfg" in original-*) [ ! -f "$SRC/setup/$b/original.yaml" ] || echo "$SRC/setup/$b/original.yaml" ;; esac   # DTR memory (§7.4)
   case "$cfg" in
     compact-k1)  [ ! -f "$SRC/setup/$b/k1-nas.yaml" ] || echo "$SRC/setup/$b/k1-nas.yaml" ;;
     original-k1) [ ! -f "$SRC/setup/$b/original-k1.yaml" ] || echo "$SRC/setup/$b/original-k1.yaml" ;;
@@ -2156,7 +2171,7 @@ phase_deploy() {
   ensure_boot
   local cfg ns d line b rc i=0 n to t1
   n=$(echo "$RELEASES" | wc -l | tr -d ' ')
-  cfg="$(profile)-k0"
+  cfg=$(configs_of "$(profile)" | awk '{print $1}')
   [ -f "$STATE/config" ] && cfg=$(cat "$STATE/config")
   for ns in monitoring logging identity customer supplier k6-operator k6; do k create namespace "$ns" --dry-run=client -o yaml | q k apply -f -; done
   for ns in customer supplier; do
@@ -2180,6 +2195,9 @@ phase_deploy() {
     to=$( [ "${b:0:1}" = c ] && echo 2100 || echo 900 ); t1=$SECONDS
     case "$b" in c3-*|c5-*) step "[$i/$n] waiting until $b is ready – a DTR starting with little CPU can take up to 20 min" ;; *) step "[$i/$n] waiting until $b is ready" ;; esac
     rc=0; wait_namespaces "$to" "$ns" 2>>"$LOGF" || rc=$?
+    if [ "$rc" != 0 ] && [ "$cfg" = original-k0 ]; then
+      info "a configuration that does not run with the resources as shipped is a result; original-k1 can still be measured alone: REPRODUCE_CONFIGS=original-k1 ./reproduce"
+    fi
     if [ "$rc" = 2 ]; then die "$b: container killed repeatedly for exceeding its RAM limit (OOMKilled) – configuration $cfg as shipped is not runnable on its own; this is a result (REPRODUCE.md §7.4)"; fi
     [ "$rc" = 0 ] || die "$b: pods not ready within $((to / 60)) min – see the reasons above and the diagnostics"
     ok "[$i/$n] $b ready ($(dur $((SECONDS - t1))))"
@@ -2591,7 +2609,7 @@ ${B}Examples${Z}
   TZ=Europe/Berlin ./reproduce status               ${D}times in German time (permanently: settings tz)${Z}
   ./reproduce logs puris-customer -f                ${D}follow the PURIS log of the customer${Z}
 
-${B}Environment${Z}  ${D}NO_COLOR · FORCE_COLOR · TZ · REPRODUCE_SMOKE · REPRODUCE_REPS · REPRODUCE_HOME${Z}
+${B}Environment${Z}  ${D}NO_COLOR · FORCE_COLOR · TZ · REPRODUCE_SMOKE · REPRODUCE_REPS · REPRODUCE_CONFIGS · REPRODUCE_HOME${Z}
 ${B}Exit codes${Z}   ${D}0 ok · 1 error · 2 precondition missing · 3 machine unsuitable · 4 stopped${Z}
 ${B}More${Z}         ${D}REPRODUCE.md · https://github.com/artamrj/puris-performance-experiments${Z}
 EOF
@@ -2792,7 +2810,7 @@ cmd_uninstall() {
       if [ "$sw" = True ] && [ -f /etc/fstab.reproduce-bak ]; then q sudo cp /etc/fstab.reproduce-bak /etc/fstab; q sudo swapon -a; fi
     }
   fi
-  sudo rm -f "$OWNER" /etc/rancher/k3s/config.yaml
+  sudo rm -f "$OWNER" /etc/rancher/k3s/config.yaml; rm -f "$STATE/configs"
   rm -f "$KUBECONFIG" "$STATE/config" "$STATE/verified" "$STATE/boot_id" "$STATE/results-current"; rm -rf "$STATE/releases" "$MARKERS"
   if [ -d "$STATE/s0" ]; then   # S0 belongs to the removed cluster: kept, but a new cluster gets its own (next prepare)
     local s0old; s0old="$STATE/s0.uninstalled-$(date -u +%Y%m%d-%H%M%S)"; mv "$STATE/s0" "$s0old"

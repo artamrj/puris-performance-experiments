@@ -84,6 +84,52 @@ class Plans(unittest.TestCase):
         self.assertNotRegex(body, r'(^|\s)(\.|source)\s+"?\$pf', 'load_plan führt die Plan-Datei aus')
 
 
+class OriginalProfile(unittest.TestCase):
+    """Profil original = Bedingungen wie auf der NAS (compact); nur die Ressourcen wie von den Charts ausgeliefert.
+    So unterscheiden sich NAS und VM der Betreuung nur in den Ressourcen – Voraussetzung für den Vergleich."""
+    BLOCKS = ['c1-identitaet', 'c2-customer-edc', 'c4-supplier-edc', 'c3-customer-dtr', 'c5-supplier-dtr', 'd1-puris-customer', 'd2-puris-supplier']
+
+    def py(self):
+        a = TEXT.index("<<'PYCODE'"); a = TEXT.index('\n', a) + 1; b = TEXT.index('\nPYCODE\n', a)
+        ns = {'__name__': 'reproduce_py'}; exec(compile(TEXT[a:b], 'PY', 'exec'), ns); return ns
+
+    def test_only_resources_differ_from_the_nas_profile(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest('PyYAML fehlt')
+        ns = self.py(); reset = set(ns['ORIGINAL_RESET'])
+        def without(n):
+            if isinstance(n, dict): return {k: without(v) for k, v in n.items() if k not in reset}
+            if isinstance(n, list): return [without(x) for x in n if not (isinstance(x, dict) and x.get('name') in reset)]
+            return n
+        with tempfile.TemporaryDirectory() as tmp:
+            for blk in self.BLOCKS:
+                with self.subTest(block=blk):
+                    src = str(ROOT / 'setup' / blk / 'values.yaml'); out = os.path.join(tmp, blk + '.yaml')
+                    ns['cmd_strip'](src, out, blk)
+                    self.assertEqual(yaml.safe_load(open(out)), without(yaml.safe_load(open(src))))   # alles außer Ressourcen gleich
+                    self.assertNotRegex(open(out).read(), r'(^|\s)(resources|resourcesPreset|JAVA_TOOL_OPTIONS)\b')
+
+    def test_original_overlays_only_fix_the_dtr_memory(self):
+        # Einzige Abweichung von den ausgelieferten Ressourcen: Speicher des DTR (Image-Heap 2 GB > Chart 1Gi; TRG 5.04)
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest('PyYAML fehlt')
+        found = sorted(p.parent.name for p in (ROOT / 'setup').glob('*/original.yaml'))
+        self.assertEqual(found, ['c3-customer-dtr', 'c5-supplier-dtr'])
+        for blk in found:
+            v = yaml.safe_load(open(ROOT / 'setup' / blk / 'original.yaml'))
+            self.assertEqual(v, {'digital-twin-registry': {'registry': {'resources': {'requests': {'memory': '3Gi'}, 'limits': {'memory': '3Gi'}}}}})
+
+    def test_saturation_criterion_is_the_one_of_the_thesis(self):
+        ns = self.py(); sat = ns['saturated_throughput']
+        self.assertFalse(sat({'planned': 600, 'completed_log': 570}))   # genau 95 % – nicht gesättigt (wie analysis/)
+        self.assertTrue(sat({'planned': 600, 'completed_log': 569}))
+        self.assertFalse(sat({'planned': 600, 'completed_log': 600, 'failed_log': 30, 'invalidating_contract': 5}))   # nur Durchsatz zählt
+
+
 @unittest.skipUnless(bash4(), 'braucht Linux und bash ≥ 4')
 class Runtime(unittest.TestCase):
     def run_in(self, code):
