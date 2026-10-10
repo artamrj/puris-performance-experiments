@@ -1,0 +1,11 @@
+{
+ "run": "2026-10-09_2210_compact-k0_rep-1",
+ "git_commit": "6c1b7aaa4ce3f9d3cd5813b452ff2edbca5655e9",
+ "plan": "k0",
+ "repetition": "1",
+ "started_utc": "2026-10-09T22:10:12.045060+00:00",
+ "time_utc": "2026-10-10T00:14:19.089620+00:00",
+ "phase": "completed",
+ "status": "completed",
+ "reason": "valid=True"
+}

@@ -13,6 +13,16 @@ def stage(name, rate, completed, inval=0, seconds=600):
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_rebuild_runs_never_join_the_main_measurement(self):
+        # 2026-10-10: Läufe aus `reproduce` liegen in runs/, gehören aber nicht zu K0-NAS/K1-NAS
+        import json, os, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, tool in (("2026-10-08_0140_k0_rep-2", None), ("2026-10-09_2210_compact-k0_rep-1", {"name": "reproduce"})):
+                os.makedirs(os.path.join(tmp, "runs", name))
+                json.dump({"kind": "main", "plan": "k0", "tool": tool}, open(os.path.join(tmp, "runs", name, "meta.json"), "w"))
+            self.assertEqual([r["name"] for r in L.discover(tmp)], ["2026-10-08_0140_k0_rep-2"])
+            self.assertEqual([r["name"] for r in L.discover(tmp, rebuild=True)], ["2026-10-09_2210_compact-k0_rep-1"])
+
     def test_percentile_linear_like_numpy(self):
         v = [1, 2, 3, 4]
         self.assertEqual(L.percentile(v, 0.5), 2.5)

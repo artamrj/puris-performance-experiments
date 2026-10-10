@@ -141,8 +141,15 @@ def _series(path):
     return out
 
 
-def discover(root=ROOT, kinds=("main",)):
-    """Alle Messläufe (auch ungültige und Versuche) der Konfigurationen in CONFIGS."""
+def is_rebuild(meta):
+    """Lauf aus dem Nachbau-Test mit `reproduce` (meta.json → tool.name); gehört nicht zur Hauptmessung."""
+    tool = (meta or {}).get("tool")
+    return isinstance(tool, dict) and tool.get("name") == "reproduce"
+
+
+def discover(root=ROOT, kinds=("main",), rebuild=False):
+    """Alle Messläufe (auch ungültige und Versuche) der Konfigurationen in CONFIGS.
+    Läufe des Nachbau-Tests (`reproduce`) nur mit rebuild=True – sonst nie in den Zahlen der Hauptmessung."""
     runs = []
     for name in sorted(os.listdir(os.path.join(root, "runs"))):
         d = os.path.join(root, "runs", name)
@@ -151,6 +158,8 @@ def discover(root=ROOT, kinds=("main",)):
         attempt = json.load(open(att_p)) if os.path.exists(att_p) else {}
         plan = (meta or {}).get("plan") or attempt.get("plan")
         if not isinstance(plan, str) or plan not in CONFIGS or (meta and meta.get("kind") not in kinds):
+            continue
+        if is_rebuild(meta) != rebuild:
             continue
         nt = os.path.join(root, "nachtrag", name)
         runs.append({"name": name, "dir": d, "plan": plan, "config": CONFIGS[plan], "meta": meta,
