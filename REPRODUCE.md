@@ -112,11 +112,14 @@ Visual language: the terminal's own 16 colours (works on light and dark themes),
 
 `./reproduce dashboard` (alias `ui`; `./reproduce` while a job runs opens it automatically) is a full-screen view in Python `curses` (standard library), refreshed in a background thread every 3 s:
 
-- header: profile, commit, clock · current phase with spinner and its duration · current step and its age
-- overall bar with percentage, end time (time zone from `settings tz`) and time left
-- phases 0–9 · cluster: pods per namespace (`●` ready, `◐` starting, `✗` failing) and node CPU/memory · runs per configuration (`■` valid, `□` open, `✗` invalid)
-- activity: the last status lines
-- keys: `q` quit (the job keeps running) · `s` stop the job (asks first) · `l` log (`a` all lines) · `p` pods with state, restarts, age · `?` help · `r` refresh
+- layout in framed panels (two columns from 90 columns, stacked below); all times in the time zone of `settings tz`
+- header panel: current phase (n/9) with spinner and duration · current step and its age · overall bar with percentage, end time and time left
+- phases panel: every phase with its actual duration from the log (open phases: usual duration)
+- steps panel, depending on the phase: `deploy` – the 11 components as a checklist (✓ with duration, spinner with time and reason, ○ open); `measure` – configuration and run, reset → load → collect, every load stage as a chip (`✓ s3 0.4  ⠋ s4 0.5  ○ s5 0.6`) with the time in the current stage; other phases – their steps so far; without a job – the next command
+- cluster panel: pods per namespace (`●` ready, `◐` starting, `✗` failing) and node CPU/memory · runs panel: per configuration (`■` valid, `◐` running, `□` open, `✗` invalid), results folder and mode
+- activity panel: events only (finished components and steps, warnings, errors, phase changes); the full log with `l`
+- keys: `q` quit (the job keeps running) · `s` stop the job (asks first) · `l` log (`a` all lines) · `p` pods · `?` help · `r` refresh
+- pods view (`p`, or `./reproduce dashboard --once pods`): grouped by the system boundary of the thesis (§4.2 of the thesis) – system under test per company (customer requests the stock, supplier provides it; within a company in data-flow order PURIS → EDC control plane → data plane → DTR, then storage), context (identity), measurement infrastructure (the observer), Kubernetes in one line; per component CPU and memory used against its container limit (USE method), restarts and age; components still starting show their reason and CPU share of the limit; `◀ busiest` marks the highest share of its limit in the system under test; usage (`kubectl top pods`, ≈ 0.04 s) only while the view is open and never in measurement-safe mode
 - terminal tab: title with phase and %, optional native progress; bell or desktop notification when the job ends (`settings notify`)
 - **measurement-safe mode** (observer effect): while a job is in phase `measure`, the view makes no `kubectl` calls, reads the state every 5 min instead of every 3 s, re-reads the log only when it changed and draws one frame per second; header badge `◆ measurement-safe`, `r` reads everything once. Measured on the NAS VM (60 s, 2026-10-09): 0.19 cores normal (without cluster; with cluster ≈ 0.3) → 0.013 cores measurement-safe. `watch` updates its estimate every 5 min during a measurement.
 - `--once` (or no terminal): one frame as text. An unknown `TERM` (e.g. `xterm-ghostty` on the server) falls back to `xterm-256color`; if the dashboard cannot start, `watch` is shown instead.

@@ -917,7 +917,7 @@ def cmd_make_reference(cfg, source, *runs):
 def cmd_dashboard(script, logf, once=""):
     # full-screen live view (curses, standard library); design: REPRODUCE.md §4.1
     import threading, signal as sig
-    once = once == "once"
+    once_view = once.split(":", 1)[1] if once.startswith("once:") else "main"; once = once.startswith("once")
     STATUS = re.compile(r"^(\d\d):(\d\d):(\d\d) (\S+) ")
     SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     NS = ["monitoring", "logging", "identity", "customer", "supplier", "k6-operator", "k6"]
@@ -952,6 +952,13 @@ def cmd_dashboard(script, logf, once=""):
         s_ = run(["bash", script, "_snapshot"], 60)
         p_ = None if light else run(["kubectl", "--request-timeout=5s", "get", "pods", "-A", "-o", "json"], 15)
         n_ = None if light else run(["kubectl", "--request-timeout=5s", "top", "node", "--no-headers"], 15)
+        t_ = run(["kubectl", "--request-timeout=5s", "top", "pods", "-A", "--no-headers"], 15) if MODE["view"] == "pods" and not light else None
+        if t_:
+            top = {}
+            for line in t_.splitlines():
+                f = line.split()
+                if len(f) >= 4: top[(f[0], f[1])] = (cpu_q(f[2]), mem_q(f[3]))
+            W["top"] = top
         try: snap = json.loads(s_) if s_ else None
         except ValueError: snap = None
         try: pods = json.loads(p_)["items"] if p_ else None
@@ -1005,8 +1012,8 @@ def cmd_dashboard(script, logf, once=""):
         m = STATUS.match(l)
         if not m: c.put(y, x, l[:width], "d"); return
         sym, body = m.group(4), l[m.end():]
-        c.put(y, x, l[:8], "d")
-        if sym.startswith("━"): c.put(y, x + 9, (sym + " " + body)[:max(0, width - 9)], "b"); return
+        c.put(y, x, time.strftime("%H:%M:%S", time.localtime(line_epoch(l, time.time()))), "d")
+        if sym.startswith("━"): c.put(y, x + 9, cut(sym + " " + body, width - 9), "b"); return
         st = SYM.get(sym, ""); c.put(y, x + 9, sym, st)
         c.put(y, x + 11, cut(body, width - 11), st if st in ("err", "warn", "d", "b") else "")
     def pod_state(p):
@@ -1090,61 +1097,231 @@ def cmd_dashboard(script, logf, once=""):
         if MODE["msg"] and now - MODE["msg_t"] < 6: c.right(y, MODE["msg"], "warn")
         else: c.right(y, ("updated %s ago" % dur(now - W["t"])) if W["t"] else "loading …", "d")
 
+    # ── layout v2: framed panels (enclosure), X of Y as checklists, events instead of log noise ──
+    NAMES = {"b1-monitoring": "monitoring", "b2-loki": "Loki · log store", "b3-alloy": "Alloy · log collector",
+             "c1-identitaet": "identity · wallet", "c2-customer-edc": "EDC customer", "c4-supplier-edc": "EDC supplier",
+             "c3-customer-dtr": "DTR customer", "c5-supplier-dtr": "DTR supplier", "d1-puris-customer": "PURIS customer",
+             "d2-puris-supplier": "PURIS supplier", "f1-k6": "k6 operator"}
+    def tl(l, now):   # time of a log line in the local time zone (TZ / settings tz)
+        return time.strftime("%H:%M:%S", time.localtime(line_epoch(l, now)))
+    def body(l): m = STATUS.match(l); return (m.group(4), l[m.end():]) if m else ("", l)
+    def box(c, y, x, h, w, title="", right=""):
+        if h < 2 or w < 6: return
+        c.put(y, x, "╭" + "─" * (w - 2) + "╮", "d"); c.put(y + h - 1, x, "╰" + "─" * (w - 2) + "╯", "d")
+        for i in range(1, h - 1): c.put(y + i, x, "│", "d"); c.put(y + i, x + w - 1, "│", "d")
+        if title: c.put(y, x + 2, " %s " % title, "b")
+        if right and len(right) + len(title) + 10 < w: c.put(y, x + w - len(right) - 4, " %s " % right, "d")
+    def phase_times(lines, now, running):   # name → (seconds, finished?) from the phase headers in the log
+        hs = []
+        for l in lines:
+            sym, t = body(l)
+            if sym.startswith("━") and "phase " in t:
+                try: hs.append((t.split("·")[1].split("–")[0].strip(), line_epoch(l, now)))
+                except IndexError: pass
+        out = {}
+        last = line_epoch(lines[-1], now) if lines else now
+        for i, (n, e) in enumerate(hs):
+            end = hs[i + 1][1] if i + 1 < len(hs) else (now if n == running else last)
+            out[n] = (max(0, end - e), not (i + 1 == len(hs) and n == running))
+        return out
+    def since_header(lines, name):   # the lines of the last run of a phase
+        for i in range(len(lines) - 1, -1, -1):
+            sym, t = body(lines[i])
+            if sym.startswith("━") and " · %s – " % name in t: return lines[i:]
+        return []
+    def steps_deploy(lines, rels, now, k):
+        part = since_header(lines, "deploy") or since_header(lines, "measure")
+        st = {r: ["open", "", 0] for r in rels}; cur = None
+        for l in part:
+            sym, t = body(l)
+            m = re.search(r"\[\d+/\d+\] (?:installing |waiting until )?(\S+?)(?: is ready| ready| installed| already installed|\s|$)", t)
+            name = m.group(1) if m and m.group(1) in st else None
+            if name and sym == "✓" and " ready (" in t: st[name] = ["done", t.rsplit("(", 1)[-1].rstrip(")"), 0]
+            elif name and sym == "↷": st[name] = ["done", "kept", 0]
+            elif name and sym == "…": st[name] = ["run", "installing" if "installing" in t else "starting", line_epoch(l, now)]; cur = name
+            elif sym == "·" and "still waiting" in t and cur:
+                why = re.findall(r"\(([^()]*)\)", t.split("not ready:", 1)[-1])
+                st[cur][1] = (why[0] if why else "starting").replace("started, waiting for its readiness check", "waiting for readiness")
+        return st
+    def draw_steps(c, y, x, h, w, sn, lines, now, k, job):
+        ph = ((job or {}).get("phase") or "").split(":")[0]
+        if not sn.get("phases"):
+            box(c, y, x, h, w, "Steps"); c.put(y + 1, x + 2, SPIN[k % 10] + " reading the state …", "acc"); return
+        if not job:
+            nxt = next((p_ for p_ in sn.get("phases") or [] if p_["state"] == "open"), None)
+            box(c, y, x, h, w, "Next")
+            if nxt:
+                c.put(y + 1, x + 2, cut("./reproduce %s" % nxt["name"], w - 4), "acc b")
+                c.put(y + 2, x + 2, cut(nxt["purpose"], w - 4), "d"); c.put(y + 3, x + 2, cut("usually " + nxt["usual"], w - 4), "d")
+            else: c.put(y + 1, x + 2, "✓ all phases done", "ok")
+            return
+        if ph == "deploy":
+            rels = sn.get("releases") or []; st = steps_deploy(lines, rels, now, k)
+            done = sum(1 for r in rels if st[r][0] == "done")
+            box(c, y, x, h, w, "Components", "%d of %d ready" % (done, len(rels)))
+            for i, r in enumerate(rels[:h - 2]):
+                s_, info_, t0 = st[r]; yy = y + 1 + i
+                g, sty = {"done": ("✓", "ok"), "run": (SPIN[k % 10], "acc"), "open": ("○", "d")}[s_]
+                c.put(yy, x + 2, g, sty); c.put(yy, x + 4, cut(NAMES.get(r, r), 22).ljust(22), "acc b" if s_ == "run" else ("" if s_ == "done" else "d"))
+                extra = info_ if s_ == "done" else (("%s · %s" % (dur(now - t0), info_)) if s_ == "run" else ("up to 20 min" if "dtr" in r else ""))
+                c.put(yy, x + 27, cut(extra, w - 29), "d" if s_ != "run" else "")
+            return
+        if ph == "measure":
+            part = since_header(lines, "measure"); runs = [i for i, l in enumerate(part) if body(l)[0] == "▶"]
+            if not runs:
+                box(c, y, x, h, w, "Measurement", "preparing")
+                for i, l in enumerate([l for l in part if body(l)[0] in ("…", "✓", "!")][-(h - 2):]):
+                    sym, t = body(l); c.put(y + 1 + i, x + 2, sym, SYM.get(sym, "")); c.put(y + 1 + i, x + 4, cut(t, w - 6), "")
+                return
+            seg = part[runs[-1]:]; head = body(seg[0])[1]
+            cfg = head.split(":")[0]; plan = (sn.get("plans") or {}).get(cfg, {})
+            mins = 2 if job.get("mode") == "short" else plan.get("minutes", 10)
+            state = {"reset": ["open", ""], "load": ["open", ""], "collect": ["open", ""]}; stage_i, stage_t = 0, 0
+            for l in seg:
+                sym, t = body(l)
+                if t.startswith("reset: stop"): state["reset"] = ["run", line_epoch(l, now)]
+                elif sym == "✓" and t.startswith("reset done"):
+                    mm = re.search(r"in (\d+) s", t); state["reset"] = ["done", dur(int(mm.group(1))) if mm else ""]
+                elif sym == "✓" and t.startswith("load started"): state["load"] = ["run", line_epoch(l, now)]
+                elif t.startswith("load stage "):
+                    mm = re.search(r"· (\d+) of (\d+)", t)
+                    if mm: stage_i, stage_t = int(mm.group(1)), line_epoch(l, now)
+                elif t.startswith("collecting"): state["load"] = ["done", ""]; state["collect"] = ["run", line_epoch(l, now)]
+                elif t.startswith("drain:") and state["collect"][0] == "run": state["collect"].append(t)
+                elif sym in ("✓", "!") and t.startswith("run "): state["collect"] = ["done", t.split(":")[0]]
+            rn = re.search(r"run (\d+)", head); title = "%s · run %s" % (cfg, rn.group(1) if rn else "?")
+            box(c, y, x, h, w, title, "%d of %d stages" % (max(0, stage_i - (1 if state["load"][0] == "run" else 0)) if state["load"][0] != "done" else len(plan.get("labels") or []), len(plan.get("labels") or [])))
+            yy = y + 1
+            for key in ("reset", "load", "collect"):
+                s_ = state[key]; g, sty = {"done": ("✓", "ok"), "run": (SPIN[k % 10], "acc"), "open": ("○", "d")}[s_[0]]
+                c.put(yy, x + 2, g, sty); c.put(yy, x + 4, key.ljust(8), "acc b" if s_[0] == "run" else ("" if s_[0] == "done" else "d"))
+                info_ = ""
+                if s_[0] == "done": info_ = s_[1]
+                elif s_[0] == "run" and key == "load" and stage_i:
+                    labels, rates = plan.get("labels") or [], plan.get("rates") or []
+                    info_ = "stage %s · %s of %d · %s/s · %s of %d min" % (labels[stage_i - 1] if stage_i <= len(labels) else "?", stage_i, len(labels),
+                                                                          rates[stage_i - 1] if stage_i <= len(rates) else "?", dur(now - stage_t), mins)
+                elif s_[0] == "run": info_ = dur(now - s_[1]) + ((" · " + s_[-1]) if key == "collect" and len(s_) > 2 else "")
+                c.put(yy, x + 13, cut(info_, w - 15), "d" if s_[0] != "run" else ""); yy += 1
+                if key == "load" and plan.get("labels"):   # every stage as a chip: ✓ done · spinner now · ○ later
+                    xx = x + 4
+                    for i, (lab, rate) in enumerate(zip(plan["labels"], plan["rates"]), 1):
+                        if state["load"][0] == "done" or (stage_i and i < stage_i): g, sty = "✓", "ok"
+                        elif i == stage_i and state["load"][0] == "run": g, sty = SPIN[k % 10], "acc"
+                        else: g, sty = "○", "d"
+                        chip = "%s %s %s" % (g, lab.replace("warmup", "w").replace("recovery", "rec"), rate)
+                        if xx + len(chip) > x + w - 2: yy += 1; xx = x + 4
+                        if yy >= y + h - 1: break
+                        c.put(yy, xx, g, sty); c.put(yy, xx + 2, chip[2:], "acc b" if sty == "acc" else ("" if sty == "ok" else "d")); xx += len(chip) + 2
+                    yy += 1
+                if yy >= y + h - 1: break
+            return
+        part = since_header(lines, ph)   # other phases: the steps of this phase so far
+        box(c, y, x, h, w, "Steps of %s" % ph)
+        for i, l in enumerate([l for l in part if body(l)[0] in ("…", "✓", "↷", "!", "✗")][-(h - 2):]):
+            sym, t = body(l); c.put(y + 1 + i, x + 2, sym, SYM.get(sym, "")); c.put(y + 1 + i, x + 4, cut(t, w - 6), "")
+    def draw_phases_box(c, y, x, h, w, phases, k, times, running):
+        box(c, y, x, h, w, "Phases", "%d of 10 done" % sum(1 for p_ in phases if p_["state"] == "done"))
+        for i, p_ in enumerate(phases[:h - 2]):
+            st = p_["state"]; yy = y + 1 + i
+            sym, sty = {"done": ("✓", "ok"), "running": (SPIN[k % 10], "acc"), "open": ("○", "d")}[st]
+            c.put(yy, x + 2, sym, sty); c.put(yy, x + 4, str(i), "d"); c.put(yy, x + 6, p_["name"].ljust(9), "acc b" if st == "running" else ("" if st == "done" else "d"))
+            tm = times.get(p_["name"])
+            u = p_["usual"].split(",")[0].replace("about ", "").replace(" per run", "/run").replace("under 1 min", "< 1 min")
+            info_ = dur(tm[0]) if tm and st != "open" else ("done" if st == "done" else (u if u.startswith("<") else "~" + u))
+            c.put(yy, x + 16, cut(info_, w - 18), "d" if st != "running" else "")
+    def draw_cluster_box(c, y, x, h, w, pods, node, kube):
+        box(c, y, x, h, w, "Cluster", "measurement-safe" if W["safe"] else "")
+        yy = y + 1
+        if pods is None:
+            c.put(yy, x + 2, cut("paused during the measurement · r reads once" if W["safe"] else ("not reachable" if not kube else "loading …"), w - 4), "d"); return
+        by = {}
+        for p_ in pods:
+            ns = p_["metadata"]["namespace"]
+            if ns in NS: by.setdefault(ns, []).append(pod_state(p_)[0])
+        for ns in NS:
+            sts = [s_ for s_ in by.get(ns, []) if s_ != "done"]
+            if not sts or yy >= y + h - 1: continue
+            okn = sts.count("ok"); xx = c.put(yy, x + 2, ns.ljust(12), "")
+            for s_ in sts[:max(0, w - 26)]: g, sty = GLYPH[s_]; c.put(yy, xx, g, sty); xx += 1
+            c.put(yy, xx + 1, "%d/%d" % (okn, len(sts)), "d" if okn == len(sts) else "warn"); yy += 1
+        if node:
+            for lab, pct, txt in (("cpu", node["cpu_pct"], "%.1f cores" % node["cpu"]), ("memory", node["mem_pct"], "%.1f GiB" % node["mem"])):   # whole node
+                if yy >= y + h - 1: break
+                bw = max(6, min(14, w - 28)); f = int(round(bw * min(pct, 100) / 100)); sty = "err" if pct >= 90 else ("warn" if pct >= 75 else "acc")
+                c.put(yy, x + 2, lab.ljust(7), ""); c.put(yy, x + 10, "━" * f, sty); c.put(yy, x + 10 + f, "─" * (bw - f), "d")
+                c.put(yy, x + 11 + bw, cut("%d %% · %s" % (pct, txt), w - bw - 13), "d"); yy += 1
+    def draw_runs_box(c, y, x, h, w, sn):
+        cfgs = sn.get("configs") or []; target = sn.get("reps") or 3
+        box(c, y, x, h, w, "Runs", "target %d valid each" % target)
+        for i, cf in enumerate(cfgs[:h - 2]):
+            r = (sn.get("runs") or {}).get(cf, {"valid": 0, "invalid": 0, "running": 0}); run = r.get("running", 0); yy = y + 1 + i
+            xx = c.put(yy, x + 2, cf.ljust(13), "")
+            for j in range(max(target, r["valid"] + run)):
+                g, sty = ("■", "ok") if j < r["valid"] else (("◐", "acc") if j < r["valid"] + run else ("□", "d")); xx = c.put(yy, xx, g, sty)
+            for j in range(r["invalid"]): xx = c.put(yy, xx, "✗", "err")
+            c.put(yy, xx + 2, cut("%d of %d%s%s" % (r["valid"], target, " · running" if run else "", " · %d invalid" % r["invalid"] if r["invalid"] else ""), w - (xx - x) - 4), "d")
+        if sn.get("results") and h >= len(cfgs) + 4:
+            c.put(y + h - 2, x + 2, cut("folder %s · %s" % (os.path.basename(sn["results"]), "short test" if sn.get("mode") == "short" else "real runs"), w - 4), "d")
+    NOISE = re.compile(r"installing |installed \(|waiting until |still waiting|^drain: |^load stage |^reset: |waiting for the first stage|^estimate: |^background job started")
     def view_main(c, now, k):
         with L: snap, pods, node, kube = W["snap"], W["pods"], W["node"], W["kube"]
-        w, h = c.w, c.h; sn = dict(snap or {}); jn = job_now()
-        if snap is not None: sn["job"] = jn
-        x = c.put(0, 1, "reproduce", "acc b"); x = c.put(0, x + 1, "· PURIS saturation experiment", "d")
-        if W["safe"]: c.put(0, x + 2, "◆ measurement-safe · state every 5 min · r refreshes", "warn")
+        w, h = c.w, c.h; sn = dict(snap or {}); job = job_now()
+        if snap is not None: sn["job"] = job
+        phases = sn.get("phases") or []; lines = log_lines(); ph = ((job or {}).get("phase") or "").split(":")[0]
+        # header
+        x = c.put(0, 1, "reproduce", "acc b")
+        if w >= 90: x = c.put(0, x + 1, "· PURIS saturation experiment", "d")
+        if W["safe"]: x = c.put(0, x + 2, "◆ measurement-safe", "warn")
+        if (job or {}).get("mode") == "short": c.put(0, x + 2, "◆ short test – not valid for the thesis", "warn")
         c.right(0, "%s · %s · %s" % (sn.get("profile") or "–", sn.get("commit") or "–", time.strftime("%H:%M %Z", time.localtime(now))), "d")
-        c.put(1, 0, "─" * w, "d")
-        y = 2; job = sn.get("job"); phases = sn.get("phases") or []; lines = log_lines()
-        step = next((l for l in reversed(lines) if STATUS.match(l).group(4) in ("…", "✓", "↷", "━━", "▶")), "")
-        if snap is None:
-            c.put(y, 2, SPIN[k % 10] + "  reading the state …", "acc"); y += 2
+        box(c, 1, 0, 5, w)
+        if snap is None: c.put(2, 2, SPIN[k % 10] + "  reading the state …", "acc")
         elif job:
-            ph = (job.get("phase") or "?").split(":")[0]
-            pi = next((p_ for p_ in phases if p_["name"] == ph), {"purpose": "", "usual": ""})
-            c.put(y, 2, SPIN[k % 10], "acc"); xx = c.put(y, 4, ph, "acc b"); c.put(y, xx + 2, cut(pi["purpose"], w - xx - 20), "")
-            since = int(job.get("since") or 0)
-            if since: c.right(y, "phase %s" % dur(now - since), "d")
-            y += 1
+            pi = next((p_ for p_ in phases if p_["name"] == ph), {"purpose": ""})
+            c.put(2, 2, SPIN[k % 10], "acc"); xx = c.put(2, 4, ph, "acc b"); xx = c.put(2, xx + 1, "%s/9" % next((i for i, p_ in enumerate(phases) if p_["name"] == ph), "?"), "d")
+            c.put(2, xx + 2, cut(pi["purpose"], w - xx - 20), "d"); since = int(job.get("since") or 0)
+            if since: c.right(2, "phase %s " % dur(now - since), "d")
+            step = next((l for l in reversed(lines) if body(l)[0] in ("…", "✓", "↷", "━━", "▶")), "")
             if step:
-                m = STATUS.match(step); sym, body = m.group(4), step[m.end():]
-                c.put(y, 4, cut(body if sym in ("…", "▶") else "last: " + body, w - 16), "d"); c.right(y, dur(now - line_epoch(step, now)), "d")
-            y += 1
-            if job.get("mode") == "short": c.put(y, 4, "short test mode – these results are not valid for the thesis", "warn"); y += 1
+                sym, t = body(step); t = re.sub(r"^\[\d+/\d+\] ", "", t).split(" – ")[0]
+                for a, b in NAMES.items(): t = t.replace(a, b)
+                c.put(3, 4, cut(t if sym in ("…", "▶") else "last: " + t, w - 18), ""); c.right(3, dur(now - line_epoch(step, now)) + " ", "d")
+
         else:
             nxt = next((p_ for p_ in phases if p_["state"] == "open"), None)
-            c.put(y, 2, "○", "d"); c.put(y, 4, "no job running", "b"); y += 1
-            if nxt:
-                xx = c.put(y, 4, "→ next: ./reproduce %s" % nxt["name"], "b"); c.put(y, xx + 2, cut("%s · usually %s" % (nxt["purpose"], nxt["usual"]), w - xx - 3), "d")
-            elif phases: c.put(y, 4, "✓ all phases done", "ok")
-            y += 1
-        y += 1
+            c.put(2, 2, "○", "d"); c.put(2, 4, "no job running", "b")
+            if nxt: xx = c.put(3, 4, "→ next: ./reproduce %s" % nxt["name"], "b"); c.put(3, xx + 2, cut("%s · usually %s" % (nxt["purpose"], nxt["usual"]), w - xx - 4), "d")
+            elif phases: c.put(3, 4, "✓ all phases done", "ok")
         est = sn.get("estimate") or {}
         if est.get("total_min"):
             pct = int(est.get("percent") or 0)
             if job: pct = W["pct"] = max(pct, W["pct"])   # never backwards while a job runs (Harrison et al. 2007)
-            bw = max(10, min(48, w - 64)); f = int(round(bw * pct / 100))
-            c.put(y, 2, "━" * f, "acc"); c.put(y, 2 + f, "─" * (bw - f), "d"); xx = c.put(y, 3 + bw, "%3d %%" % pct, "b")
+            bw = max(10, min(40, w - 62)); f = int(round(bw * pct / 100))
+            c.put(4, 4, "━" * f, "acc"); c.put(4, 4 + f, "─" * (bw - f), "d"); xx = c.put(4, 5 + bw, "%3d %%" % pct, "b")
             if est.get("remaining_min"):
-                if job: t1, t2 = "done ≈ %s" % clock(est["end_epoch"]), "%s left" % hm(est["remaining_min"])
-                else: t1, t2 = "if started now: done ≈ %s" % clock(est["end_epoch"]), "%s of work left" % hm(est["remaining_min"])
-                if xx + 6 + len(t1) + len(t2) < w: xx = c.put(y, xx + 3, t1, ""); c.put(y, xx + 3, t2, "d")
-                else: y += 1; xx = c.put(y, 4, t1, ""); c.put(y, xx + 3, t2, "d")
-            y += 2
-        if w >= 96:
-            colx = w // 2
-            y = max(draw_phases(c, y, 2, colx - 4, phases, k), draw_cluster(c, y, colx, w - colx - 2, pods, node, kube)) + 1
+                lt = time.localtime(est["end_epoch"]); end = time.strftime("%H:%M %Z %a %d %b", lt)
+                t1 = ("done ≈ %s" if job else "if started now: done ≈ %s") % end; t2 = "%s left" % hm(est["remaining_min"])
+                xx = c.put(4, xx + 3, cut(t1, w - xx - 6), "b" if job else ""); c.put(4, xx + 3, cut(t2, w - xx - 5), "d")
+        # panels: two columns from 90 columns, otherwise stacked
+        y = 6; times = phase_times(lines, now, ph); bottom = h - 1
+        if w >= 90:
+            lw = max(34, min(44, w // 3)); rw = w - lw - 1
+            mid = max(12, len(sn.get("releases") or []) + 2) if ph == "deploy" else 12
+            draw_phases_box(c, y, 0, mid, lw, phases, k, times, ph); draw_steps(c, y, lw + 1, mid, rw, sn, lines, now, k, job); y += mid
+            ch = 2 + max(2, min(9, sum(1 for ns in NS if any(p_["metadata"]["namespace"] == ns for p_ in (pods or [])))) + (2 if node else 0))
+            if bottom - y >= ch + 4:
+                draw_cluster_box(c, y, 0, ch, lw, pods, node, kube); draw_runs_box(c, y, lw + 1, ch, rw, sn); y += ch
         else:
-            y = draw_phases_compact(c, y, 2, phases, k) + 1
-            y = draw_cluster(c, y, 2, w - 4, pods, node, kube) + 1
-        y = draw_runs(c, y, 2, sn)
-        avail = h - 2 - y
-        if avail >= 2:
-            c.put(y, 2, "ACTIVITY", "d b"); y += 1
-            for l in lines[-(avail - 1):]: log_row(c, y, 2, l, w - 3); y += 1
+            mid = max(12, len(sn.get("releases") or []) + 2) if ph == "deploy" else 12
+            draw_steps(c, y, 0, mid, w, sn, lines, now, k, job); y += mid
+            if bottom - y >= 7: draw_runs_box(c, y, 0, 2 + max(1, len(sn.get("configs") or [])), w, sn); y += 2 + max(1, len(sn.get("configs") or []))
+        avail = bottom - y
+        if avail >= 4:   # events only: what finished, warnings, errors, phase changes – the steps panel shows the rest
+            ev = [l for l in lines if not NOISE.search(body(l)[1])]
+            box(c, y, 0, avail, w, "Activity", "events · l: full log")
+            for i, l in enumerate(ev[-(avail - 2):]): log_row(c, y + 1 + i, 2, l, w - 4)
+
     def view_log(c, now, k):
         lines = log_lines(MODE["all"])
         c.put(0, 1, "LOG", "acc b"); c.put(0, 5, "%s · %s" % (logf, "all lines" if MODE["all"] else "status lines"), "d")
@@ -1152,20 +1329,99 @@ def cmd_dashboard(script, logf, once=""):
         avail = c.h - 3; maxoff = max(0, len(lines) - avail); MODE["off"] = min(MODE["off"], maxoff); start = maxoff - MODE["off"]
         for i, l in enumerate(lines[start:start + avail]): log_row(c, 2 + i, 1, l, c.w - 2)
         c.right(0, ("following the end" if MODE["off"] == 0 else "lines %d–%d of %d" % (start + 1, start + avail, len(lines))), "d")
+    # pods view: grouped by the system boundary of the thesis (4.2) – system under test per company, context,
+    # measurement infrastructure, Kubernetes; load per component against its limit (USE method)
+    FRIENDLY = [("puris-backend", "PURIS backend"), ("edc-controlplane", "EDC control plane"), ("edc-dataplane", "EDC data plane"),
+                ("dtr-postgresql", "DTR database"), ("dtr", "DTR · twin registry"), ("puris-postgresql", "PURIS database"),
+                ("edc-postgresql", "EDC database"), ("edc-vault", "EDC vault · secrets"), ("puris-frontend", "PURIS frontend"),
+                ("ssi-dim-wallet-stub", "wallet stub"), ("wallet-postgres", "wallet database"),
+                ("prometheus-monitoring", "Prometheus"), ("monitoring-grafana", "Grafana"), ("loki", "Loki · log store"), ("alloy", "Alloy · log collector"),
+                ("monitoring-kube-prometheus-operator", "Prometheus operator"), ("monitoring-kube-state-metrics", "kube-state-metrics"),
+                ("monitoring-prometheus-node-exporter", "node exporter"), ("k6-operator", "k6 operator"),
+                ("coredns", "CoreDNS"), ("metrics-server", "metrics server"), ("local-path", "local-path storage"), ("helm-install", "helm install job")]
+    ORDER = ["PURIS backend", "EDC control plane", "EDC data plane", "DTR · twin registry", "PURIS frontend",   # data flow first, then storage
+             "PURIS database", "EDC database", "DTR database", "EDC vault · secrets", "wallet stub", "wallet database",
+             "Prometheus", "Loki · log store", "Alloy · log collector", "Grafana", "k6 operator"]
+    GROUPS = [("customer", "SYSTEM UNDER TEST · customer", "requests the stock"), ("supplier", "SYSTEM UNDER TEST · supplier", "provides the stock"),
+              ("context", "CONTEXT · identity", "wallet stub of the data space"), ("measure", "MEASUREMENT INFRASTRUCTURE", "load, metrics, logs – the observer"),
+              ("k8s", "KUBERNETES", "k3s system")]
+    def classify(p_):
+        ns, name = p_["metadata"]["namespace"], p_["metadata"]["name"]
+        g = ns if ns in ("customer", "supplier") else ("context" if ns == "identity" else ("measure" if ns in ("monitoring", "logging", "k6-operator", "k6") else "k8s"))
+        for pre, nice in FRIENDLY:
+            if name.startswith(pre): return g, ORDER.index(nice) if nice in ORDER else 50, nice
+        if ns == "k6": return g, 90, "k6 initializer" if "initializer" in name else "k6 runner · load generator"
+        return g, 99, re.sub(r"-[a-z0-9]{8,10}(-[a-z0-9]{5})?$", "", name)
+    def limits(p_):
+        cpu = mem = 0.0
+        for c_ in (p_.get("spec") or {}).get("containers") or []:
+            lim = (c_.get("resources") or {}).get("limits") or {}
+            cpu += cpu_q(lim.get("cpu")) or 0; mem += mem_q(lim.get("memory")) or 0
+        return cpu or None, mem or None
     def view_pods(c, now, k):
-        with L: pods = W["pods"] or []
-        c.put(0, 1, "PODS", "acc b"); c.put(0, 6, "%d pods · ● ready  ◐ starting  ✗ failing  ✓ completed" % len(pods), "d"); c.put(1, 0, "─" * c.w, "d")
-        rows = []
-        for p_ in sorted(pods, key=lambda q: (q["metadata"]["namespace"], q["metadata"]["name"])):
-            st, why = pod_state(p_); cs = p_["status"].get("containerStatuses") or []
-            age = now - parse(p_["metadata"]["creationTimestamp"]).timestamp()
-            rows.append((st, p_["metadata"]["namespace"], p_["metadata"]["name"], "%d/%d" % (sum(1 for c_ in cs if c_.get("ready")), len(cs)), why, sum(c_.get("restartCount", 0) for c_ in cs), dur(age)))
-        nw = max(20, c.w - 62); avail = c.h - 4; MODE["off"] = min(MODE["off"], max(0, len(rows) - avail))
-        c.put(2, 3, "%-12s %-*s %-6s %-26s %-8s %s" % ("NAMESPACE", nw, "NAME", "READY", "STATE", "RESTARTS", "AGE"), "d b")
-        for i, r in enumerate(rows[MODE["off"]:MODE["off"] + avail]):
-            g, sty = GLYPH[r[0]]; y = 3 + i
-            c.put(y, 1, g, sty); c.put(y, 3, "%-12s %-*s %-6s " % (r[1][:12], nw, r[2][:nw], r[3]), "")
-            c.put(y, 3 + 13 + nw + 1 + 7, "%-26s" % r[4][:26], sty if r[0] != "ok" else "d"); c.put(y, 3 + 13 + nw + 1 + 7 + 27, "%-8s %s" % (r[5], r[6]), "warn" if r[5] else "d")
+        with L: pods = W["pods"] or []; top = W.get("top") or {}
+        w = c.w; rows = []
+        busiest = None
+        for p_ in pods:
+            g, rank, nice = classify(p_); st, why = pod_state(p_); ns, name = p_["metadata"]["namespace"], p_["metadata"]["name"]
+            cs = p_["status"].get("containerStatuses") or []; lc, lm = limits(p_); uc, um = top.get((ns, name), (None, None))
+            r = {"g": g, "rank": rank, "nice": nice, "st": st, "why": why, "ready": "%d/%d" % (sum(1 for c_ in cs if c_.get("ready")), len(cs)),
+                 "restarts": sum(c_.get("restartCount", 0) for c_ in cs), "age": dur(now - parse(p_["metadata"]["creationTimestamp"]).timestamp()),
+                 "uc": uc, "um": um, "lc": lc, "lm": lm, "pc": (uc / lc * 100) if uc is not None and lc else None}
+            rows.append(r)
+            if g in ("customer", "supplier") and r["pc"] is not None and (busiest is None or r["pc"] > busiest["pc"]): busiest = r
+        c.put(0, 1, "PODS", "acc b")
+        c.put(0, 6, cut("%d pods · grouped by the system boundary (thesis 4.2) · load against the limit" % len(pods), w - 36), "d")
+        c.right(0, "● ready ◐ starting ✗ failing", "d"); c.put(1, 0, "─" * w, "d")
+        wide = w >= 96
+        lines_ = []
+        for gid, title, sub in GROUPS:
+            grp = sorted([r for r in rows if r["g"] == gid], key=lambda r: (r["rank"], r["nice"]))
+            if not grp: continue
+            tc = sum(r["uc"] or 0 for r in grp); tl_ = sum(r["lc"] or 0 for r in grp)
+            okn = sum(1 for r in grp if r["st"] in ("ok", "done"))
+            summ = "%d/%d ready" % (okn, len(grp)) + (" · cpu %.2f%s cores" % (tc, (" of %.1f" % tl_) if tl_ and gid != "k8s" else "") if top else "")
+            lines_.append(("group", title, sub, summ))
+            if gid == "k8s":   # system components in one line – details only if one is not ready
+                bad = [r for r in grp if r["st"] not in ("ok", "done")]
+                lines_.append(("compact", "  " + " · ".join("%s %s" % ("✓" if r["st"] == "done" else GLYPH[r["st"]][0], r["nice"]) for r in grp), bad))
+                continue
+            for r in grp: lines_.append(("pod", r))
+        if top: lines_.append(("note", "usage from metrics-server against the container limits · ◀ busiest = highest share of its limit in the system under test"))
+        elif W["safe"]: lines_.append(("note", "usage paused during the measurement (observer effect) – r reads it once"))
+        avail = c.h - 4; MODE["off"] = min(MODE["off"], max(0, len(lines_) - avail))
+        c.put(2, 3, "%-24s %-5s %s" % ("COMPONENT", "READY", ("CPU used / limit" .ljust(27) + "MEMORY".ljust(16) if wide else "CPU used / limit")) + ("  ↻  AGE" if wide else ""), "d b")
+        y = 3
+        for item in lines_[MODE["off"]:MODE["off"] + avail]:
+            if item[0] == "group":
+                xx = c.put(y, 1, item[1], "b"); xx = c.put(y, xx + 2, cut(item[2], w - xx - len(item[3]) - 6), "d"); c.right(y, item[3], "d")
+            elif item[0] == "compact":
+                c.put(y, 1, cut(item[1], w - 2), "d" if not item[2] else "warn")
+            elif item[0] == "note":
+                c.put(y, 1, cut(item[1], w - 2), "d")
+            else:
+                r = item[1]; g, sty = ("✓", "d") if r["st"] == "done" else GLYPH[r["st"]]
+                c.put(y, 1, g, sty); c.put(y, 3, cut(r["nice"], 24).ljust(24), "" if r["st"] == "ok" else sty); c.put(y, 28, r["ready"].ljust(5), "d")
+                x0 = 34
+                if r["st"] in ("ok",) and r["uc"] is not None:
+                    pc = r["pc"]
+                    if pc is not None:
+                        bw = 8; f = min(bw, int(round(bw * pc / 100))); sty2 = "err" if pc >= 90 else ("warn" if pc >= 75 else "acc")
+                        c.put(y, x0, "━" * f, sty2); c.put(y, x0 + f, "─" * (bw - f), "d")
+                        c.put(y, x0 + 9, ("%3d %%" % pc).ljust(6), sty2 if pc >= 75 else "")
+                        c.put(y, x0 + 15, ("%.2f/%.2f" % (r["uc"], r["lc"])).ljust(11), "d")
+                    else: c.put(y, x0, ("%.2f cores" % r["uc"]).ljust(26), "d")
+                    if wide:
+                        mem = ("%.1f/%.1f GiB" % (r["um"] / 2**30, r["lm"] / 2**30)) if r["um"] and r["lm"] else (("%.1f GiB" % (r["um"] / 2**30)) if r["um"] else "")
+                        c.put(y, x0 + 27, mem.ljust(16), "d")
+                else:
+                    why = (r["why"] if r["st"] != "ok" else "–").replace("not ready yet", "waiting for readiness")
+                    if r["pc"] is not None and r["st"] == "wait": why += " · cpu %d %% of limit" % r["pc"]
+                    c.put(y, x0, cut(why, 42 if wide else w - x0 - 2), sty if r["st"] in ("wait", "bad") else "d")
+                if wide:
+                    c.put(y, x0 + 44, str(r["restarts"]).rjust(2), "warn" if r["restarts"] else "d"); c.put(y, x0 + 48, r["age"], "d")
+                    if busiest is r and (r["pc"] or 0) >= 50: c.put(y, x0 + 56, "◀ busiest" if w >= x0 + 66 else "◀", "warn")
+            y += 1
     def view_help(c, now, k):
         text = [("KEYS", "b"), ("  q / Esc   quit – the job keeps running · from a view: back", ""), ("  s         stop the job after its current step (asks first)", ""),
                 ("  l         log of this script (a: all lines or status lines)", ""), ("  p         pods with state, restarts and age", ""),
@@ -1190,18 +1446,21 @@ def cmd_dashboard(script, logf, once=""):
     VIEWS = {"main": view_main, "log": view_log, "pods": view_pods, "help": view_help}
 
     if once:   # one frame as text (no terminal needed)
-        fetch(); w, h = shutil.get_terminal_size((100, 34)); c = Canvas(w, min(h, 40)); view_main(c, time.time(), 0)
+        MODE["view"] = once_view if once_view in VIEWS else "main"; W["safe"] = safe_mode(); fetch(light=W["safe"]); w, h = shutil.get_terminal_size((100, 34)); c = Canvas(w, min(h, 40)); VIEWS[MODE["view"]](c, time.time(), 0)
         SG = {"ok": "32", "warn": "33", "err": "1;31", "acc": "36", "b": "1", "d": "2"}
-        rows = {}
-        for y, x, t, st in c.items: rows.setdefault(y, []).append((x, t, st))
-        last = max(rows) if rows else -1
+        grid = [[(" ", "")] * c.w for _ in range(c.h)]
+        for y, x, t, st in c.items:
+            for i, ch in enumerate(t):
+                if x + i < c.w: grid[y][x + i] = (ch, st)
+        last = max([y for y, _, _, _ in c.items] or [-1])
         for y in range(last + 1):
-            out, col = "", 0
-            for x, t, st in sorted(rows.get(y, [])):
-                if x < col: continue
-                out += " " * (x - col); col = x + len(t)
-                codes = ";".join(SG[a] for a in st.split() if a in SG)
-                out += ("\033[%sm%s\033[0m" % (codes, t)) if COLOR and codes else t
+            out, run, cur = "", "", None
+            for ch, st in grid[y] + [("", None)]:
+                if st != cur:
+                    codes = ";".join(SG[a] for a in (cur or "").split() if a in SG)
+                    out += ("\033[%sm%s\033[0m" % (codes, run)) if COLOR and codes and run else run
+                    run, cur = "", st
+                run += ch
             print(out.rstrip())
         return
 
@@ -1295,7 +1554,17 @@ def cmd_snapshot():
                              "percent": (100 if m == 0 else max(0, min(99, round((t - m) * 100 / t)))) if t else 0,
                              "end_epoch": int(time.time() + m * 60) if m else None}
         elif k == "runs": d["runs"][f[1]] = {"valid": int(f[2]), "invalid": int(f[3]), "running": int(f[4]) if len(f) > 4 else 0}
-        elif k in ("configs", "interrupted"): d[k] = f[1].split() if len(f) > 1 else []
+        elif k in ("configs", "interrupted", "releases"): d[k] = f[1].split() if len(f) > 1 else []
+        elif k == "planfile":   # the plan as data (same rule as load_plan): stage labels, rates, minutes
+            v = {}
+            try:
+                for line in open(f[2]):
+                    mm = re.match(r'^([A-Z_]+)="([^"$`\\]*)"', line)
+                    if mm: v[mm.group(1)] = mm.group(2)
+            except OSError:
+                pass
+            d.setdefault("plans", {})[f[1]] = {"labels": v.get("STAGE_LABELS", "").split(","), "rates": v.get("RATES", "").split(","),
+                                               "minutes": int(v.get("STAGE_DURATION") or 10)}
         elif k == "reps": d[k] = int(f[1] or 0)
         else: d[k] = f[1] if len(f) > 1 else ""
     print(json.dumps(d, indent=1, ensure_ascii=False))
@@ -2206,12 +2475,14 @@ cmd_snapshot() {  # machine-readable state: ./reproduce status --json; read by t
       for c in $(configs_of "$p"); do read -r v i r <<<"$(run_counts "$rd" "$c")"; printf 'runs\t%s\t%s\t%s\t%s\n' "$c" "$v" "$i" "$r"; done
     fi
     printf 'interrupted\t%s\nlog\t%s\nkubeconfig\t%s\n' "$(ls "$MARKERS" 2>/dev/null | tr '\n' ' ')" "$LOGF" "$KUBECONFIG"
+    printf 'releases\t%s\n' "$(awk '{print $1}' <<<"$RELEASES" | tr '\n' ' ')"
+    if [ -n "$p" ]; then for c in $(configs_of "$p"); do printf 'planfile\t%s\t%s\n' "$c" "$SRC/experiments/plans/$(plan_of "$c").env"; done; fi
   } | py snapshot
 }
 
 cmd_dashboard() {  # [--once] → full-screen live view; one frame as text without a terminal
   [ -f "$LOGF" ] || : > "$LOGF"
-  if [ "${1:-}" = --once ] || [ "$TTY" != 1 ]; then REPRODUCE_COLOR=$COLOR py dashboard "$SCRIPT" "$LOGF" once; return 0; fi
+  if [ "${1:-}" = --once ] || [ "$TTY" != 1 ]; then REPRODUCE_COLOR=$COLOR py dashboard "$SCRIPT" "$LOGF" "once:${2:-main}"; return 0; fi
   REPRODUCE_COLOR=$COLOR REPRODUCE_TITLE=$TITLE REPRODUCE_TPROG=$TPROG REPRODUCE_NOTIFY="$(setting notify)" LC_ALL=C.UTF-8 \
     python3 -c "$PY" dashboard "$SCRIPT" "$LOGF" || { tell "!" "the dashboard could not start – showing the line view instead"; cmd_watch; }
 }
@@ -2593,7 +2864,7 @@ case "$CMD" in
   evaluate|package) shift; run_phase "$CMD" "${1:-}"; phase_done_hint "$CMD" ;;
   status) if [ "${2:-}" = --json ]; then cmd_snapshot; else cmd_status; fi ;;
   _snapshot) cmd_snapshot ;;
-  dashboard|ui) cmd_dashboard "${2:-}" ;;
+  dashboard|ui) cmd_dashboard "${2:-}" "${3:-}" ;;
   logs|log) shift; cmd_logs "$@" ;;
   settings) shift; cmd_settings "$@" ;;
   watch)  cmd_watch "${2:-}" ;;
