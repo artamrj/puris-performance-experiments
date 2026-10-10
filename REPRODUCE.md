@@ -348,7 +348,7 @@ already correct? ── yes ──► ↷ skip
    - `sudo` available (non-interactively or after one password prompt).
    - Internet: `github.com`, `get.k3s.io`, `get.helm.sh`, `dl.k8s.io`, `ghcr.io`, `registry-1.docker.io`, `quay.io` reachable.
    - Free disk ≥ 50 GB (the disk itself as in `KONZEPT.md`, §8: 100 GB).
-   - No foreign cluster: k3s present **without** the marker `/etc/rancher/reproduce-owner` (outside `/etc/rancher/k3s`, which k3s creates with mode 700) → stop; other Kubernetes (`kubelet`, `microk8s`, `kind`, `minikube` processes) → stop; port 6443 taken by something else → stop.
+   - No foreign cluster: k3s present **without** the marker `/var/lib/reproduce/owner` (outside `/etc/rancher`, which newer k3s creates with mode 700) → stop; other Kubernetes (`kubelet`, `microk8s`, `kind`, `minikube` processes) → stop; port 6443 taken by something else → stop.
 4. Noise check: steal time for 60 s; mean above 2 % → warning "shared and busy machine, expect waiting or invalid runs" (no stop) (§22.10).
 5. Calculator (§8) → `state/profile`.
 
@@ -358,7 +358,7 @@ already correct? ── yes ──► ↷ skip
 2. Switch off automatic updates (both timers, `snap refresh --hold`) and swap (`swapoff -a`, swap lines in `/etc/fstab` commented out, backup `/etc/fstab.reproduce-bak`), as in `AUFBAU.md`, a1.
 3. Install k3s: `/etc/rancher/k3s/config.yaml` from `src/setup/a2-k3s/config.yaml`, then
    `curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.37.1+k3s1" INSTALL_K3S_EXEC="--disable traefik" sh -`.
-4. Write the marker `/etc/rancher/reproduce-owner` (outside `/etc/rancher/k3s`, which k3s creates with mode 700) (time, work folder).
+4. Write the marker `/var/lib/reproduce/owner` (outside `/etc/rancher`, which newer k3s creates with mode 700) (time, work folder).
 5. Copy the kubeconfig to `state/kubeconfig` (mode 600).
 6. Verify: node `Ready`; `allocatable` = capacity − 1 CPU; version `v1.37.1+k3s1`.
 7. Pull every image of the profile once, one after another (`k3s crictl pull`, needs `sudo`, therefore here and not in `deploy`), with back-off on rate limits (§22.9).

@@ -1531,3 +1531,12 @@ Gleich außerdem: bis zum Kipppunkt vollständig stabil; Fehler und Invalidierun
 **Tests:** `tests/test_reproduce_static.py` um die Klassen `Images`, `Results`, `Robustness` und drei Laufzeittests erweitert; auf der NAS-VM 33/33 OK. `evaluate` mit dem neuen Skript auf einer Kopie des Nachbau-Ergebnisordners: wie bisher „reproduced“ (0,7/s; 1,5/s), Spalte „restarts after warm-up“ 0 bzw. 7.
 **Dokumente:** `REPRODUCE.md` §2, §4.2, §8, §9 (Phasen 0 und 3), §13, §16, §22.4, §22.10, §22.11, §23; README (Schnellstart, „What the script takes care of“, `verdict.md`-Beispiel, Fragen; auf Wunsch des Verfassers neu: „Before you start“ – Voraussetzungen mit Prüfbefehlen – und „First run on a new machine: short test first“).
 **Offen:** Test auf dem Cluster – Profil `original` auf der NAS-VM (Kurztest, mit Neustart der VM), `bundle`.
+
+## 2026-10-10 – VM der Betreuung: erster Aufruf von `reproduce`, Abbruch in `deploy` (Besitzmarke nicht lesbar)
+
+**Umgebung:** VM der Betreuung (Host `mjbach`), Arbeitsordner `~/puris/puris-repro`, Profil `original` (`original-k0` 15 Stufen, `original-k1` 14 Stufen). Auf der VM ist Tailscale installiert (vom Verfasser vor diesem Aufruf eingerichtet).
+**Beobachtung:** `./reproduce watch` – Phase 3 `install` erfolgreich (k3s v1.37.1+k3s1 installiert, 23 Images in 2 min 02 s geladen); Phase 4 `deploy` brach sofort ab: „not possible yet: k3s not installed“.
+**Ursache:** Die Besitzmarke lag unter `/etc/rancher/reproduce-owner`. Auf dieser VM legt k3s `/etc/rancher` selbst mit Modus 700 (`root`) an; `deploy` prüft die Marke ohne `sudo` und sah sie nicht (`test -f` → nicht sichtbar). Inhalt der Marke korrekt (Zeit, Arbeitsordner `/home/mohajava/puris/puris-repro` → im Eintrag als `~/puris/puris-repro`). Auf der NAS-VM nicht aufgetreten.
+**Sofortmaßnahme (Verfasser):** `sudo chmod 755 /etc/rancher` auf der VM der Betreuung.
+**Änderung in `reproduce`:** Besitzmarke nach `/var/lib/reproduce/owner` verschoben (außerhalb von `/etc/rancher`); `REPRODUCE.md` §9 angepasst. `bash -n` OK; noch nicht auf einem Cluster gelaufen.
+**Offen:** Marke auf der VM der Betreuung einmalig kopieren (`sudo install -D -m 644 /etc/rancher/reproduce-owner /var/lib/reproduce/owner`), dann `deploy` erneut.

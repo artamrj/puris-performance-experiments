@@ -344,6 +344,9 @@ Noch offen:
     - [x] Veraltete Angaben in `REPRODUCE.md` (Status, §7.4, §8, §13, §23) und `README.md` („Still open“) behoben – 2026-10-10 (`LABORBUCH.md`, 10.10.)
     - [x] Befunde im Skript behoben und ohne Cluster getestet (Neustart-Reparatur, Boot-ID in `install`, Code bei unvollständiger Messung behalten, `status` vor `check`, `bundle`, `uninstall`/fstab, Besitzmarke je Arbeitsordner, `REPRODUCE_PROFILE`, Neustarts und Status in `verdict.md`, Ergebnisfeld) – 2026-10-10 (`LABORBUCH.md`, 10.10.; Tests 33/33 auf der NAS-VM)
     - [ ] Behobene Befunde auf dem Cluster bestätigt (Test Profil `original` mit Neustart, `bundle`) – neu 2026-10-10
+    - [x] VM der Betreuung, erster Aufruf: `deploy` meldete „k3s not installed“ (Besitzmarke unter `/etc/rancher`, dort Modus 700) – Marke nach `/var/lib/reproduce/owner` verschoben – 2026-10-10 (`LABORBUCH.md`; nur `bash -n` geprüft)
+    - [ ] VM der Betreuung: Marke einmalig nach `/var/lib/reproduce/owner` kopieren, `deploy` erneut, Änderung auf dem Cluster bestätigen – neu 2026-10-10
+    - [ ] Tailscale auf der VM der Betreuung in `AUFBAU.md` beschreiben (Zweck, Zugang vom Mac) – Angaben des Verfassers fehlen noch – neu 2026-10-10
   - [x] Dokumentation von `reproduce` mit Bildschirmfotos aus echter Ausgabe (`docs/img/`, 7 SVG; Werkzeuge `tools/screenshots.py`, `tools/ansi2svg.py`; Test `tests/test_ansi2svg.py`); `README.md`: Abschnitt „Rebuild test“ und Abschnitt `reproduce` neu – 2026-10-10 (`LABORBUCH.md`, 10.10.; Tests 23/23 auf der NAS-VM)
   - [x] Meldungen von `reproduce` lesbarer (nur Anzeige): Steal Time in Prozent, Ergebnis der Log-Probe als Satz, Cluster-Feld der Live-Ansicht nicht mehr abgeschnitten – 2026-10-10 (`LABORBUCH.md`, 10.10.)
   - [ ] Test Profil `original` auf der NAS-VM (Simulation der VM der Betreuung, Kurztest, mit Neustart der VM) – neu 2026-10-10

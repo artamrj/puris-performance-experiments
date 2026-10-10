@@ -91,7 +91,7 @@ SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[
 WORK="${REPRODUCE_HOME:-$(dirname "$SCRIPT")/puris-repro}"
 SRC="$WORK/src"; TOOLS="$WORK/tools"; STATE="$WORK/state"; RESULTS="$WORK/results"; BUNDLE="$WORK/bundle"
 LOGF="$STATE/logs/reproduce.log"; MARKERS="$STATE/markers"
-OWNER=/etc/rancher/reproduce-owner  # outside /etc/rancher/k3s, which k3s creates with mode 700
+OWNER=/var/lib/reproduce/owner  # outside /etc/rancher: newer k3s creates /etc/rancher itself with mode 700, unreadable without sudo
 # paths and fixed values are write-protected: an accidental assignment anywhere (e.g. from a data
 # file) stops the script at once with "readonly variable" instead of silently using a wrong path
 readonly SCRIPT WORK SRC TOOLS STATE RESULTS BUNDLE LOGF MARKERS OWNER
