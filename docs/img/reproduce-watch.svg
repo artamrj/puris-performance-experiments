@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="843" height="368" viewBox="0 0 843 368" role="img" aria-label="./reproduce watch — end of the rebuild test" xml:space="preserve">
+<title>./reproduce watch — end of the rebuild test</title>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace;font-size:13px;white-space:pre}.b{font-weight:700}</style>
+<rect x="0.5" y="0.5" width="842" height="367" rx="8" fill="#0d1117" stroke="#30363d"/>
+<path d="M0.5 30 V8.5 A8 8 0 0 1 8.5 0.5 H834.5 A8 8 0 0 1 842.5 8.5 V30 Z" fill="#161b22"/>
+<line x1="0.5" y1="30.5" x2="842.5" y2="30.5" stroke="#30363d"/>
+<circle cx="18" cy="15" r="6" fill="#ff5f57"/>
+<circle cx="38" cy="15" r="6" fill="#febc2e"/>
+<circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="421" y="19" fill="#8b949e" text-anchor="middle" style="font-size:12px">./reproduce watch — end of the rebuild test</text>
+<text x="16.0" y="59" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">$</text>
+<text x="31.6" y="59" fill="#c9d1d9" textLength="132.6" lengthAdjust="spacingAndGlyphs">./reproduce watch</text>
+<text x="16.0" y="76" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">02:53:59</text>
+<text x="86.2" y="76" fill="#39c5cf" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="101.8" y="76" fill="#c9d1d9" textLength="109.2" lengthAdjust="spacingAndGlyphs">load stage s11</text>
+<text x="218.8" y="76" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="234.4" y="76" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">13 of 15</text>
+<text x="304.6" y="76" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="320.2" y="76" fill="#c9d1d9" textLength="140.4" lengthAdjust="spacingAndGlyphs">2.5 transactions/s</text>
+<text x="468.4" y="76" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="484.0" y="76" fill="#c9d1d9" textLength="46.8" lengthAdjust="spacingAndGlyphs">10 min</text>
+<text x="16.0" y="93" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:03:39</text>
+<text x="86.2" y="93" fill="#39c5cf" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="101.8" y="93" fill="#c9d1d9" textLength="109.2" lengthAdjust="spacingAndGlyphs">load stage s12</text>
+<text x="218.8" y="93" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="234.4" y="93" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">14 of 15</text>
+<text x="304.6" y="93" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="320.2" y="93" fill="#c9d1d9" textLength="124.8" lengthAdjust="spacingAndGlyphs">3 transactions/s</text>
+<text x="452.8" y="93" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="468.4" y="93" fill="#c9d1d9" textLength="46.8" lengthAdjust="spacingAndGlyphs">10 min</text>
+<text x="16.0" y="110" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:13:49</text>
+<text x="86.2" y="110" fill="#39c5cf" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="101.8" y="110" fill="#c9d1d9" textLength="148.2" lengthAdjust="spacingAndGlyphs">load stage recovery</text>
+<text x="257.8" y="110" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="273.4" y="110" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">15 of 15</text>
+<text x="343.6" y="110" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="359.2" y="110" fill="#c9d1d9" textLength="140.4" lengthAdjust="spacingAndGlyphs">0.2 transactions/s</text>
+<text x="507.4" y="110" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="523.0" y="110" fill="#c9d1d9" textLength="46.8" lengthAdjust="spacingAndGlyphs">10 min</text>
+<text x="16.0" y="127" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:24:00</text>
+<text x="86.2" y="127" fill="#39c5cf" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="101.8" y="127" fill="#c9d1d9" textLength="319.8" lengthAdjust="spacingAndGlyphs">collecting (drain, Prometheus, Loki, EDC)</text>
+<text x="16.0" y="144" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:24:06</text>
+<text x="86.2" y="144" fill="#39c5cf" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="101.8" y="144" fill="#c9d1d9" textLength="241.8" lengthAdjust="spacingAndGlyphs">drain: 1 of 8470 open (0.1 min)</text>
+<text x="16.0" y="161" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:24:42</text>
+<text x="86.2" y="161" fill="#39c5cf" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="101.8" y="161" fill="#c9d1d9" textLength="312.0" lengthAdjust="spacingAndGlyphs">drain: all transactions finished; open 0</text>
+<text x="16.0" y="178" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:24</text>
+<text x="86.2" y="178" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="101.8" y="178" fill="#c9d1d9" textLength="335.4" lengthAdjust="spacingAndGlyphs">run valid: 2026-10-10_0040_compact-k1_rep-1</text>
+<text x="16.0" y="195" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:24</text>
+<text x="86.2" y="195" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="101.8" y="195" fill="#c9d1d9" textLength="187.2" lengthAdjust="spacingAndGlyphs">compact-k1: 1 valid runs</text>
+<text x="16.0" y="229" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="229" fill="#c9d1d9" textLength="15.6" lengthAdjust="spacingAndGlyphs" class="b">━━</text>
+<text x="109.6" y="229" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs" class="b">phase 8/9</text>
+<text x="187.6" y="229" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">·</text>
+<text x="203.2" y="229" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs" class="b">evaluate</text>
+<text x="273.4" y="229" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">–</text>
+<text x="289.0" y="229" fill="#c9d1d9" textLength="366.6" lengthAdjust="spacingAndGlyphs" class="b">tipping stage and comparison with the reference</text>
+<text x="663.4" y="229" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">·</text>
+<text x="679.0" y="229" fill="#c9d1d9" textLength="148.2" lengthAdjust="spacingAndGlyphs" class="b">usually under 1 min</text>
+<text x="16.0" y="246" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="246" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="101.8" y="246" fill="#c9d1d9" textLength="686.4" lengthAdjust="spacingAndGlyphs">evaluation: /home/user/repro-test/puris-repro/results/2026-10-09_2158_compact/verdict.md</text>
+<text x="16.0" y="280" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="280" fill="#c9d1d9" textLength="15.6" lengthAdjust="spacingAndGlyphs" class="b">━━</text>
+<text x="109.6" y="280" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs" class="b">phase 9/9</text>
+<text x="187.6" y="280" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">·</text>
+<text x="203.2" y="280" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs" class="b">package</text>
+<text x="265.6" y="280" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">–</text>
+<text x="281.2" y="280" fill="#c9d1d9" textLength="249.6" lengthAdjust="spacingAndGlyphs" class="b">checksums for the results folder</text>
+<text x="538.6" y="280" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">·</text>
+<text x="554.2" y="280" fill="#c9d1d9" textLength="148.2" lengthAdjust="spacingAndGlyphs" class="b">usually under 1 min</text>
+<text x="16.0" y="297" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="297" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="101.8" y="297" fill="#c9d1d9" textLength="694.2" lengthAdjust="spacingAndGlyphs">results complete: /home/user/repro-test/puris-repro/results/2026-10-09_2158_compact (74M)</text>
+<text x="16.0" y="314" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="314" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">→</text>
+<text x="101.8" y="314" fill="#c9d1d9" textLength="725.4" lengthAdjust="spacingAndGlyphs" class="b">copy the run folders into runs/ of the repository, e.g.: cp -r "/home/user/repro-test/puris-…</text>
+<text x="16.0" y="331" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="331" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="101.8" y="331" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">finished</text>
+<text x="172.0" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">–</text>
+<text x="187.6" y="331" fill="#c9d1d9" textLength="117.0" lengthAdjust="spacingAndGlyphs">all phases done</text>
+<text x="16.0" y="348" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">03:28:25</text>
+<text x="86.2" y="348" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">→</text>
+<text x="101.8" y="348" fill="#c9d1d9" textLength="405.6" lengthAdjust="spacingAndGlyphs" class="b">results: puris-repro/results/2026-10-09_2158_compact</text>
+<text x="515.2" y="348" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">·</text>
+<text x="530.8" y="348" fill="#c9d1d9" textLength="296.4" lengthAdjust="spacingAndGlyphs" class="b">readable summary: verdict.md in that …</text>
+</svg>

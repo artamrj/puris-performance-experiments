@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="843" height="504" viewBox="0 0 843 504" role="img" aria-label="./reproduce status" xml:space="preserve">
+<title>./reproduce status</title>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace;font-size:13px;white-space:pre}.b{font-weight:700}</style>
+<rect x="0.5" y="0.5" width="842" height="503" rx="8" fill="#0d1117" stroke="#30363d"/>
+<path d="M0.5 30 V8.5 A8 8 0 0 1 8.5 0.5 H834.5 A8 8 0 0 1 842.5 8.5 V30 Z" fill="#161b22"/>
+<line x1="0.5" y1="30.5" x2="842.5" y2="30.5" stroke="#30363d"/>
+<circle cx="18" cy="15" r="6" fill="#ff5f57"/>
+<circle cx="38" cy="15" r="6" fill="#febc2e"/>
+<circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="421" y="19" fill="#8b949e" text-anchor="middle" style="font-size:12px">./reproduce status</text>
+<text x="16.0" y="59" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">$</text>
+<text x="31.6" y="59" fill="#c9d1d9" textLength="140.4" lengthAdjust="spacingAndGlyphs">./reproduce status</text>
+<text x="16.0" y="76" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs" class="b">reproduce</text>
+<text x="94.0" y="76" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">·</text>
+<text x="109.6" y="76" fill="#c9d1d9" textLength="210.6" lengthAdjust="spacingAndGlyphs" class="b">PURIS saturation experiment</text>
+<text x="31.6" y="93" fill="#c9d1d9" textLength="85.8" lengthAdjust="spacingAndGlyphs">work folder</text>
+<text x="133.0" y="93" fill="#c9d1d9" textLength="171.6" lengthAdjust="spacingAndGlyphs">repro-test/puris-repro</text>
+<text x="31.6" y="110" fill="#c9d1d9" textLength="78.0" lengthAdjust="spacingAndGlyphs">repository</text>
+<text x="133.0" y="110" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">6c1b7aa</text>
+<text x="31.6" y="127" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">profile</text>
+<text x="133.0" y="127" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">compact</text>
+<text x="195.4" y="127" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">–</text>
+<text x="211.0" y="127" fill="#c9d1d9" textLength="288.6" lengthAdjust="spacingAndGlyphs">configurations compact-k0, compact-k1</text>
+<text x="31.6" y="144" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">deployed</text>
+<text x="133.0" y="144" fill="#c9d1d9" textLength="78.0" lengthAdjust="spacingAndGlyphs">compact-k1</text>
+<text x="31.6" y="178" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="178" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">0 fetch</text>
+<text x="140.8" y="178" fill="#8b949e" textLength="265.2" lengthAdjust="spacingAndGlyphs">download the experiment repository</text>
+<text x="31.6" y="195" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="195" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">1 tools</text>
+<text x="140.8" y="195" fill="#8b949e" textLength="397.8" lengthAdjust="spacingAndGlyphs">helm, kubectl and the Helm charts in fixed versions</text>
+<text x="31.6" y="212" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="212" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">2 check</text>
+<text x="140.8" y="212" fill="#8b949e" textLength="382.2" lengthAdjust="spacingAndGlyphs">machine scan, requirements, choice of the profile</text>
+<text x="31.6" y="229" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="229" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs">3 install</text>
+<text x="140.8" y="229" fill="#8b949e" textLength="444.6" lengthAdjust="spacingAndGlyphs">k3s and all container images (asks for the sudo password)</text>
+<text x="31.6" y="246" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="246" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">4 deploy</text>
+<text x="140.8" y="246" fill="#8b949e" textLength="530.4" lengthAdjust="spacingAndGlyphs">11 components: monitoring, logs, identity, 2 EDC, 2 DTR, 2 PURIS, k6</text>
+<text x="31.6" y="263" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="263" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs">5 prepare</text>
+<text x="140.8" y="263" fill="#8b949e" textLength="374.4" lengthAdjust="spacingAndGlyphs">test data, first transactions, database state S0</text>
+<text x="31.6" y="280" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="280" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">6 verify</text>
+<text x="140.8" y="280" fill="#8b949e" textLength="343.2" lengthAdjust="spacingAndGlyphs">configuration check and one test transaction</text>
+<text x="31.6" y="297" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="297" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs">7 measure</text>
+<text x="140.8" y="297" fill="#8b949e" textLength="319.8" lengthAdjust="spacingAndGlyphs">measurement runs per configuration: reset</text>
+<text x="468.4" y="297" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">→</text>
+<text x="484.0" y="297" fill="#8b949e" textLength="31.2" lengthAdjust="spacingAndGlyphs">load</text>
+<text x="523.0" y="297" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">→</text>
+<text x="538.6" y="297" fill="#8b949e" textLength="54.6" lengthAdjust="spacingAndGlyphs">collect</text>
+<text x="31.6" y="314" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="314" fill="#c9d1d9" textLength="78.0" lengthAdjust="spacingAndGlyphs">8 evaluate</text>
+<text x="140.8" y="314" fill="#8b949e" textLength="366.6" lengthAdjust="spacingAndGlyphs">tipping stage and comparison with the reference</text>
+<text x="31.6" y="331" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">✓</text>
+<text x="47.2" y="331" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs">9 package</text>
+<text x="140.8" y="331" fill="#8b949e" textLength="249.6" lengthAdjust="spacingAndGlyphs">checksums for the results folder</text>
+<text x="31.6" y="365" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">results</text>
+<text x="133.0" y="365" fill="#c9d1d9" textLength="421.2" lengthAdjust="spacingAndGlyphs">repro-test/puris-repro/results/2026-10-09_2158_compact</text>
+<text x="133.0" y="382" fill="#c9d1d9" textLength="374.4" lengthAdjust="spacingAndGlyphs">compact-k0: 1 valid, 0 invalid (target: 1 valid)</text>
+<text x="133.0" y="399" fill="#c9d1d9" textLength="374.4" lengthAdjust="spacingAndGlyphs">compact-k1: 1 valid, 0 invalid (target: 1 valid)</text>
+<text x="31.6" y="416" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">verdict</text>
+<text x="133.0" y="416" fill="#c9d1d9" textLength="507.0" lengthAdjust="spacingAndGlyphs">repro-test/puris-repro/results/2026-10-09_2158_compact/verdict.md</text>
+<text x="31.6" y="433" fill="#c9d1d9" textLength="23.4" lengthAdjust="spacingAndGlyphs">job</text>
+<text x="133.0" y="433" fill="#c9d1d9" textLength="93.6" lengthAdjust="spacingAndGlyphs">none running</text>
+<text x="16.0" y="467" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">→</text>
+<text x="31.6" y="467" fill="#c9d1d9" textLength="117.0" lengthAdjust="spacingAndGlyphs" class="b">all phases done</text>
+<text x="156.4" y="467" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">–</text>
+<text x="172.0" y="467" fill="#c9d1d9" textLength="491.4" lengthAdjust="spacingAndGlyphs" class="b">results: repro-test/puris-repro/results/2026-10-09_2158_compact</text>
+<text x="31.6" y="484" fill="#8b949e" textLength="795.6" lengthAdjust="spacingAndGlyphs">kubectl: export KUBECONFIG=/home/user/repro-test/puris-repro/state/kubeconfig PATH=/home/user/repro-t…</text>
+</svg>

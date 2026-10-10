@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="367" height="130" viewBox="0 0 367 130" role="img" aria-label="a typo" xml:space="preserve">
+<title>a typo</title>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace;font-size:13px;white-space:pre}.b{font-weight:700}</style>
+<rect x="0.5" y="0.5" width="366" height="129" rx="8" fill="#0d1117" stroke="#30363d"/>
+<path d="M0.5 30 V8.5 A8 8 0 0 1 8.5 0.5 H358.5 A8 8 0 0 1 366.5 8.5 V30 Z" fill="#161b22"/>
+<line x1="0.5" y1="30.5" x2="366.5" y2="30.5" stroke="#30363d"/>
+<circle cx="18" cy="15" r="6" fill="#ff5f57"/>
+<circle cx="38" cy="15" r="6" fill="#febc2e"/>
+<circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="183" y="19" fill="#8b949e" text-anchor="middle" style="font-size:12px">a typo</text>
+<text x="16.0" y="59" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">$</text>
+<text x="31.6" y="59" fill="#c9d1d9" textLength="140.4" lengthAdjust="spacingAndGlyphs">./reproduce deplyo</text>
+<text x="16.0" y="76" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">09:12:34</text>
+<text x="86.2" y="76" fill="#f85149" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">✗</text>
+<text x="101.8" y="76" fill="#f85149" textLength="179.4" lengthAdjust="spacingAndGlyphs" class="b">unknown command: deplyo</text>
+<text x="16.0" y="93" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">09:12:34</text>
+<text x="86.2" y="93" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">→</text>
+<text x="101.8" y="93" fill="#c9d1d9" textLength="249.6" lengthAdjust="spacingAndGlyphs" class="b">did you mean: ./reproduce deploy</text>
+<text x="16.0" y="110" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">09:12:34</text>
+<text x="86.2" y="110" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs" class="b">→</text>
+<text x="101.8" y="110" fill="#c9d1d9" textLength="234.0" lengthAdjust="spacingAndGlyphs" class="b">all commands: ./reproduce help</text>
+</svg>

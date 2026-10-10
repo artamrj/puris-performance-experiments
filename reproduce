@@ -1242,7 +1242,11 @@ def cmd_dashboard(script, logf, once=""):
         box(c, y, x, h, w, "Cluster", "measurement-safe" if W["safe"] else "")
         yy = y + 1
         if pods is None:
-            c.put(yy, x + 2, cut("paused during the measurement · r reads once" if W["safe"] else ("not reachable" if not kube else "loading …"), w - 4), "d"); return
+            if W["safe"]:
+                c.put(yy, x + 2, cut("paused while measuring", w - 4), "d")
+                if yy + 1 < y + h - 1: c.put(yy + 1, x + 2, cut("observer effect · r reads once", w - 4), "d")
+                return
+            c.put(yy, x + 2, cut("not reachable" if not kube else "loading …", w - 4), "d"); return
         by = {}
         for p_ in pods:
             ns = p_["metadata"]["namespace"]
@@ -1257,8 +1261,8 @@ def cmd_dashboard(script, logf, once=""):
             for lab, pct, txt in (("cpu", node["cpu_pct"], "%.1f cores" % node["cpu"]), ("memory", node["mem_pct"], "%.1f GiB" % node["mem"])):   # whole node
                 if yy >= y + h - 1: break
                 bw = max(6, min(14, w - 28)); f = int(round(bw * min(pct, 100) / 100)); sty = "err" if pct >= 90 else ("warn" if pct >= 75 else "acc")
-                c.put(yy, x + 2, lab.ljust(7), ""); c.put(yy, x + 10, "━" * f, sty); c.put(yy, x + 10 + f, "─" * (bw - f), "d")
-                c.put(yy, x + 11 + bw, cut("%d %% · %s" % (pct, txt), w - bw - 13), "d"); yy += 1
+                c.put(yy, x + 2, lab.ljust(7), ""); c.put(yy, x + 9, "━" * f, sty); c.put(yy, x + 9 + f, "─" * (bw - f), "d")
+                c.put(yy, x + 10 + bw, cut("%d %% · %s" % (pct, txt), w - bw - 12), "d"); yy += 1
     def draw_runs_box(c, y, x, h, w, sn):
         cfgs = sn.get("configs") or []; target = sn.get("reps") or 3
         box(c, y, x, h, w, "Runs", "target %d valid each" % target)
@@ -1940,7 +1944,7 @@ phase_check() {
   ok "machine: $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print("%s · %s vCPU · %s GiB · %s · score %s" % (m["cpu_model"], m["vcpu"], m["mem_total_gib"], m["os"], m["cpu_single_core_score"]))' "$STATE/machine.json")"
   [ "$(python3 -c 'import json,sys; print(min(json.load(open(sys.argv[1]))["disk_free_gib"].values()))' "$STATE/machine.json" | cut -d. -f1)" -ge 50 ] || die "at least 50 GB free disk space required" 3
   steal=$(spin "measuring steal time – shows whether the machine is shared and busy" "60 s" py steal 60)
-  if python3 -c "import sys; sys.exit(0 if float('$steal') > 0.02 else 1)"; then warn "steal time $steal over 60 s – shared and busy machine, expect waiting or invalid runs"; else ok "steal time $steal over 60 s"; fi
+  if python3 -c "import sys; sys.exit(0 if float('$steal') > 0.02 else 1)"; then warn "steal time $(pct "$steal") over 60 s – shared and busy machine, expect waiting or invalid runs"; else ok "steal time $(pct "$steal") over 60 s"; fi
   # calculator (REPRODUCE.md §8)
   step "calculating the resources each profile needs"
   for p in original compact; do
@@ -2293,6 +2297,9 @@ results_dir() {  # current results folder for this profile, commit and mode – 
   commit > "$d/.commit"; profile > "$d/.profile"; echo "$mode" > "$d/.mode"; echo "$REPS" > "$d/.reps"
   cp "$STATE/machine.json" "$d/machine.json"; echo "$d" > "$f"; echo "$d"
 }
+pct() {  # ratio → "1.5 %" for messages (empty or unreadable → "?")
+  python3 -c 'import sys; print("%.1f %%" % (float(sys.argv[1]) * 100))' "${1:-}" 2>/dev/null || echo "?"
+}
 count_runs() {  # results-dir configuration → "valid invalid"
   python3 - "$1" "$2" <<'EOF'
 import json, os, sys
@@ -2322,8 +2329,8 @@ gates() {  # disk and noise before a run (REPRODUCE.md §22.7, §22.10)
   for i in $(seq 1 31); do
     steal=$(py prom 'sum(rate(node_cpu_seconds_total{mode="steal"}[2m]))/sum(rate(node_cpu_seconds_total[2m]))' 2>/dev/null || echo "")
     [ -n "$steal" ] && python3 -c "import sys; sys.exit(0 if float('$steal') < 0.01 else 1)" && return 0
-    [ "$i" -lt 31 ] || { warn "machine still busy (steal ${steal:-?}) after 60 min – starting anyway"; return 0; }
-    [ "$i" -gt 1 ] || warn "machine busy (steal ${steal:-?} ≥ 1 %) – waiting for a quiet machine (up to 60 min)"
+    [ "$i" -lt 31 ] || { warn "machine still busy (steal $(pct "$steal")) after 60 min – starting anyway"; return 0; }
+    [ "$i" -gt 1 ] || warn "machine busy (steal $(pct "$steal") ≥ 1 %) – waiting for a quiet machine (up to 60 min)"
     sleep 120
   done
 }
@@ -2387,7 +2394,7 @@ log_probe() {  # configuration results-dir
   ( export RATES="$max" STAGE_LABELS="probe" STAGE_DURATION=3; start_load "$name" "$name" )
   t_apply=$(now_iso)
   watch_load "$name" "$t_apply" probe 3 "$max" || { stop_own_load; die "probe: load generator stalled"; }
-  if py probe "$name" "$t_apply" > "$rd/probe-$cfg.json"; then ok "log capacity probe passed: $(cat "$rd/probe-$cfg.json")"
+  if py probe "$name" "$t_apply" > "$rd/probe-$cfg.json"; then ok "log capacity probe passed: $(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print("%d of %d transactions in Loki, %d failed, %g discarded" % (p["triggers_in_loki"], p["requests"], p["requests_failed"], p["loki_discarded"]))' "$rd/probe-$cfg.json" 2>/dev/null || cat "$rd/probe-$cfg.json")"
   else die "log capacity probe failed – monitoring cannot keep up at $max/s: $(cat "$rd/probe-$cfg.json")"; fi
 }
 one_run() {  # configuration rep results-dir

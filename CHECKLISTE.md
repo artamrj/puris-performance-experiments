@@ -8,7 +8,7 @@ Fortschritt des Experiments von der leeren VM bis zum veröffentlichten Artefakt
 
 **Legende:** `[x]` erledigt, mit Datum und Nachweis in `AUFBAU.md` bzw. `LABORBUCH.md` · `[ ]` offen. Ein Haken wird im selben Schritt gesetzt, in dem `AUFBAU.md` und `LABORBUCH.md` ergänzt werden.
 
-**Stand:** 2026-10-09 – Etappe 1 abgeschlossen; Vorstudien 1–3 abgeschlossen. **Hauptmessungen auf dem NAS abgeschlossen:** K0 (`setup-v1`/`setup-v2`) 6 gültige Läufe, stabil bis 0,5/s, kippt bei 0,6/s (2×) oder 0,7/s (4×); K1-NAS (`setup-v3`) 4 gültige Läufe, bis 1,0/s fehlerfrei, kippt bei 1,5/s (3×) oder 2,0/s (1×); in beiden keine Erholung, gekipptes System ohne Last weiter beschäftigt. Logs aller Läufe bis 2026-10-08 vollständig in `nachtrag/`. Als Nächstes: K1-Läufe committen, System zurücksetzen, Auswertung (`analysis/`), VM der Betreuung (K0-ISST/K1-ISST, Nachbau-Test). `README.md` angelegt (2026-10-09). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
+**Stand:** 2026-10-10 (später) – `README.md` und `REPRODUCE.md` auf dem Stand nach dem Nachbau-Test, Bildschirmfotos von `reproduce` aus echter Ausgabe (`docs/img/`). – 2026-10-10 – Nachbau-Test mit `reproduce` (`compact`, je 1 Lauf) bestanden; Prüfung von `reproduce` (Stand `04a4dd9`) für die VM der Betreuung ergab offene Befunde (Abschnitt 10); Profil `original` noch auf keinem Cluster gelaufen. – 2026-10-09: Etappe 1 abgeschlossen; Vorstudien 1–3 abgeschlossen. **Hauptmessungen auf dem NAS abgeschlossen:** K0 (`setup-v1`/`setup-v2`) 6 gültige Läufe, stabil bis 0,5/s, kippt bei 0,6/s (2×) oder 0,7/s (4×); K1-NAS (`setup-v3`) 4 gültige Läufe, bis 1,0/s fehlerfrei, kippt bei 1,5/s (3×) oder 2,0/s (1×); in beiden keine Erholung, gekipptes System ohne Last weiter beschäftigt. Logs aller Läufe bis 2026-10-08 vollständig in `nachtrag/`. Als Nächstes: K1-Läufe committen, System zurücksetzen, Auswertung (`analysis/`), VM der Betreuung (K0-ISST/K1-ISST, Nachbau-Test). `README.md` angelegt (2026-10-09). **Ziel: Experiment bis So 01.11.2026 fertig; Abgabe der Arbeit am Di 10.11.2026.**
 
 ---
 
@@ -340,6 +340,12 @@ Noch offen:
   - [x] Fehler „Plan-Variable `STATE` überschreibt den Zustandsordner“ grundsätzlich ausgeschlossen: Pläne als Daten (nur `KEY="value"`, bekannte Schlüssel), Pfade `readonly`, Prüfung in `check`, Tests `tests/test_reproduce_static.py` (9/9 auf der NAS-VM) – 2026-10-09 (`REPRODUCE.md` §22.13)
   - [x] Nach dem Probelauf: Hinweis in `README.md` („has not yet run on a cluster“) an den tatsächlichen Stand anpassen – neu 2026-10-09 – erledigt 2026-10-09 (`README.md`, `REPRODUCE.md` §23)
   - [ ] Optional: Komponenten einer Ebene parallel starten (EDC, DTR, PURIS je Customer + Supplier; ca. 20–25 min kürzerer Aufbau) – erst nach dem Probelauf, Test beim Nachbau-Test auf der NAS-VM – neu 2026-10-09
+  - [ ] Befunde der Prüfung von `reproduce` (Stand `04a4dd9`) vor der VM der Betreuung beheben: Neustart-Reparatur wartet vor dem Reset auf EDC/PURIS; Wiederaufnahme nach neuem Commit beginnt einen neuen Ergebnisordner; `bundle` (Kurznamen der Images, k6-Images fehlen); `uninstall` behält `/etc/fstab.reproduce-bak`; veraltete Angaben in `REPRODUCE.md` (Status, §7.4, §8) und `README.md` („Still open“) – neu 2026-10-10
+    - [x] Veraltete Angaben in `REPRODUCE.md` (Status, §7.4, §8, §13, §23) und `README.md` („Still open“) behoben – 2026-10-10 (`LABORBUCH.md`, 10.10.)
+  - [x] Dokumentation von `reproduce` mit Bildschirmfotos aus echter Ausgabe (`docs/img/`, 7 SVG; Werkzeuge `tools/screenshots.py`, `tools/ansi2svg.py`; Test `tests/test_ansi2svg.py`); `README.md`: Abschnitt „Rebuild test“ und Abschnitt `reproduce` neu – 2026-10-10 (`LABORBUCH.md`, 10.10.; Tests 23/23 auf der NAS-VM)
+  - [x] Meldungen von `reproduce` lesbarer (nur Anzeige): Steal Time in Prozent, Ergebnis der Log-Probe als Satz, Cluster-Feld der Live-Ansicht nicht mehr abgeschnitten – 2026-10-10 (`LABORBUCH.md`, 10.10.)
+  - [ ] Test Profil `original` auf der NAS-VM (Simulation der VM der Betreuung, Kurztest, mit Neustart der VM) – neu 2026-10-10
+  - [ ] Offline-Paket (`bundle`) als Rückfall für die VM der Betreuung erstellen und prüfen – neu 2026-10-10
 - [x] Referenzdateien `reference/compact-k0.json` (nach `rep-5`–`rep-7`) und `reference/compact-k1.json` (nach K1-NAS) – neu 2026-10-08 – erledigt 2026-10-10 (siehe unten)
 - [x] Messpläne `experiments/plans/original-k0.env` und `original-k1.env` anlegen (`REPRODUCE.md` §10.1) – neu 2026-10-08 – angelegt 2026-10-08
 - [x] Entscheidung Profil `original`: **Bedingungen wie NAS, nur Ressourcen wie von Tractus-X ausgeliefert** (Ziel: Vergleich NAS ↔ VM der Betreuung) – 2026-10-10 (Verfasser; ersetzt „vollständig wie ausgeliefert“ vom selben Tag; `LABORBUCH.md` 10.10., Test `OriginalProfile`)
@@ -490,7 +496,7 @@ Zuordnung nach `KONZEPT.md`, Abschnitt 10:
 
 ## 16 Veröffentlichung des Artefakts
 
-- [ ] `README.md` vollständig: Zweck, Hardware, Versionen, Nachbau, Auswertung, Verweis auf die Arbeit *(2026-10-09: alle Teile angelegt; offen: Ergebnisse von `original-k0`/`original-k1` und Nachbau-Test, Hinweis „noch nicht auf einem Cluster gelaufen“ zu `reproduce`, Status-Badge, Zitierangabe mit Endstand-Tag bzw. DOI)*
+- [ ] `README.md` vollständig: Zweck, Hardware, Versionen, Nachbau, Auswertung, Verweis auf die Arbeit *(2026-10-09: alle Teile angelegt; 2026-10-10: Nachbau-Test, Teststand und Bildschirmfotos von `reproduce`, Badge „Rebuild test“ ergänzt, Hinweis „noch nicht auf einem Cluster gelaufen“ entfernt; offen: Ergebnisse von `original-k0`/`original-k1`, Status-Badge zum Endstand, Zitierangabe mit Endstand-Tag bzw. DOI)*
 - [ ] Gesamte Git-Historie auf Geheimnisse geprüft (z. B. gitleaks); Treffer → Geheimnis ändern, nicht nur löschen
 - [ ] Rohdaten abgelegt (Git bzw. Zenodo)
 - [ ] Endstand getaggt und als GitHub-Release veröffentlicht

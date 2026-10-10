@@ -1,6 +1,6 @@
 # `reproduce` – Design and Build Specification
 
-**Status:** v3, 2026-10-08 · implemented in `reproduce` (statically checked, **not yet run on a cluster**, §23) · open points are marked **❓** and listed in §21.
+**Status:** v3, 2026-10-08, updated 2026-10-10 · implemented in `reproduce`; run on a cluster: short test 2026-10-09 and rebuild test with the real plan 2026-10-09/10 (K0 and K1 **reproduced**), profile `original` pending (§23) · open points are marked **❓** and listed in §21.
 **Use:** this document is the single source for building the script. Anything not described here is out of scope (§19).
 **Relation to `KONZEPT.md`:** `KONZEPT.md` is binding. Some decisions here deviate from it; they are listed in §20 and must be written into `KONZEPT.md` **before** implementation starts.
 
@@ -110,7 +110,7 @@ Visual language: the terminal's own 16 colours (works on light and dark themes),
 
 ### 4.2 Dashboard
 
-`./reproduce dashboard` (alias `ui`; `./reproduce` while a job runs opens it automatically) is a full-screen view in Python `curses` (standard library), refreshed in a background thread every 3 s:
+`./reproduce dashboard` (alias `ui`; `./reproduce` while a job runs opens it automatically) is a full-screen view in Python `curses` (standard library), refreshed in a background thread every 3 s. Screenshots of every view (real output, rendered to SVG): `README.md`, section *Watching a run*, and `docs/img/`.
 
 - layout in framed panels (two columns from 90 columns, stacked below); all times in the time zone of `settings tz`
 - header panel: current phase (n/9) with spinner and duration · current step and its age · overall bar with percentage, end time and time left
@@ -132,6 +132,7 @@ Visual language: the terminal's own 16 colours (works on light and dark themes),
 - Long steps on a terminal: progress bar (images, charts) or a live timer with the usual duration; the background view (`watch`) shows a live line with the current phase and the time since the last update, so a quiet phase is not mistaken for a hang.
 - During a run: one progress line per stage (`stage s4 · 0.5/s · 06:12 / 10:00 · completed 30/30 per min`).
 - Colours only in an interactive terminal (off with `NO_COLOR=1`); plain text otherwise.
+- Numbers in messages are readable without decoding: steal time in percent (`machine busy (steal 1.5 % ≥ 1 %)`), the log capacity probe as a sentence (`531 of 531 transactions in Loki, 0 failed, 0 discarded`; the raw values stay in `probe-<configuration>.json`). Since 2026-10-10; older logs show the ratio and the JSON.
 - Every line also goes to `state/logs/reproduce.log`; long command output (helm, kubectl, installers) only to the log file. `watch` shows the status lines; `watch --all` the full log.
 - Every stop prints: what failed, why, where the diagnostics and the log are, and the command to run next (the same command again continues where it stopped).
 
@@ -253,8 +254,8 @@ Installed only with `helm upgrade --install <release> <chart> --version <v> -n <
 - **One correction (both `original` configurations):** the DTR image sets its own heap (`-Xms512m -Xmx2048m`, not changeable by the chart, belege B18), the chart gives the container 1 GiB – a contradiction within the delivery that would end the DTR under load (OOMKilled) for reasons unrelated to the scaling question. TRG 5.04 asks for defaults that meet the application's minimum requirements; the overlay `setup/c3-customer-dtr/original.yaml` and `setup/c5-supplier-dtr/original.yaml` therefore set only the DTR memory to 3 GiB (request = limit, as on the NAS); its CPU stays as shipped (250m / 750m). Test: `test_original_overlays_only_fix_the_dtr_memory`.
 - **Expected risk with the resources as shipped:** the EDC databases of `original-k0` get the Bitnami preset `nano` (0.15 CPU, 192 MiB; on the NAS the customer EDC database used about 0.14 cores at 1 transaction/s) – likely the first bottleneck of `original-k0`; `original-k1` sets the preset `small`. A configuration that does not become ready is a result; `original-k1` can still be measured alone (`REPRODUCE_CONFIGS=original-k1 ./reproduce`). A short test on the target machine first shows it within the first hour.
 - `original-k1`: `original-k0` plus the PostgreSQL of both EDCs with the Bitnami preset `small` instead of `nano` ❓ (§21, item 1), as files `setup/c2-customer-edc/original-k1.yaml` and `setup/c4-supplier-edc/original-k1.yaml`.
-- **DTR as shipped:** the chart limits the DTR to 1 GiB RAM, but the DTR image sets a Java heap of up to 2 GB and the supplier DTR used 1.42 GiB in K0. A container that goes over its RAM limit is killed by the kernel (`OOMKilled`) and restarted by Kubernetes, which costs 10–20 min of start-up each time. Behaviour of the script:
-  - crash during `deploy` (the DTR never becomes ready): stop with the message "original configuration as shipped is not runnable: DTR OOMKilled", diagnostics saved; this is itself a result.
+- **Containers over their RAM limit (any component):** a container that goes over its limit is killed by the kernel (`OOMKilled`) and restarted by Kubernetes, which costs 10–20 min of start-up each time. This was the reason for the DTR correction above (chart 1 GiB, image heap up to 2 GB, supplier DTR used 1.42 GiB in K0). Behaviour of the script:
+  - killed repeatedly during `deploy` (never ready): stop with the message "container killed repeatedly for exceeding its RAM limit (OOMKilled) – configuration … as shipped is not runnable on its own; this is a result", diagnostics saved.
   - restart during warm-up: run invalid (`KONZEPT.md`, §6).
   - restart after warm-up: run valid, restart recorded as a result (`sut_restarts_after_warmup`).
 - Not shipped by the charts but required: the deviations of the whole setup from the full Tractus-X reference (no Keycloak, no ingress, DTR without authentication, …) stay as in `KONZEPT.md`, §3; they are listed in `verdict.md`.
@@ -295,10 +296,10 @@ Expected values (calculated 2026-10-08 from the pinned charts; the script recalc
 |---|---|---|---|
 | `compact-k0` | 7.7 | 25.0 GiB | |
 | `compact-k1` | 7.9 | 25.0 GiB | 8 vCPU, MemTotal ≥ 25 GiB (≈ 28 GB; 32 GB recommended) |
-| `original-k0` | 18.8 | 22.3 GiB | |
-| `original-k1` (preset `small`) | 20.0 | 23.4 GiB | 20 vCPU, MemTotal ≥ 23.4 GiB (24 vCPU / 32 GB recommended) |
+| `original-k0` | 18.8 | 26.3 GiB | |
+| `original-k1` (preset `small`) | 20.0 | 27.4 GiB | 20 vCPU, MemTotal ≥ 27.4 GiB (24 vCPU / 32 GB recommended) |
 
-Values from `reproduce` itself (2026-10-08, rendered charts). `compact-k1` with the k6 runner uses 6.93 of the 7 allocatable cores of an 8-vCPU machine.
+Values from `reproduce` itself (2026-10-08, rendered charts). `compact-k1` with the k6 runner uses 6.93 of the 7 allocatable cores of an 8-vCPU machine. Update 2026-10-10: the DTR correction of §7.4 (memory 1 → 3 GiB for both DTRs) adds 4 GiB to both `original` configurations; their RAM values above are the values of 2026-10-08 plus 4 GiB, which agrees with the rendered `original-k1` in the lab book (≈ 27 GiB). CPU is unchanged.
 
 ---
 
@@ -520,10 +521,10 @@ Acceptance check for the implementation: the file list and the `meta.json` keys 
 | Configuration | Reference |
 |---|---|
 | `compact-k0` | `reference/compact-k0.json` from the NAS runs K0 (`rep-2` to `rep-7`, valid runs only) |
-| `compact-k1` | `reference/compact-k1.json` from the NAS runs K1 (after they are measured) |
+| `compact-k1` | `reference/compact-k1.json` from the NAS runs K1 (`rep-3`, `rep-4`, `rep-6`, `rep-7`, valid runs only) |
 | `original-k0`, `original-k1` | none yet; the first complete result is stored as `summary.json` and proposed as reference for later users |
 
-**Criterion (fixed before measuring):** reproduced if the **median tipping stage** of the new runs lies within **[lowest tipping stage of the reference − 1 stage, highest tipping stage of the reference + 1 stage]** on the stage grid of the plan. Example `compact-k0`: reference 0.6–0.7/s → accepted range 0.5–0.8/s.
+**Criterion (fixed before measuring):** reproduced if the **median tipping stage** of the new runs lies within **[lowest tipping stage of the reference − 1 stage, highest tipping stage of the reference + 1 stage]** on the stage grid of the plan. Example `compact-k0`: reference 0.6–0.7/s → accepted range 0.5–0.8/s; `compact-k1`: reference 1.5–2.0/s → accepted range 1.0–2.5/s. The tipping stage uses the criterion of the thesis (`throughput`: fewer than 95 % of the planned transactions completed); the readings `relaxed` and `strict` stay in `summary.json`.
 
 **Output** in `verdict.md`: per configuration tipping stage (median, range), capacity, metric, recovery, comparison (`reproduced ✓` / `not reproduced ✗` / `no reference`), machine and CPU speed of both sides, number of invalid runs and repairs.
 
@@ -737,7 +738,7 @@ Found on 2026-10-09 in the first measurement on a cluster: the plans contain `ST
 - **Early check:** phase `check` loads every plan of the chosen profile (keys, number of stages = number of labels).
 - **Tests before every push:** `python3 -m unittest tests.test_reproduce_static` – syntax, embedded Python, plans as data, no plan key among the protected names, `load_plan` keeps the state folder, a broken or executable plan is refused (runtime tests on Linux with bash ≥ 4).
 
-## 23. Implementation status (2026-10-08)
+## 23. Implementation status (2026-10-08, updated 2026-10-10)
 
 `reproduce` (≈ 1,500 lines: Bash with an embedded Python helper) implements §1–§22. Checked without a cluster:
 
@@ -755,5 +756,6 @@ Found on 2026-10-09 in the first measurement on a cluster: the plans contain `ST
 
 Originally not yet run on a cluster (first run planned on the supervisor's VM, §18 step 7): install, deploy, prepare, reset, collection, conformance check, reboot repair (§22.4 – wallet restore untested), Alloy filter (§22.8), log capacity probe, bundle, uninstall.
 
-Reference files: `reference/compact-k0.json` from `rep-2`–`rep-4`; to be rebuilt after `rep-5`–`rep-7` are copied into `runs/`:
-`./reproduce make-reference compact-k0 "<source>" runs/<run>… > reference/compact-k0.json`. `reference/compact-k1.json` follows after the NAS K1 runs.
+Reference files (rebuilt 2026-10-10 with the criterion of the thesis, including the complete logs from `nachtrag/`): `reference/compact-k0.json` from the 6 valid K0 runs, `reference/compact-k1.json` from the 4 valid K1 runs; tipping points per run identical to `analysis/out/tables/runs.csv`. Command: `./reproduce make-reference <configuration> "<source>" runs/<run>… > reference/<configuration>.json`.
+
+**Update 2026-10-10 – rebuild test with the real plan** (NAS VM emptied with `uninstall`, `REPRODUCE_REPS=1 ./reproduce`, 2026-10-09 20:44 → 2026-10-10 03:28 UTC; `LABORBUCH.md`): all ten phases ran without intervention; both runs valid; tipping points K0 0.7/s and K1 1.5/s – within the range of the main measurement, **reproduced** by the criterion fixed in advance (`README.md`, section *Rebuild test*). Found and fixed: `SHA256SUMS` of a run was written one second before the last entry in `attempt.json`/`events.jsonl` (now the last write of a run). **Still not run:** reboot repair (§22.4), bundle (§22.11), the profile `original` (second environment).

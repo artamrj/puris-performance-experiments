@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="905" height="623" viewBox="0 0 905 623" role="img" aria-label="./reproduce help" xml:space="preserve">
+<title>./reproduce help</title>
+<style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono','Liberation Mono',monospace;font-size:13px;white-space:pre}.b{font-weight:700}</style>
+<rect x="0.5" y="0.5" width="904" height="622" rx="8" fill="#0d1117" stroke="#30363d"/>
+<path d="M0.5 30 V8.5 A8 8 0 0 1 8.5 0.5 H896.5 A8 8 0 0 1 904.5 8.5 V30 Z" fill="#161b22"/>
+<line x1="0.5" y1="30.5" x2="904.5" y2="30.5" stroke="#30363d"/>
+<circle cx="18" cy="15" r="6" fill="#ff5f57"/>
+<circle cx="38" cy="15" r="6" fill="#febc2e"/>
+<circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="452" y="19" fill="#8b949e" text-anchor="middle" style="font-size:12px">./reproduce help</text>
+<text x="16.0" y="59" fill="#3fb950" textLength="7.8" lengthAdjust="spacingAndGlyphs">$</text>
+<text x="31.6" y="59" fill="#c9d1d9" textLength="124.8" lengthAdjust="spacingAndGlyphs">./reproduce help</text>
+<text x="16.0" y="76" fill="#c9d1d9" textLength="70.2" lengthAdjust="spacingAndGlyphs" class="b">reproduce</text>
+<text x="94.0" y="76" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">–</text>
+<text x="109.6" y="76" fill="#c9d1d9" textLength="468.0" lengthAdjust="spacingAndGlyphs">repeats the PURIS saturation experiment on one Linux server,</text>
+<text x="16.0" y="93" fill="#c9d1d9" textLength="624.0" lengthAdjust="spacingAndGlyphs">from an empty machine to checked results (pinned versions, its own k3s cluster).</text>
+<text x="16.0" y="127" fill="#c9d1d9" textLength="78.0" lengthAdjust="spacingAndGlyphs" class="b">Start here</text>
+<text x="31.6" y="144" fill="#39c5cf" textLength="132.6" lengthAdjust="spacingAndGlyphs">tmux new -s repro</text>
+<text x="289.0" y="144" fill="#8b949e" textLength="429.0" lengthAdjust="spacingAndGlyphs">a session on the server that survives a closed terminal</text>
+<text x="31.6" y="161" fill="#39c5cf" textLength="85.8" lengthAdjust="spacingAndGlyphs">./reproduce</text>
+<text x="289.0" y="161" fill="#8b949e" textLength="156.0" lengthAdjust="spacingAndGlyphs">everything, phases 0</text>
+<text x="445.0" y="161" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">–</text>
+<text x="452.8" y="161" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">9</text>
+<text x="468.4" y="161" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="484.0" y="161" fill="#8b949e" textLength="241.8" lengthAdjust="spacingAndGlyphs">asks once for the sudo password</text>
+<text x="31.6" y="178" fill="#39c5cf" textLength="163.8" lengthAdjust="spacingAndGlyphs">./reproduce dashboard</text>
+<text x="289.0" y="178" fill="#8b949e" textLength="397.8" lengthAdjust="spacingAndGlyphs">live view: progress, end time, components, activity</text>
+<text x="16.0" y="212" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs" class="b">Observe</text>
+<text x="31.6" y="229" fill="#c9d1d9" textLength="117.0" lengthAdjust="spacingAndGlyphs">status [--json]</text>
+<text x="289.0" y="229" fill="#8b949e" textLength="312.0" lengthAdjust="spacingAndGlyphs">phases, runs, estimate and the next step</text>
+<text x="31.6" y="246" fill="#c9d1d9" textLength="109.2" lengthAdjust="spacingAndGlyphs">dashboard (ui)</text>
+<text x="289.0" y="246" fill="#8b949e" textLength="163.8" lengthAdjust="spacingAndGlyphs">full-screen live view</text>
+<text x="460.6" y="246" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="476.2" y="246" fill="#8b949e" textLength="93.6" lengthAdjust="spacingAndGlyphs">keys: q quit</text>
+<text x="577.6" y="246" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="593.2" y="246" fill="#8b949e" textLength="46.8" lengthAdjust="spacingAndGlyphs">s stop</text>
+<text x="647.8" y="246" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="663.4" y="246" fill="#8b949e" textLength="39.0" lengthAdjust="spacingAndGlyphs">l log</text>
+<text x="710.2" y="246" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="725.8" y="246" fill="#8b949e" textLength="46.8" lengthAdjust="spacingAndGlyphs">p pods</text>
+<text x="780.4" y="246" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="796.0" y="246" fill="#8b949e" textLength="46.8" lengthAdjust="spacingAndGlyphs">? help</text>
+<text x="31.6" y="263" fill="#c9d1d9" textLength="101.4" lengthAdjust="spacingAndGlyphs">watch [--all]</text>
+<text x="289.0" y="263" fill="#8b949e" textLength="296.4" lengthAdjust="spacingAndGlyphs">follow the background job line by line</text>
+<text x="31.6" y="280" fill="#c9d1d9" textLength="163.8" lengthAdjust="spacingAndGlyphs">logs [component] [-f]</text>
+<text x="289.0" y="280" fill="#8b949e" textLength="187.2" lengthAdjust="spacingAndGlyphs">logs of PURIS, EDC, DTR,</text>
+<text x="484.0" y="280" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">…</text>
+<text x="499.6" y="280" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="515.2" y="280" fill="#8b949e" textLength="241.8" lengthAdjust="spacingAndGlyphs">without a name: list with state</text>
+<text x="16.0" y="314" fill="#c9d1d9" textLength="101.4" lengthAdjust="spacingAndGlyphs" class="b">Run one phase</text>
+<text x="133.0" y="314" fill="#8b949e" textLength="452.4" lengthAdjust="spacingAndGlyphs">each checks the previous one; work already done is skipped</text>
+<text x="31.6" y="331" fill="#c9d1d9" textLength="39.0" lengthAdjust="spacingAndGlyphs">fetch</text>
+<text x="78.4" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="94.0" y="331" fill="#c9d1d9" textLength="39.0" lengthAdjust="spacingAndGlyphs">tools</text>
+<text x="140.8" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="156.4" y="331" fill="#c9d1d9" textLength="39.0" lengthAdjust="spacingAndGlyphs">check</text>
+<text x="203.2" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="218.8" y="331" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">install</text>
+<text x="281.2" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="296.8" y="331" fill="#c9d1d9" textLength="46.8" lengthAdjust="spacingAndGlyphs">deploy</text>
+<text x="351.4" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="367.0" y="331" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">prepare</text>
+<text x="429.4" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="445.0" y="331" fill="#c9d1d9" textLength="46.8" lengthAdjust="spacingAndGlyphs">verify</text>
+<text x="499.6" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="515.2" y="331" fill="#c9d1d9" textLength="179.4" lengthAdjust="spacingAndGlyphs">measure [configuration]</text>
+<text x="702.4" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="718.0" y="331" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs">evaluate</text>
+<text x="788.2" y="331" fill="#c9d1d9" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="803.8" y="331" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs">package</text>
+<text x="16.0" y="365" fill="#c9d1d9" textLength="54.6" lengthAdjust="spacingAndGlyphs" class="b">Control</text>
+<text x="31.6" y="382" fill="#c9d1d9" textLength="31.2" lengthAdjust="spacingAndGlyphs">stop</text>
+<text x="289.0" y="382" fill="#8b949e" textLength="351.0" lengthAdjust="spacingAndGlyphs">end the background job at its next safe point</text>
+<text x="31.6" y="399" fill="#c9d1d9" textLength="171.6" lengthAdjust="spacingAndGlyphs">settings [key [value]]</text>
+<text x="289.0" y="399" fill="#8b949e" textLength="436.8" lengthAdjust="spacingAndGlyphs">time zone, colours, tab title and progress, notification</text>
+<text x="31.6" y="416" fill="#c9d1d9" textLength="132.6" lengthAdjust="spacingAndGlyphs">uninstall [--yes]</text>
+<text x="289.0" y="416" fill="#8b949e" textLength="483.6" lengthAdjust="spacingAndGlyphs">remove the cluster of this script, restore the system settings</text>
+<text x="31.6" y="433" fill="#c9d1d9" textLength="46.8" lengthAdjust="spacingAndGlyphs">bundle</text>
+<text x="289.0" y="433" fill="#8b949e" textLength="374.4" lengthAdjust="spacingAndGlyphs">offline bundle of the running build (needs sudo)</text>
+<text x="16.0" y="467" fill="#c9d1d9" textLength="62.4" lengthAdjust="spacingAndGlyphs" class="b">Examples</text>
+<text x="31.6" y="484" fill="#c9d1d9" textLength="187.2" lengthAdjust="spacingAndGlyphs">./reproduce help measure</text>
+<text x="421.6" y="484" fill="#8b949e" textLength="171.6" lengthAdjust="spacingAndGlyphs">details of one command</text>
+<text x="31.6" y="501" fill="#c9d1d9" textLength="358.8" lengthAdjust="spacingAndGlyphs">REPRODUCE_SMOKE=1 REPRODUCE_REPS=1 ./reproduce</text>
+<text x="421.6" y="501" fill="#8b949e" textLength="241.8" lengthAdjust="spacingAndGlyphs">short test: 2-min stages, 1 run</text>
+<text x="671.2" y="501" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">–</text>
+<text x="686.8" y="501" fill="#8b949e" textLength="163.8" lengthAdjust="spacingAndGlyphs">not valid for results</text>
+<text x="31.6" y="518" fill="#c9d1d9" textLength="273.0" lengthAdjust="spacingAndGlyphs">TZ=Europe/Berlin ./reproduce status</text>
+<text x="421.6" y="518" fill="#8b949e" textLength="366.6" lengthAdjust="spacingAndGlyphs">times in German time (permanently: settings tz)</text>
+<text x="31.6" y="535" fill="#c9d1d9" textLength="265.2" lengthAdjust="spacingAndGlyphs">./reproduce logs puris-customer -f</text>
+<text x="421.6" y="535" fill="#8b949e" textLength="280.8" lengthAdjust="spacingAndGlyphs">follow the PURIS log of the customer</text>
+<text x="16.0" y="569" fill="#c9d1d9" textLength="85.8" lengthAdjust="spacingAndGlyphs" class="b">Environment</text>
+<text x="117.4" y="569" fill="#8b949e" textLength="62.4" lengthAdjust="spacingAndGlyphs">NO_COLOR</text>
+<text x="187.6" y="569" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="203.2" y="569" fill="#8b949e" textLength="85.8" lengthAdjust="spacingAndGlyphs">FORCE_COLOR</text>
+<text x="296.8" y="569" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="312.4" y="569" fill="#8b949e" textLength="15.6" lengthAdjust="spacingAndGlyphs">TZ</text>
+<text x="335.8" y="569" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="351.4" y="569" fill="#8b949e" textLength="117.0" lengthAdjust="spacingAndGlyphs">REPRODUCE_SMOKE</text>
+<text x="476.2" y="569" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="491.8" y="569" fill="#8b949e" textLength="109.2" lengthAdjust="spacingAndGlyphs">REPRODUCE_REPS</text>
+<text x="608.8" y="569" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="624.4" y="569" fill="#8b949e" textLength="132.6" lengthAdjust="spacingAndGlyphs">REPRODUCE_CONFIGS</text>
+<text x="764.8" y="569" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="780.4" y="569" fill="#8b949e" textLength="109.2" lengthAdjust="spacingAndGlyphs">REPRODUCE_HOME</text>
+<text x="16.0" y="586" fill="#c9d1d9" textLength="78.0" lengthAdjust="spacingAndGlyphs" class="b">Exit codes</text>
+<text x="117.4" y="586" fill="#8b949e" textLength="31.2" lengthAdjust="spacingAndGlyphs">0 ok</text>
+<text x="156.4" y="586" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="172.0" y="586" fill="#8b949e" textLength="54.6" lengthAdjust="spacingAndGlyphs">1 error</text>
+<text x="234.4" y="586" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="250.0" y="586" fill="#8b949e" textLength="171.6" lengthAdjust="spacingAndGlyphs">2 precondition missing</text>
+<text x="429.4" y="586" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="445.0" y="586" fill="#8b949e" textLength="156.0" lengthAdjust="spacingAndGlyphs">3 machine unsuitable</text>
+<text x="608.8" y="586" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="624.4" y="586" fill="#8b949e" textLength="70.2" lengthAdjust="spacingAndGlyphs">4 stopped</text>
+<text x="16.0" y="603" fill="#c9d1d9" textLength="31.2" lengthAdjust="spacingAndGlyphs" class="b">More</text>
+<text x="117.4" y="603" fill="#8b949e" textLength="93.6" lengthAdjust="spacingAndGlyphs">REPRODUCE.md</text>
+<text x="218.8" y="603" fill="#8b949e" textLength="7.8" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="234.4" y="603" fill="#8b949e" textLength="436.8" lengthAdjust="spacingAndGlyphs">https://github.com/artamrj/puris-performance-experiments</text>
+</svg>
