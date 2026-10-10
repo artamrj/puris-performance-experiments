@@ -19,9 +19,15 @@ class EvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for name, tool in (("2026-10-08_0140_k0_rep-2", None), ("2026-10-09_2210_compact-k0_rep-1", {"name": "reproduce"})):
                 os.makedirs(os.path.join(tmp, "runs", name))
-                json.dump({"kind": "main", "plan": "k0", "tool": tool}, open(os.path.join(tmp, "runs", name, "meta.json"), "w"))
+                json.dump({"kind": "main", "plan": "k0", "tool": tool, "profile": "compact" if tool else None},
+                          open(os.path.join(tmp, "runs", name, "meta.json"), "w"))
             self.assertEqual([r["name"] for r in L.discover(tmp)], ["2026-10-08_0140_k0_rep-2"])
             self.assertEqual([r["name"] for r in L.discover(tmp, rebuild=True)], ["2026-10-09_2210_compact-k0_rep-1"])
+
+    def test_isst_runs_from_reproduce_are_not_a_rebuild(self):
+        self.assertFalse(L.is_rebuild({"tool": {"name": "reproduce"}, "profile": "original"}))
+        self.assertTrue(L.is_rebuild({"tool": {"name": "reproduce"}, "profile": "compact"}))
+        self.assertFalse(L.is_rebuild({"tool": None}))
 
     def test_percentile_linear_like_numpy(self):
         v = [1, 2, 3, 4]

@@ -142,9 +142,10 @@ def _series(path):
 
 
 def is_rebuild(meta):
-    """Lauf aus dem Nachbau-Test mit `reproduce` (meta.json → tool.name); gehört nicht zur Hauptmessung."""
+    """Lauf aus dem Nachbau-Test: `reproduce` mit Profil `compact` auf der NAS (meta.json → tool.name, profile).
+    Läufe von `reproduce` mit Profil `original` (VM der Betreuung) sind eigene Messungen, kein Nachbau."""
     tool = (meta or {}).get("tool")
-    return isinstance(tool, dict) and tool.get("name") == "reproduce"
+    return isinstance(tool, dict) and tool.get("name") == "reproduce" and (meta or {}).get("profile") == "compact"
 
 
 def discover(root=ROOT, kinds=("main",), rebuild=False):
